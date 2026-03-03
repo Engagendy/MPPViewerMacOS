@@ -6,7 +6,7 @@ set -euo pipefail
 # and creates a .dmg for distribution.
 #
 # Usage:
-#   ./scripts/package.sh [--skip-jar] [--skip-app] [--arch arm64|x86_64]
+#   ./scripts/package.sh [--skip-jar] [--skip-app] [--arch arm64|x86_64] [--version X.Y]
 #
 # Requirements:
 #   - Xcode command-line tools (xcodebuild)
@@ -34,6 +34,7 @@ DMG_DIR="$BUILD_DIR/dmg"
 SKIP_JAR=false
 SKIP_APP=false
 ARCH="$(uname -m)"   # arm64 or x86_64
+VERSION_OVERRIDE=""
 
 # ─── Parse Arguments ────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
@@ -41,6 +42,7 @@ while [[ $# -gt 0 ]]; do
         --skip-jar)  SKIP_JAR=true; shift ;;
         --skip-app)  SKIP_APP=true; shift ;;
         --arch)      ARCH="$2"; shift 2 ;;
+        --version)   VERSION_OVERRIDE="$2"; shift 2 ;;
         *)           echo "Unknown option: $1"; exit 1 ;;
     esac
 done
@@ -55,6 +57,9 @@ esac
 echo "═══════════════════════════════════════════════════════════"
 echo "  MPP Viewer — Build & Package"
 echo "  Architecture: $ARCH"
+if [[ -n "$VERSION_OVERRIDE" ]]; then
+    echo "  Version override: $VERSION_OVERRIDE"
+fi
 echo "═══════════════════════════════════════════════════════════"
 echo ""
 
@@ -75,6 +80,11 @@ if [[ ! -f "$JAR_PATH" ]]; then
 fi
 
 # ─── Step 2: Build macOS App ────────────────────────────────────────────
+VERSION_BUILD_FLAG=""
+if [[ -n "$VERSION_OVERRIDE" ]]; then
+    VERSION_BUILD_FLAG="MARKETING_VERSION=$VERSION_OVERRIDE"
+fi
+
 if [[ "$SKIP_APP" == false ]]; then
     echo ""
     echo "▸ Building macOS app…"
@@ -87,6 +97,7 @@ if [[ "$SKIP_APP" == false ]]; then
         CODE_SIGN_IDENTITY="-" \
         CODE_SIGNING_REQUIRED=NO \
         CODE_SIGNING_ALLOWED=NO \
+        $VERSION_BUILD_FLAG \
         clean build 2>&1 | tail -5
     echo "  ✓ App built"
 else
@@ -161,7 +172,6 @@ cp "$JAR_PATH" "$RESOURCES_DIR/$JAR_NAME"
 echo "  ✓ JAR bundled at Resources/$JAR_NAME"
 
 # ─── Step 6: Read Version ──────────────────────────────────────────────
-# Try to get version from Info.plist, fall back to git tag
 VERSION="$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP_PATH/Contents/Info.plist" 2>/dev/null || echo "1.0.0")"
 echo ""
 echo "  Version: $VERSION"
