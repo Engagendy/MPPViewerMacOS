@@ -147,6 +147,9 @@ mkdir -p "$PLUGINS_DIR/jre"
 
 # Copy JRE contents (bin, lib, conf, etc.)
 rsync -a --delete "$JRE_HOME/" "$PLUGINS_DIR/jre/"
+
+# Strip quarantine attributes so macOS allows execution of bundled JRE
+xattr -cr "$PLUGINS_DIR/jre/" 2>/dev/null || true
 echo "  ✓ JRE bundled at PlugIns/jre/"
 
 # ─── Step 5: Bundle JAR into App ────────────────────────────────────────
