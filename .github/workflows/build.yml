@@ -1,0 +1,100 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build DMG (${{ matrix.arch }})
+    runs-on: macos-14
+    strategy:
+      matrix:
+        arch: [arm64]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Maven
+        run: brew install maven
+
+      - name: Build & Package
+        run: ./scripts/package.sh --arch ${{ matrix.arch }}
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dmg-${{ matrix.arch }}
+          path: build/MPPViewer-*.dmg
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download all DMG artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: dmg-*
+          merge-multiple: true
+
+      - name: Generate release notes
+        id: notes
+        run: |
+          # Get previous tag
+          PREV_TAG=$(git tag --sort=-v:refname | sed -n '2p')
+          if [ -n "$PREV_TAG" ]; then
+            NOTES=$(git log --pretty=format:"- %s" "$PREV_TAG"..HEAD)
+          else
+            NOTES=$(git log --pretty=format:"- %s")
+          fi
+          # Write to file for the release body
+          cat > release_notes.md << 'NOTESEOF'
+          ## What's New
+
+          NOTESEOF
+          echo "$NOTES" >> release_notes.md
+          cat >> release_notes.md << 'NOTESEOF'
+
+          ## Installation
+
+          ### Direct Download
+          1. Download the `.dmg` file for your Mac below
+          2. Open the DMG and drag **MPP Viewer** to your Applications folder
+          3. On first launch, right-click the app → **Open** → **Open** (required for unsigned apps)
+
+          ### Homebrew
+          ```
+          brew install --cask mpp-viewer
+          ```
+
+          ### Gatekeeper Bypass
+          If macOS blocks the app, run:
+          ```
+          xattr -cr /Applications/MPP\ Viewer.app
+          ```
+          NOTESEOF
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: release_notes.md
+          files: artifacts/*.dmg
+          draft: false
+          prerelease: false

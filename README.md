@@ -69,54 +69,73 @@ Visual calendar display with working/non-working day highlighting, exception day
 
 ---
 
-## Requirements
+## Installation
+
+### Direct Download
+
+1. Download the latest `.dmg` from [GitHub Releases](https://github.com/Engagendy/MPPViewerMacOS/releases)
+2. Open the DMG and drag **MPP Viewer** to your Applications folder
+3. On first launch, right-click the app → **Open** → **Open** (required for unsigned apps)
+
+> The app bundles its own Java runtime and converter — no prerequisites needed.
+
+### Homebrew
+
+```bash
+brew install --cask mpp-viewer
+```
+
+### Gatekeeper Bypass
+
+Since the app is not signed with an Apple Developer certificate, macOS will show an "unidentified developer" warning. To bypass this:
+
+**Option A — Right-click Open (recommended):**
+Right-click (or Control-click) the app → **Open** → click **Open** in the dialog.
+
+**Option B — Remove quarantine attribute:**
+```bash
+xattr -cr /Applications/MPP\ Viewer.app
+```
+
+**Option C — System Settings:**
+Go to **System Settings → Privacy & Security**, scroll down, and click **Open Anyway** next to the MPP Viewer message.
+
+---
+
+## Building from Source
+
+### Requirements
 
 | Requirement | Version |
 |-------------|---------|
 | macOS | 14.0 (Sonoma) or later |
 | Xcode | 15.0+ |
 | Java | OpenJDK 21 |
+| Maven | 3.8+ |
 
-### Installing Java 21
-
-```bash
-# Homebrew (recommended)
-brew install openjdk@21
-
-# Or download Eclipse Temurin
-# https://adoptium.net/temurin/releases/?version=21
-```
-
----
-
-## Getting Started
-
-### 1. Clone the repository
+### Development Setup
 
 ```bash
+# Clone the repository
 git clone https://github.com/Engagendy/MPPViewerMacOS.git
 cd MPPViewerMacOS
-```
 
-### 2. Build the Java converter
+# Build the Java converter
+cd MPPConverter && mvn clean package && cd ..
 
-```bash
-cd MPPConverter
-mvn clean package
-cd ..
-```
-
-This produces `MPPConverter/target/mpxj-converter.jar`, a fat JAR containing the MPXJ library.
-
-### 3. Open in Xcode
-
-```bash
+# Open in Xcode
 open MPPViewer/MPPViewer.xcodeproj
 ```
 
-### 4. Build and run
-
 Select the **MPPViewer** scheme, choose **My Mac** as the destination, and hit **Run** (Cmd+R).
+
+### Building a DMG for Distribution
+
+```bash
+./scripts/package.sh
+```
+
+This script builds the JAR, builds the app, bundles the Eclipse Temurin JRE and converter JAR into the app, and creates a `.dmg` ready for distribution. See `scripts/package.sh --help` for options.
 
 ### 5. Open a `.mpp` file
 

@@ -13,6 +13,9 @@ xcuserdata/
 # Java / Maven
 MPPConverter/target/
 
+# Build cache (JRE downloads)
+.cache/
+
 # Claude
 .claude/
 
