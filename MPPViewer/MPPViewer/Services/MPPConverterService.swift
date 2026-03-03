@@ -183,8 +183,15 @@ final class MPPConverterService {
     ) async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             let process = Process()
-            process.executableURL = URL(fileURLWithPath: javaPath)
-            process.arguments = ["-jar", jarPath, inputPath, outputPath]
+            // Use /bin/sh to invoke java to avoid Gatekeeper/translocation
+            // issues with directly executing bundled binaries
+            process.executableURL = URL(fileURLWithPath: "/bin/sh")
+
+            let escapedJava = javaPath.replacingOccurrences(of: "'", with: "'\\''")
+            let escapedJar = jarPath.replacingOccurrences(of: "'", with: "'\\''")
+            let escapedInput = inputPath.replacingOccurrences(of: "'", with: "'\\''")
+            let escapedOutput = outputPath.replacingOccurrences(of: "'", with: "'\\''")
+            process.arguments = ["-c", "'\(escapedJava)' -jar '\(escapedJar)' '\(escapedInput)' '\(escapedOutput)'"]
 
             let stderrPipe = Pipe()
             let stdoutPipe = Pipe()
