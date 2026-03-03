@@ -82,6 +82,7 @@ Visual calendar display with working/non-working day highlighting, exception day
 ### Homebrew
 
 ```bash
+brew tap Engagendy/tap
 brew install --cask mpp-viewer
 ```
 
