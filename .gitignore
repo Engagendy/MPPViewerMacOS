@@ -1,0 +1,21 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Xcode
+build/
+DerivedData/
+*.xcuserstate
+*.xcuserdatad/
+xcuserdata/
+
+# Java / Maven
+MPPConverter/target/
+
+# Claude
+.claude/
+
+# IDE
+.idea/
+*.iml
