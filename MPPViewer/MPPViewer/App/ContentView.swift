@@ -1,10 +1,12 @@
 import SwiftUI
 
 enum NavigationItem: String, CaseIterable, Identifiable {
+    case dashboard = "Dashboard"
     case summary = "Summary"
     case tasks = "Tasks"
     case gantt = "Gantt Chart"
     case schedule = "Schedule"
+    case milestones = "Milestones"
     case resources = "Resources"
     case calendar = "Calendar"
 
@@ -12,10 +14,12 @@ enum NavigationItem: String, CaseIterable, Identifiable {
 
     var icon: String {
         switch self {
+        case .dashboard: return "gauge.with.dots.needle.33percent"
         case .summary: return "doc.text"
         case .tasks: return "list.bullet.indent"
         case .gantt: return "chart.bar.xaxis"
         case .schedule: return "rectangle.split.2x1"
+        case .milestones: return "diamond.fill"
         case .resources: return "person.2"
         case .calendar: return "calendar"
         }
@@ -25,7 +29,7 @@ enum NavigationItem: String, CaseIterable, Identifiable {
 struct ContentView: View {
     let document: MPPDocument
     @StateObject private var store = ProjectStore()
-    @State private var selectedNav: NavigationItem? = .summary
+    @State private var selectedNav: NavigationItem? = .dashboard
     @State private var searchText = ""
 
     var body: some View {
@@ -72,14 +76,18 @@ struct ContentView: View {
     @ViewBuilder
     private func detailView(for item: NavigationItem?, project: ProjectModel) -> some View {
         switch item {
+        case .dashboard:
+            DashboardView(project: project)
         case .summary:
             ProjectSummaryView(project: project)
         case .tasks:
-            TaskTableView(tasks: project.rootTasks, allTasks: project.tasksByID, searchText: searchText)
+            TaskTableView(tasks: project.rootTasks, allTasks: project.tasksByID, searchText: searchText, resources: project.resources, assignments: project.assignments)
         case .gantt:
             GanttChartView(project: project, searchText: searchText)
         case .schedule:
             ScheduleView(project: project, searchText: searchText)
+        case .milestones:
+            MilestonesView(tasks: project.tasks, allTasks: project.tasksByID, searchText: searchText)
         case .resources:
             ResourceSheetView(resources: project.resources, assignments: project.assignments)
         case .calendar:

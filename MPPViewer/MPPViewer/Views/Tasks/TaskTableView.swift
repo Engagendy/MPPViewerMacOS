@@ -4,8 +4,11 @@ struct TaskTableView: View {
     let tasks: [ProjectTask]
     let allTasks: [Int: ProjectTask]
     let searchText: String
+    var resources: [ProjectResource] = []
+    var assignments: [ResourceAssignment] = []
 
     @State private var collapsedIDs: Set<Int> = []
+    @State private var selectedTaskID: Int? = nil
 
     var filteredTasks: [ProjectTask] {
         if searchText.isEmpty {
@@ -14,155 +17,204 @@ struct TaskTableView: View {
         return filterTasks(tasks, searchText: searchText.lowercased())
     }
 
+    private var selectedTask: ProjectTask? {
+        guard let id = selectedTaskID else { return nil }
+        return allTasks[id]
+    }
+
     var body: some View {
         if filteredTasks.isEmpty {
             ContentUnavailableView("No Tasks", systemImage: "list.bullet.indent", description: Text(searchText.isEmpty ? "This project has no tasks." : "No tasks match your search."))
         } else {
-            VStack(spacing: 0) {
-                // Toolbar
-                HStack {
-                    Button("Expand All") {
-                        collapsedIDs.removeAll()
-                    }
-                    .buttonStyle(.borderless)
-                    .disabled(collapsedIDs.isEmpty)
-
-                    Button("Collapse All") {
-                        for task in project_tasks(filteredTasks) where task.summary == true && !task.children.isEmpty {
-                            collapsedIDs.insert(task.uniqueID)
+            HStack(spacing: 0) {
+                // Main table
+                VStack(spacing: 0) {
+                    // Toolbar
+                    HStack {
+                        Button("Expand All") {
+                            collapsedIDs.removeAll()
                         }
-                    }
-                    .buttonStyle(.borderless)
+                        .buttonStyle(.borderless)
+                        .disabled(collapsedIDs.isEmpty)
 
-                    Spacer()
-
-                    // Legend
-                    HStack(spacing: 14) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "folder.fill").font(.caption2).foregroundStyle(.blue)
-                            Text("Summary").font(.caption)
-                        }
-                        HStack(spacing: 4) {
-                            Image(systemName: "diamond.fill").font(.caption2).foregroundStyle(.orange)
-                            Text("Milestone").font(.caption)
-                        }
-                        HStack(spacing: 4) {
-                            Circle().fill(.red).frame(width: 8, height: 8)
-                            Text("Critical").font(.caption)
-                        }
-                        HStack(spacing: 4) {
-                            Circle().fill(.primary).frame(width: 8, height: 8)
-                            Text("Normal").font(.caption)
-                        }
-                    }
-                    .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal)
-                .padding(.vertical, 6)
-
-                Table(of: ProjectTask.self) {
-                    TableColumn("ID") { task in
-                        Text(task.id.map(String.init) ?? "")
-                            .monospacedDigit()
-                    }
-                    .width(min: 30, ideal: 50, max: 60)
-
-                    TableColumn("WBS") { task in
-                        Text(task.wbs ?? "")
-                            .monospacedDigit()
-                    }
-                    .width(min: 40, ideal: 60, max: 80)
-
-                    TableColumn("Name") { task in
-                        let isSummaryWithChildren = task.summary == true && !task.children.isEmpty
-                        let isCollapsed = collapsedIDs.contains(task.uniqueID)
-
-                        HStack(spacing: 4) {
-                            let indent = CGFloat((task.outlineLevel ?? 1) - 1) * 16
-                            Spacer().frame(width: max(0, indent))
-
-                            if isSummaryWithChildren {
-                                Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                                    .frame(width: 12)
-
-                                Image(systemName: "folder.fill")
-                                    .font(.caption2)
-                                    .foregroundStyle(.blue)
-                            } else if task.milestone == true {
-                                Spacer().frame(width: 16)
-                                Image(systemName: "diamond.fill")
-                                    .font(.caption2)
-                                    .foregroundStyle(.orange)
-                            } else {
-                                Spacer().frame(width: 16)
-                            }
-
-                            Text(task.displayName)
-                                .fontWeight(task.summary == true ? .semibold : .regular)
-                                .foregroundStyle(task.critical == true ? .red : .primary)
-                                .lineLimit(1)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            if isSummaryWithChildren {
-                                if isCollapsed {
-                                    collapsedIDs.remove(task.uniqueID)
-                                } else {
-                                    collapsedIDs.insert(task.uniqueID)
-                                }
+                        Button("Collapse All") {
+                            for task in project_tasks(filteredTasks) where task.summary == true && !task.children.isEmpty {
+                                collapsedIDs.insert(task.uniqueID)
                             }
                         }
-                        .cursor(isSummaryWithChildren ? .pointingHand : .arrow)
-                    }
-                    .width(min: 200, ideal: 350)
+                        .buttonStyle(.borderless)
 
-                    TableColumn("Duration") { task in
-                        Text(task.durationDisplay)
-                    }
-                    .width(min: 60, ideal: 90, max: 120)
+                        Spacer()
 
-                    TableColumn("Start") { task in
-                        Text(DateFormatting.shortDate(task.start))
-                    }
-                    .width(min: 70, ideal: 90, max: 110)
+                        // Legend
+                        HStack(spacing: 14) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "folder.fill").font(.caption2).foregroundStyle(.blue)
+                                Text("Summary").font(.caption)
+                            }
+                            HStack(spacing: 4) {
+                                Image(systemName: "diamond.fill").font(.caption2).foregroundStyle(.orange)
+                                Text("Milestone").font(.caption)
+                            }
+                            HStack(spacing: 4) {
+                                Circle().fill(.red).frame(width: 8, height: 8)
+                                Text("Critical").font(.caption)
+                            }
+                            HStack(spacing: 4) {
+                                Circle().fill(.primary).frame(width: 8, height: 8)
+                                Text("Normal").font(.caption)
+                            }
+                        }
+                        .foregroundStyle(.secondary)
 
-                    TableColumn("Finish") { task in
-                        Text(DateFormatting.shortDate(task.finish))
-                    }
-                    .width(min: 70, ideal: 90, max: 110)
+                        Divider().frame(height: 16)
 
-                    TableColumn("% Complete") { task in
-                        HStack(spacing: 6) {
-                            let pct = task.percentComplete ?? 0
-                            ProgressView(value: pct, total: 100)
-                                .frame(width: 50)
-                            Text(task.percentCompleteDisplay)
+                        Button {
+                            PDFExporter.exportTaskListToPDF(
+                                tasks: filteredTasks,
+                                allTasks: allTasks,
+                                fileName: "Task List \(PDFExporter.fileNameTimestamp).pdf"
+                            )
+                        } label: {
+                            Label("Export PDF", systemImage: "arrow.down.doc")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Export task list as PDF")
+
+                        if selectedTaskID != nil {
+                            Divider().frame(height: 16)
+                            Button {
+                                selectedTaskID = nil
+                            } label: {
+                                Image(systemName: "sidebar.trailing")
+                            }
+                            .buttonStyle(.borderless)
+                            .help("Hide inspector")
+                        }
+                    }
+                    .padding(.horizontal)
+                    .padding(.vertical, 6)
+
+                    Table(of: ProjectTask.self) {
+                        TableColumn("ID") { task in
+                            Text(task.id.map(String.init) ?? "")
                                 .monospacedDigit()
-                                .font(.caption)
                         }
-                    }
-                    .width(min: 80, ideal: 110, max: 140)
+                        .width(min: 30, ideal: 50, max: 60)
 
-                    TableColumn("Predecessors") { task in
-                        if let preds = task.predecessors, !preds.isEmpty {
-                            let predText = preds.compactMap { rel -> String? in
-                                guard let predTask = allTasks[rel.targetTaskUniqueID] else { return nil }
-                                let taskID = predTask.id.map(String.init) ?? "\(rel.targetTaskUniqueID)"
-                                let suffix = rel.type == "FS" ? "" : (rel.type ?? "")
-                                return taskID + suffix
-                            }.joined(separator: ", ")
-                            Text(predText)
-                                .font(.caption)
+                        TableColumn("WBS") { task in
+                            Text(task.wbs ?? "")
+                                .monospacedDigit()
+                        }
+                        .width(min: 40, ideal: 60, max: 80)
+
+                        TableColumn("Name") { task in
+                            let isSummaryWithChildren = task.summary == true && !task.children.isEmpty
+                            let isCollapsed = collapsedIDs.contains(task.uniqueID)
+                            let isSelected = selectedTaskID == task.uniqueID
+
+                            HStack(spacing: 4) {
+                                let indent = CGFloat((task.outlineLevel ?? 1) - 1) * 16
+                                Spacer().frame(width: max(0, indent))
+
+                                if isSummaryWithChildren {
+                                    Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                        .frame(width: 12)
+
+                                    Image(systemName: "folder.fill")
+                                        .font(.caption2)
+                                        .foregroundStyle(.blue)
+                                } else if task.milestone == true {
+                                    Spacer().frame(width: 16)
+                                    Image(systemName: "diamond.fill")
+                                        .font(.caption2)
+                                        .foregroundStyle(.orange)
+                                } else {
+                                    Spacer().frame(width: 16)
+                                }
+
+                                Text(task.displayName)
+                                    .fontWeight(task.summary == true ? .semibold : .regular)
+                                    .foregroundStyle(task.critical == true ? .red : .primary)
+                                    .lineLimit(1)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.vertical, 1)
+                            .background(isSelected ? Color.accentColor.opacity(0.1) : Color.clear)
+                            .cornerRadius(3)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                if isSummaryWithChildren {
+                                    if isCollapsed {
+                                        collapsedIDs.remove(task.uniqueID)
+                                    } else {
+                                        collapsedIDs.insert(task.uniqueID)
+                                    }
+                                }
+                                selectedTaskID = task.uniqueID
+                            }
+                            .cursor(isSummaryWithChildren ? .pointingHand : .arrow)
+                        }
+                        .width(min: 200, ideal: 350)
+
+                        TableColumn("Duration") { task in
+                            Text(task.durationDisplay)
+                        }
+                        .width(min: 60, ideal: 90, max: 120)
+
+                        TableColumn("Start") { task in
+                            Text(DateFormatting.shortDate(task.start))
+                        }
+                        .width(min: 70, ideal: 90, max: 110)
+
+                        TableColumn("Finish") { task in
+                            Text(DateFormatting.shortDate(task.finish))
+                        }
+                        .width(min: 70, ideal: 90, max: 110)
+
+                        TableColumn("% Complete") { task in
+                            HStack(spacing: 6) {
+                                let pct = task.percentComplete ?? 0
+                                ProgressView(value: pct, total: 100)
+                                    .frame(width: 50)
+                                Text(task.percentCompleteDisplay)
+                                    .monospacedDigit()
+                                    .font(.caption)
+                            }
+                        }
+                        .width(min: 80, ideal: 110, max: 140)
+
+                        TableColumn("Predecessors") { task in
+                            if let preds = task.predecessors, !preds.isEmpty {
+                                let predText = preds.compactMap { rel -> String? in
+                                    guard let predTask = allTasks[rel.targetTaskUniqueID] else { return nil }
+                                    let taskID = predTask.id.map(String.init) ?? "\(rel.targetTaskUniqueID)"
+                                    let suffix = rel.type == "FS" ? "" : (rel.type ?? "")
+                                    return taskID + suffix
+                                }.joined(separator: ", ")
+                                Text(predText)
+                                    .font(.caption)
+                            }
+                        }
+                        .width(min: 60, ideal: 100, max: 150)
+                    } rows: {
+                        ForEach(visibleTasks) { task in
+                            TableRow(task)
                         }
                     }
-                    .width(min: 60, ideal: 100, max: 150)
-                } rows: {
-                    ForEach(visibleTasks) { task in
-                        TableRow(task)
-                    }
+                }
+
+                // Inspector panel
+                if let task = selectedTask {
+                    Divider()
+                    TaskDetailView(
+                        task: task,
+                        allTasks: allTasks,
+                        resources: resources,
+                        assignments: assignments
+                    )
                 }
             }
         }
@@ -183,7 +235,6 @@ struct TaskTableView: View {
         return result
     }
 
-    /// Collects all tasks recursively (for "Collapse All")
     private func project_tasks(_ tasks: [ProjectTask]) -> [ProjectTask] {
         var result: [ProjectTask] = []
         for task in tasks {

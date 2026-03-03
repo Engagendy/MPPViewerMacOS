@@ -6,6 +6,7 @@ struct GanttChartView: View {
 
     @State private var pixelsPerDay: CGFloat = 8
     @State private var rowHeight: CGFloat = 24
+    @State private var criticalPathOnly: Bool = false
 
     private var flatTasks: [ProjectTask] {
         let tasks = searchText.isEmpty ? project.rootTasks : project.tasks.filter {
@@ -36,6 +37,27 @@ struct GanttChartView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
+
+                Button {
+                    exportToPDF()
+                } label: {
+                    Label("Export PDF", systemImage: "square.and.arrow.up")
+                        .font(.caption)
+                }
+                .buttonStyle(.borderless)
+
+                Divider().frame(height: 16)
+
+                Toggle(isOn: $criticalPathOnly) {
+                    Label("Critical Path", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                }
+                .toggleStyle(.button)
+                .buttonStyle(.bordered)
+                .tint(criticalPathOnly ? .red : nil)
+
+                Divider().frame(height: 16)
+
                 GanttZoomControls(pixelsPerDay: $pixelsPerDay, totalDays: totalDays)
             }
             .padding(.horizontal)
@@ -67,13 +89,42 @@ struct GanttChartView: View {
                             startDate: dateRange.start,
                             totalDays: totalDays,
                             pixelsPerDay: pixelsPerDay,
-                            rowHeight: rowHeight
+                            rowHeight: rowHeight,
+                            criticalPathOnly: criticalPathOnly
                         )
                         .frame(width: timelineWidth, height: CGFloat(flatTasks.count) * rowHeight)
                     }
                 }
             }
         }
+    }
+
+    private func exportToPDF() {
+        let ganttContent = VStack(alignment: .leading, spacing: 0) {
+            GanttHeaderView(
+                dateRange: dateRange,
+                pixelsPerDay: pixelsPerDay,
+                totalWidth: timelineWidth
+            )
+            GanttCanvasView(
+                tasks: flatTasks,
+                allTasks: project.tasksByID,
+                startDate: dateRange.start,
+                totalDays: totalDays,
+                pixelsPerDay: pixelsPerDay,
+                rowHeight: rowHeight,
+                criticalPathOnly: criticalPathOnly
+            )
+            .frame(width: timelineWidth, height: CGFloat(flatTasks.count) * rowHeight)
+        }
+
+        let contentSize = CGSize(width: timelineWidth, height: CGFloat(flatTasks.count) * rowHeight + 44)
+        let title = project.properties.projectTitle ?? "Gantt Chart"
+        PDFExporter.exportGanttToPDF(
+            view: ganttContent,
+            contentSize: contentSize,
+            fileName: "\(title) - Gantt \(PDFExporter.fileNameTimestamp).pdf"
+        )
     }
 
     private func flattenVisible(_ tasks: [ProjectTask]) -> [ProjectTask] {
@@ -232,6 +283,7 @@ struct GanttCanvasView: View {
     let totalDays: Int
     let pixelsPerDay: CGFloat
     let rowHeight: CGFloat
+    var criticalPathOnly: Bool = false
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -279,6 +331,7 @@ struct GanttCanvasView: View {
             let calendar = Calendar.current
             let barInset: CGFloat = 4
             let barHeight = rowHeight - barInset * 2
+            let dimOpacity: CGFloat = criticalPathOnly ? 0.15 : 1.0
 
             // --- Alternate Row Shading ---
             for row in 0..<tasks.count {
@@ -320,6 +373,8 @@ struct GanttCanvasView: View {
             for (index, task) in tasks.enumerated() {
                 taskIndexMap[task.uniqueID] = index
                 let y = CGFloat(index) * rowHeight
+                let isCritical = task.critical == true
+                let taskOpacity = (!criticalPathOnly || isCritical) ? 1.0 : dimOpacity
 
                 guard let taskStart = task.startDate else { continue }
                 let startDays = calendar.dateComponents([.day], from: startDate, to: taskStart).day ?? 0
@@ -336,10 +391,10 @@ struct GanttCanvasView: View {
                     diamond.addLine(to: CGPoint(x: cx, y: cy + dSize / 2))
                     diamond.addLine(to: CGPoint(x: cx - dSize / 2, y: cy))
                     diamond.closeSubpath()
-                    context.fill(diamond, with: .color(.orange))
+                    context.fill(diamond, with: .color(.orange.opacity(taskOpacity)))
 
                     // Right-side label for milestones
-                    let label = Text(task.displayName).font(.system(size: 9)).foregroundColor(.primary)
+                    let label = Text(task.displayName).font(.system(size: 9)).foregroundColor(.primary.opacity(taskOpacity))
                     context.draw(
                         context.resolve(label),
                         at: CGPoint(x: cx + dSize / 2 + 4, y: y + rowHeight / 2),
@@ -357,29 +412,28 @@ struct GanttCanvasView: View {
                     let bracketH: CGFloat = barHeight * 0.3
                     let bracketY = y + barInset + barHeight * 0.35
                     let rect = CGRect(x: xStart, y: bracketY, width: width, height: bracketH)
-                    context.fill(Path(rect), with: .color(.primary.opacity(0.6)))
+                    context.fill(Path(rect), with: .color(.primary.opacity(0.6 * taskOpacity)))
 
                     // Left/right ticks
                     let tick: CGFloat = 3
                     var leftTick = Path()
                     leftTick.move(to: CGPoint(x: xStart, y: bracketY))
                     leftTick.addLine(to: CGPoint(x: xStart, y: bracketY + bracketH + tick))
-                    context.stroke(leftTick, with: .color(.primary.opacity(0.6)), lineWidth: 1.5)
+                    context.stroke(leftTick, with: .color(.primary.opacity(0.6 * taskOpacity)), lineWidth: 1.5)
 
                     var rightTick = Path()
                     rightTick.move(to: CGPoint(x: xStart + width, y: bracketY))
                     rightTick.addLine(to: CGPoint(x: xStart + width, y: bracketY + bracketH + tick))
-                    context.stroke(rightTick, with: .color(.primary.opacity(0.6)), lineWidth: 1.5)
+                    context.stroke(rightTick, with: .color(.primary.opacity(0.6 * taskOpacity)), lineWidth: 1.5)
                 } else {
                     // Regular bar
-                    let isCritical = task.critical == true
-                    let bgColor: Color = isCritical ? .red.opacity(0.25) : .blue.opacity(0.25)
+                    let bgColor: Color = isCritical ? .red.opacity(0.25 * taskOpacity) : .blue.opacity(0.25 * taskOpacity)
                     let fgColor: Color = isCritical ? .red : .blue
 
                     let barRect = CGRect(x: xStart, y: y + barInset, width: width, height: barHeight)
                     let rr = RoundedRectangle(cornerRadius: 3).path(in: barRect)
                     context.fill(rr, with: .color(bgColor))
-                    context.stroke(rr, with: .color(fgColor.opacity(0.4)), lineWidth: 0.5)
+                    context.stroke(rr, with: .color(fgColor.opacity(0.4 * taskOpacity)), lineWidth: isCritical && criticalPathOnly ? 1.5 : 0.5)
 
                     // Progress fill
                     let pct = (task.percentComplete ?? 0) / 100.0
@@ -387,19 +441,19 @@ struct GanttCanvasView: View {
                         let fillWidth = width * CGFloat(pct)
                         let fillRect = CGRect(x: xStart, y: y + barInset, width: fillWidth, height: barHeight)
                         let fillRR = RoundedRectangle(cornerRadius: 3).path(in: fillRect)
-                        context.fill(fillRR, with: .color(fgColor.opacity(0.6)))
+                        context.fill(fillRR, with: .color(fgColor.opacity(0.6 * taskOpacity)))
                     }
 
                     // Task name: inline if enough space, otherwise right of bar
                     if width > 60 {
-                        let label = Text(task.displayName).font(.system(size: 9)).foregroundColor(.primary)
+                        let label = Text(task.displayName).font(.system(size: 9)).foregroundColor(.primary.opacity(taskOpacity))
                         context.draw(
                             context.resolve(label),
                             at: CGPoint(x: xStart + 4, y: y + rowHeight / 2),
                             anchor: .leading
                         )
                     } else {
-                        let label = Text(task.displayName).font(.system(size: 9)).foregroundColor(.secondary)
+                        let label = Text(task.displayName).font(.system(size: 9)).foregroundColor(.secondary.opacity(taskOpacity))
                         context.draw(
                             context.resolve(label),
                             at: CGPoint(x: xStart + width + 4, y: y + rowHeight / 2),

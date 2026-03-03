@@ -1,0 +1,98 @@
+MPP Viewer — App Store Distribution Steps
+==========================================
+
+1. CREATE XPC SERVICE TARGET IN XCODE
+--------------------------------------
+- Open the project in Xcode
+- File > New > Target > macOS > XPC Service
+- Name: MPPConverterXPC
+- Bundle Identifier: com.mppviewer.MPPConverterXPC
+- Language: Swift
+- Delete the auto-generated files Xcode creates (main.swift, protocol file, etc.)
+- Add these existing files to the MPPConverterXPC target:
+    MPPConverterXPC/MPPConverterProtocol.swift
+    MPPConverterXPC/MPPConverterXPCService.swift
+- Set the XPC service's Info.plist to: MPPConverterXPC/Info.plist
+- Set the XPC service's entitlements to: MPPConverterXPC/MPPConverterXPC.entitlements
+- Make sure MPPConverterProtocol.swift is also in the main MPPViewer target
+  (it already is at MPPViewer/Services/MPPConverterProtocol.swift)
+- In the main MPPViewer target > General > Frameworks, Libraries, and Embedded Content:
+  Ensure MPPConverterXPC.xpc is listed and set to "Embed Without Signing"
+
+2. SET DEVELOPMENT TEAM
+------------------------
+- Select MPPViewer target > Signing & Capabilities > Team: select your Apple Developer account
+- Select MPPConverterXPC target > Signing & Capabilities > Team: same account
+- You need an Apple Developer Program membership ($99/year) from https://developer.apple.com
+
+3. BUNDLE THE JRE AND JAR
+--------------------------
+- Build the converter JAR:
+    cd /Users/engagendy/RiderProjects/mpp/MPPConverter
+    mvn clean package
+
+- Add mpxj-converter.jar to the app bundle:
+    Drag MPPConverter/target/mpxj-converter.jar into the Xcode project
+    Target Membership: MPPConverterXPC (or MPPViewer if not using XPC)
+    Make sure it appears in "Copy Bundle Resources" build phase
+
+- Bundle a minimal JRE:
+    Download Eclipse Temurin JRE 21 (macOS aarch64 + x86_64):
+    https://adoptium.net/temurin/releases/
+    Extract and copy the jre/ folder into the app's PlugIns directory
+    In Xcode: add a "Copy Files" build phase, destination "PlugIns", add the jre folder
+    Make sure all JRE binaries are code-signed (Xcode should handle this)
+
+4. CREATE APP STORE CONNECT RECORD
+------------------------------------
+- Go to https://appstoreconnect.apple.com
+- My Apps > + > New App
+    Platform: macOS
+    Name: MPP Viewer
+    Primary Language: English
+    Bundle ID: com.mppviewer.MPPViewer
+    SKU: mppviewer-macos-1
+
+- Fill in required fields:
+    Description: "MPP Viewer lets you open and view Microsoft Project (.mpp) files
+    on your Mac. View tasks, Gantt charts, schedules, milestones, resources, and
+    calendars — all without needing Microsoft Project."
+
+    Category: Business
+    Subcategory: Project Management (if available)
+
+    Keywords: mpp, project, gantt, viewer, microsoft project, schedule, milestones
+
+    Support URL: (your website or GitHub repo URL)
+    Privacy Policy URL: (required — create a simple privacy policy page)
+
+- Screenshots needed:
+    At least one screenshot at 1280x800 or 1440x900 resolution
+    Recommended: show Summary, Gantt Chart, Schedule, and Milestones views
+
+- App Review Information:
+    Provide a sample .mpp file for the reviewer to test with
+    Notes: "This app requires a .mpp file to open. A sample file is provided."
+
+5. ARCHIVE AND UPLOAD
+----------------------
+- In Xcode: Product > Archive
+- In the Organizer: Distribute App > App Store Connect > Upload
+- Wait for processing (usually a few minutes)
+- Go to App Store Connect > select the build
+- Submit for Review
+
+6. ENABLE SANDBOX BEFORE DISTRIBUTION
+---------------------------------------
+- The sandbox is currently DISABLED for development (com.apple.security.app-sandbox = false)
+- Before App Store submission, change it to true in MPPViewer.entitlements
+- Once the JRE is bundled inside the app, the sandbox won't block Java access
+- The XPC service uses com.apple.security.inherit to inherit the parent's sandbox
+- You may need to add temporary file exceptions for Java temp output
+
+7. ADDITIONAL NOTES
+--------------------
+- The app icon is already set up in Assets.xcassets
+- App category is set to "Business" in Info.plist
+- Minimum macOS version: 14.0
+- StoreKit warning about bundle ID is harmless (only matters if using In-App Purchases)

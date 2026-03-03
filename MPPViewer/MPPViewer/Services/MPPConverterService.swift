@@ -1,39 +1,68 @@
 import Foundation
 
 enum MPPConverterError: LocalizedError {
-    case jreNotFound
-    case jarNotFound
+    case xpcConnectionFailed
     case conversionFailed(String)
-    case processError(Int32, String)
-    case outputFileNotFound
 
     var errorDescription: String? {
         switch self {
-        case .jreNotFound:
-            return "Bundled Java runtime not found. The app may be damaged."
-        case .jarNotFound:
-            return "MPXJ converter JAR not found. The app may be damaged."
+        case .xpcConnectionFailed:
+            return "Failed to connect to the converter service."
         case .conversionFailed(let msg):
             return "MPP conversion failed: \(msg)"
-        case .processError(let code, let stderr):
-            return "Java process exited with code \(code): \(stderr)"
-        case .outputFileNotFound:
-            return "Converter produced no output file."
         }
     }
 }
 
 final class MPPConverterService {
 
+    private var xpcConnection: NSXPCConnection?
+
     func convert(mppFileURL: URL) async throws -> Data {
+        // First try XPC service (for sandboxed/production builds)
+        if let data = try? await convertViaXPC(inputPath: mppFileURL.path) {
+            return data
+        }
+
+        // Fallback to direct process execution (for development)
+        return try await convertDirectly(mppFileURL: mppFileURL)
+    }
+
+    // MARK: - XPC Service Path
+
+    private func convertViaXPC(inputPath: String) async throws -> Data {
+        return try await withCheckedThrowingContinuation { continuation in
+            let connection = NSXPCConnection(serviceName: "com.mppviewer.MPPConverterXPC")
+            connection.remoteObjectInterface = NSXPCInterface(with: MPPConverterXPCProtocol.self)
+            connection.resume()
+
+            let proxy = connection.remoteObjectProxyWithErrorHandler { error in
+                connection.invalidate()
+                continuation.resume(throwing: MPPConverterError.xpcConnectionFailed)
+            } as! MPPConverterXPCProtocol
+
+            proxy.convertMPP(atPath: inputPath) { data, errorMessage in
+                connection.invalidate()
+                if let data = data {
+                    continuation.resume(returning: data)
+                } else {
+                    continuation.resume(throwing: MPPConverterError.conversionFailed(errorMessage ?? "Unknown error"))
+                }
+            }
+        }
+    }
+
+    // MARK: - Direct Process Fallback (development only)
+
+    private func convertDirectly(mppFileURL: URL) async throws -> Data {
         let javaPath = locateJava()
         let jarPath = locateJAR()
 
         guard FileManager.default.fileExists(atPath: javaPath) else {
-            throw MPPConverterError.jreNotFound
+            throw MPPConverterError.conversionFailed("Java runtime not found.")
         }
         guard FileManager.default.fileExists(atPath: jarPath) else {
-            throw MPPConverterError.jarNotFound
+            throw MPPConverterError.conversionFailed("MPXJ converter JAR not found.")
         }
 
         let outputURL = FileManager.default.temporaryDirectory
@@ -52,14 +81,14 @@ final class MPPConverterService {
         )
 
         guard FileManager.default.fileExists(atPath: outputURL.path) else {
-            throw MPPConverterError.outputFileNotFound
+            throw MPPConverterError.conversionFailed("Converter produced no output file.")
         }
 
         return try Data(contentsOf: outputURL)
     }
 
     private func locateJava() -> String {
-        // Check bundled JRE first
+        // 1. Check bundled JRE first (for production/App Store)
         if let pluginsURL = Bundle.main.builtInPlugInsURL {
             let bundledPath = pluginsURL
                 .appendingPathComponent("jre")
@@ -71,13 +100,12 @@ final class MPPConverterService {
             }
         }
 
-        // Fall back to common system Java locations
+        // 2. Check Homebrew OpenJDK 21 first (required by the converter JAR)
         let candidates = [
             "/usr/local/opt/openjdk@21/bin/java",
-            "/usr/local/opt/openjdk/bin/java",
             "/opt/homebrew/opt/openjdk@21/bin/java",
+            "/usr/local/opt/openjdk/bin/java",
             "/opt/homebrew/opt/openjdk/bin/java",
-            "/usr/bin/java",
         ]
         for path in candidates {
             if FileManager.default.fileExists(atPath: path) {
@@ -85,22 +113,56 @@ final class MPPConverterService {
             }
         }
 
+        // 3. Try /usr/libexec/java_home requesting Java 21+
+        if let javaHome = resolveJavaHome(version: "21") {
+            let javaPath = javaHome + "/bin/java"
+            if FileManager.default.fileExists(atPath: javaPath) {
+                return javaPath
+            }
+        }
+
+        // 4. Fallback to any java_home
+        if let javaHome = resolveJavaHome(version: nil) {
+            let javaPath = javaHome + "/bin/java"
+            if FileManager.default.fileExists(atPath: javaPath) {
+                return javaPath
+            }
+        }
+
         return "/usr/bin/java"
     }
 
+    private func resolveJavaHome(version: String?) -> String? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/libexec/java_home")
+        if let version = version {
+            process.arguments = ["-v", version]
+        }
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = Pipe()
+        do {
+            try process.run()
+            process.waitUntilExit()
+            guard process.terminationStatus == 0 else { return nil }
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return output?.isEmpty == false ? output : nil
+        } catch {
+            return nil
+        }
+    }
+
     private func locateJAR() -> String {
-        // Check bundle Resources
         if let jarURL = Bundle.main.url(forResource: "mpxj-converter", withExtension: "jar") {
             return jarURL.path
         }
 
-        // Fall back: look relative to the Xcode project source root
-        // The project source is at the same level as MPPConverter/
         let sourceRoot = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent() // Services/
-            .deletingLastPathComponent() // MPPViewer/
-            .deletingLastPathComponent() // MPPViewer/ (project)
-            .deletingLastPathComponent() // MPPViewer/ (workspace root)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
         let devPath = sourceRoot
             .appendingPathComponent("MPPConverter")
             .appendingPathComponent("target")
@@ -110,9 +172,7 @@ final class MPPConverterService {
             return devPath
         }
 
-        // Hardcoded fallback for development
-        let hardcoded = "/Users/engagendy/RiderProjects/mpp/MPPConverter/target/mpxj-converter.jar"
-        return hardcoded
+        return "/Users/engagendy/RiderProjects/mpp/MPPConverter/target/mpxj-converter.jar"
     }
 
     private func runProcess(
@@ -138,7 +198,9 @@ final class MPPConverterService {
                 if proc.terminationStatus == 0 {
                     continuation.resume()
                 } else {
-                    continuation.resume(throwing: MPPConverterError.processError(proc.terminationStatus, stderr))
+                    continuation.resume(throwing: MPPConverterError.conversionFailed(
+                        "Java process exited with code \(proc.terminationStatus): \(stderr)"
+                    ))
                 }
             }
 

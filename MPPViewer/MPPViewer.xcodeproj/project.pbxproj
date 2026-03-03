@@ -3,33 +3,65 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 56;
+	objectVersion = 70;
 	objects = {
 
 /* Begin PBXBuildFile section */
-		A10000010000000000000001 /* MPPViewerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000001; };
-		A10000010000000000000002 /* MPPDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000002; };
-		A10000010000000000000003 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000003; };
-		A10000010000000000000004 /* ProjectModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000004; };
-		A10000010000000000000005 /* ProjectStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000005; };
-		A10000010000000000000006 /* MPPConverterService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000006; };
-		A10000010000000000000007 /* JSONProjectParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000007; };
-		A10000010000000000000008 /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000008; };
-		A10000010000000000000009 /* ProjectSummaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000009; };
-		A10000010000000000000010 /* TaskTableView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000010; };
-		A10000010000000000000011 /* GanttChartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000011; };
-		A10000010000000000000012 /* GanttBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000012; };
-		A10000010000000000000013 /* GanttHeaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000013; };
-		A10000010000000000000014 /* GanttDependencyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000014; };
-		A10000010000000000000015 /* ResourceSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000015; };
-		A10000010000000000000016 /* CalendarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000016; };
-		A10000010000000000000017 /* DateFormatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000017; };
-		A10000010000000000000018 /* DurationFormatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000018; };
-		A10000010000000000000019 /* ColorTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000019; };
-		A10000010000000000000020 /* ScheduleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000022; };
+		9680CC662F56E91C0029B946 /* MPPConverterXPC.xpc in Embed XPC Services */ = {isa = PBXBuildFile; fileRef = 9680CC5B2F56E91C0029B946 /* MPPConverterXPC.xpc */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		A10000010000000000000001 /* MPPViewerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000001 /* MPPViewerApp.swift */; };
+		A10000010000000000000002 /* MPPDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000002 /* MPPDocument.swift */; };
+		A10000010000000000000003 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000003 /* ContentView.swift */; };
+		A10000010000000000000004 /* ProjectModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000004 /* ProjectModel.swift */; };
+		A10000010000000000000005 /* ProjectStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000005 /* ProjectStore.swift */; };
+		A10000010000000000000006 /* MPPConverterService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000006 /* MPPConverterService.swift */; };
+		A10000010000000000000007 /* JSONProjectParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000007 /* JSONProjectParser.swift */; };
+		A10000010000000000000008 /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000008 /* SidebarView.swift */; };
+		A10000010000000000000009 /* ProjectSummaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000009 /* ProjectSummaryView.swift */; };
+		A10000010000000000000010 /* TaskTableView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000010 /* TaskTableView.swift */; };
+		A10000010000000000000060 /* TaskDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000060 /* TaskDetailView.swift */; };
+		A10000010000000000000011 /* GanttChartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000011 /* GanttChartView.swift */; };
+		A10000010000000000000012 /* GanttBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000012 /* GanttBarView.swift */; };
+		A10000010000000000000013 /* GanttHeaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000013 /* GanttHeaderView.swift */; };
+		A10000010000000000000014 /* GanttDependencyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000014 /* GanttDependencyView.swift */; };
+		A10000010000000000000015 /* ResourceSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000015 /* ResourceSheetView.swift */; };
+		A10000010000000000000016 /* CalendarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000016 /* CalendarView.swift */; };
+		A10000010000000000000017 /* DateFormatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000017 /* DateFormatting.swift */; };
+		A10000010000000000000018 /* DurationFormatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000018 /* DurationFormatting.swift */; };
+		A10000010000000000000019 /* ColorTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000019 /* ColorTheme.swift */; };
+		A10000010000000000000070 /* PDFExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000070 /* PDFExporter.swift */; };
+		A10000010000000000000020 /* ScheduleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000022 /* ScheduleView.swift */; };
+		A10000010000000000000021 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000023 /* Assets.xcassets */; };
+		A10000010000000000000030 /* MilestonesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000032 /* MilestonesView.swift */; };
+		A10000010000000000000050 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000052 /* DashboardView.swift */; };
+		A10000010000000000000040 /* MPPConverterProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000040 /* MPPConverterProtocol.swift */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		9680CC642F56E91C0029B946 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A90000010000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 9680CC5A2F56E91C0029B946;
+			remoteInfo = MPPConverterXPC;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		9680CC672F56E91C0029B946 /* Embed XPC Services */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/XPCServices";
+			dstSubfolderSpec = 16;
+			files = (
+				9680CC662F56E91C0029B946 /* MPPConverterXPC.xpc in Embed XPC Services */,
+			);
+			name = "Embed XPC Services";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		9680CC5B2F56E91C0029B946 /* MPPConverterXPC.xpc */ = {isa = PBXFileReference; explicitFileType = "wrapper.xpc-service"; includeInIndex = 0; path = MPPConverterXPC.xpc; sourceTree = BUILT_PRODUCTS_DIR; };
 		A20000010000000000000001 /* MPPViewerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MPPViewerApp.swift; sourceTree = "<group>"; };
 		A20000010000000000000002 /* MPPDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MPPDocument.swift; sourceTree = "<group>"; };
 		A20000010000000000000003 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -40,6 +72,7 @@
 		A20000010000000000000008 /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
 		A20000010000000000000009 /* ProjectSummaryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectSummaryView.swift; sourceTree = "<group>"; };
 		A20000010000000000000010 /* TaskTableView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskTableView.swift; sourceTree = "<group>"; };
+		A20000010000000000000060 /* TaskDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskDetailView.swift; sourceTree = "<group>"; };
 		A20000010000000000000011 /* GanttChartView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GanttChartView.swift; sourceTree = "<group>"; };
 		A20000010000000000000012 /* GanttBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GanttBarView.swift; sourceTree = "<group>"; };
 		A20000010000000000000013 /* GanttHeaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GanttHeaderView.swift; sourceTree = "<group>"; };
@@ -49,13 +82,39 @@
 		A20000010000000000000017 /* DateFormatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DateFormatting.swift; sourceTree = "<group>"; };
 		A20000010000000000000018 /* DurationFormatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DurationFormatting.swift; sourceTree = "<group>"; };
 		A20000010000000000000019 /* ColorTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColorTheme.swift; sourceTree = "<group>"; };
-		A20000010000000000000022 /* ScheduleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleView.swift; sourceTree = "<group>"; };
+		A20000010000000000000070 /* PDFExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFExporter.swift; sourceTree = "<group>"; };
 		A20000010000000000000020 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A20000010000000000000021 /* MPPViewer.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MPPViewer.entitlements; sourceTree = "<group>"; };
+		A20000010000000000000022 /* ScheduleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleView.swift; sourceTree = "<group>"; };
+		A20000010000000000000023 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A20000010000000000000032 /* MilestonesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MilestonesView.swift; sourceTree = "<group>"; };
+		A20000010000000000000052 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
+		A20000010000000000000040 /* MPPConverterProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MPPConverterProtocol.swift; sourceTree = "<group>"; };
 		A30000010000000000000001 /* MPPViewer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MPPViewer.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		9680CC6A2F56E91C0029B946 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 9680CC5A2F56E91C0029B946 /* MPPConverterXPC */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		9680CC5C2F56E91C0029B946 /* MPPConverterXPC */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (9680CC6A2F56E91C0029B946 /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = MPPConverterXPC; sourceTree = "<group>"; };
+/* End PBXFileSystemSynchronizedRootGroup section */
+
 /* Begin PBXFrameworksBuildPhase section */
+		9680CC582F56E91C0029B946 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		A40000010000000000000001 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -66,20 +125,13 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		A50000010000000000000001 /* Root */ = {
+		A50000010000000000000001 = {
 			isa = PBXGroup;
 			children = (
 				A50000010000000000000002 /* MPPViewer */,
+				9680CC5C2F56E91C0029B946 /* MPPConverterXPC */,
 				A50000010000000000000099 /* Products */,
 			);
-			sourceTree = "<group>";
-		};
-		A50000010000000000000099 /* Products */ = {
-			isa = PBXGroup;
-			children = (
-				A30000010000000000000001 /* MPPViewer.app */,
-			);
-			name = Products;
 			sourceTree = "<group>";
 		};
 		A50000010000000000000002 /* MPPViewer */ = {
@@ -87,6 +139,7 @@
 			children = (
 				A20000010000000000000020 /* Info.plist */,
 				A20000010000000000000021 /* MPPViewer.entitlements */,
+				A20000010000000000000023 /* Assets.xcassets */,
 				A50000010000000000000003 /* App */,
 				A50000010000000000000004 /* Models */,
 				A50000010000000000000005 /* Services */,
@@ -120,6 +173,7 @@
 			children = (
 				A20000010000000000000006 /* MPPConverterService.swift */,
 				A20000010000000000000007 /* JSONProjectParser.swift */,
+				A20000010000000000000040 /* MPPConverterProtocol.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -134,6 +188,8 @@
 				A50000010000000000000012 /* Resources */,
 				A50000010000000000000013 /* Calendar */,
 				A50000010000000000000014 /* Schedule */,
+				A50000010000000000000024 /* Milestones */,
+				A50000010000000000000034 /* Dashboard */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -158,6 +214,7 @@
 			isa = PBXGroup;
 			children = (
 				A20000010000000000000010 /* TaskTableView.swift */,
+				A20000010000000000000060 /* TaskDetailView.swift */,
 			);
 			path = Tasks;
 			sourceTree = "<group>";
@@ -168,6 +225,7 @@
 				A20000010000000000000017 /* DateFormatting.swift */,
 				A20000010000000000000018 /* DurationFormatting.swift */,
 				A20000010000000000000019 /* ColorTheme.swift */,
+				A20000010000000000000070 /* PDFExporter.swift */,
 			);
 			path = Utilities;
 			sourceTree = "<group>";
@@ -207,9 +265,56 @@
 			path = Schedule;
 			sourceTree = "<group>";
 		};
+		A50000010000000000000024 /* Milestones */ = {
+			isa = PBXGroup;
+			children = (
+				A20000010000000000000032 /* MilestonesView.swift */,
+			);
+			path = Milestones;
+			sourceTree = "<group>";
+		};
+		A50000010000000000000034 /* Dashboard */ = {
+			isa = PBXGroup;
+			children = (
+				A20000010000000000000052 /* DashboardView.swift */,
+			);
+			path = Dashboard;
+			sourceTree = "<group>";
+		};
+		A50000010000000000000099 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A30000010000000000000001 /* MPPViewer.app */,
+				9680CC5B2F56E91C0029B946 /* MPPConverterXPC.xpc */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		9680CC5A2F56E91C0029B946 /* MPPConverterXPC */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9680CC6B2F56E91C0029B946 /* Build configuration list for PBXNativeTarget "MPPConverterXPC" */;
+			buildPhases = (
+				9680CC572F56E91C0029B946 /* Sources */,
+				9680CC582F56E91C0029B946 /* Frameworks */,
+				9680CC592F56E91C0029B946 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				9680CC5C2F56E91C0029B946 /* MPPConverterXPC */,
+			);
+			name = MPPConverterXPC;
+			packageProductDependencies = (
+			);
+			productName = MPPConverterXPC;
+			productReference = 9680CC5B2F56E91C0029B946 /* MPPConverterXPC.xpc */;
+			productType = "com.apple.product-type.xpc-service";
+		};
 		A60000010000000000000001 /* MPPViewer */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = A80000010000000000000003 /* Build configuration list for PBXNativeTarget "MPPViewer" */;
@@ -217,10 +322,12 @@
 				A70000010000000000000001 /* Sources */,
 				A40000010000000000000001 /* Frameworks */,
 				A70000010000000000000002 /* Resources */,
+				9680CC672F56E91C0029B946 /* Embed XPC Services */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				9680CC652F56E91C0029B946 /* PBXTargetDependency */,
 			);
 			name = MPPViewer;
 			productName = MPPViewer;
@@ -234,9 +341,12 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 1540;
+				LastSwiftUpdateCheck = 2630;
 				LastUpgradeCheck = 1540;
 				TargetAttributes = {
+					9680CC5A2F56E91C0029B946 = {
+						CreatedOnToolsVersion = 26.3;
+					};
 					A60000010000000000000001 = {
 						CreatedOnToolsVersion = 15.4;
 					};
@@ -256,21 +366,37 @@
 			projectRoot = "";
 			targets = (
 				A60000010000000000000001 /* MPPViewer */,
+				9680CC5A2F56E91C0029B946 /* MPPConverterXPC */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		A70000010000000000000002 /* Resources */ = {
+		9680CC592F56E91C0029B946 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A70000010000000000000002 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000010000000000000021 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		9680CC572F56E91C0029B946 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		A70000010000000000000001 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -285,6 +411,7 @@
 				A10000010000000000000008 /* SidebarView.swift in Sources */,
 				A10000010000000000000009 /* ProjectSummaryView.swift in Sources */,
 				A10000010000000000000010 /* TaskTableView.swift in Sources */,
+				A10000010000000000000060 /* TaskDetailView.swift in Sources */,
 				A10000010000000000000011 /* GanttChartView.swift in Sources */,
 				A10000010000000000000012 /* GanttBarView.swift in Sources */,
 				A10000010000000000000013 /* GanttHeaderView.swift in Sources */,
@@ -294,13 +421,79 @@
 				A10000010000000000000017 /* DateFormatting.swift in Sources */,
 				A10000010000000000000018 /* DurationFormatting.swift in Sources */,
 				A10000010000000000000019 /* ColorTheme.swift in Sources */,
+				A10000010000000000000070 /* PDFExporter.swift in Sources */,
 				A10000010000000000000020 /* ScheduleView.swift in Sources */,
+				A10000010000000000000030 /* MilestonesView.swift in Sources */,
+				A10000010000000000000050 /* DashboardView.swift in Sources */,
+				A10000010000000000000040 /* MPPConverterProtocol.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		9680CC652F56E91C0029B946 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 9680CC5A2F56E91C0029B946 /* MPPConverterXPC */;
+			targetProxy = 9680CC642F56E91C0029B946 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		9680CC682F56E91C0029B946 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_APP_SANDBOX = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = MPPConverterXPC/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = MPPConverterXPC;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.2;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.mppviewer.MPPConverterXPC;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		9680CC692F56E91C0029B946 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_APP_SANDBOX = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = MPPConverterXPC/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = MPPConverterXPC;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.2;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.mppviewer.MPPConverterXPC;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
 		A80000010000000000000010 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -476,6 +669,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		9680CC6B2F56E91C0029B946 /* Build configuration list for PBXNativeTarget "MPPConverterXPC" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9680CC682F56E91C0029B946 /* Debug */,
+				9680CC692F56E91C0029B946 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		A80000010000000000000001 /* Build configuration list for PBXProject "MPPViewer" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -495,7 +697,6 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
-
 	};
 	rootObject = A90000010000000000000001 /* Project object */;
 }
