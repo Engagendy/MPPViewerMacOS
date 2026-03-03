@@ -5,7 +5,14 @@ struct GanttHeaderView: View {
     let pixelsPerDay: CGFloat
     let totalWidth: CGFloat
 
-    private let headerHeight: CGFloat = 44
+    @Environment(\.colorScheme) var colorScheme
+
+    private var gridLineOpacity: Double { colorScheme == .dark ? 0.45 : 0.3 }
+
+    /// Use a taller header when labels need to be vertical
+    private var headerHeight: CGFloat {
+        pixelsPerDay < 15 ? 64 : 44
+    }
 
     var body: some View {
         Canvas { context, size in
@@ -26,7 +33,6 @@ struct GanttHeaderView: View {
             if let todayOffset = GanttDateHelpers.todayDayOffset(from: dateRange.start) {
                 let todayX = todayOffset * pixelsPerDay
                 if todayX >= 0 && todayX <= size.width {
-                    // Red triangle indicator at bottom of header
                     let triSize: CGFloat = 6
                     var triangle = Path()
                     triangle.move(to: CGPoint(x: todayX, y: size.height))
@@ -35,7 +41,6 @@ struct GanttHeaderView: View {
                     triangle.closeSubpath()
                     context.fill(triangle, with: .color(.red))
 
-                    // Dashed line through header
                     var todayLine = Path()
                     todayLine.move(to: CGPoint(x: todayX, y: 0))
                     todayLine.addLine(to: CGPoint(x: todayX, y: size.height))
@@ -48,15 +53,15 @@ struct GanttHeaderView: View {
             }
 
             if pixelsPerDay >= 15 {
-                // Show months on top row, days on bottom row
                 drawMonthsAndDays(context: context, size: size, calendar: calendar, totalDays: totalDays)
             } else {
-                // Show months on top row, weeks on bottom row
-                drawMonthsAndWeeks(context: context, size: size, calendar: calendar, totalDays: totalDays)
+                drawMonthsAndWeeksVertical(context: context, size: size, calendar: calendar, totalDays: totalDays)
             }
         }
         .frame(width: totalWidth, height: headerHeight)
     }
+
+    // MARK: - Zoomed in: horizontal day labels
 
     private func drawMonthsAndDays(context: GraphicsContext, size: CGSize, calendar: Calendar, totalDays: Int) {
         let topRowHeight = size.height * 0.5
@@ -74,7 +79,6 @@ struct GanttHeaderView: View {
             let month = calendar.component(.month, from: date)
             let dayNum = calendar.component(.day, from: date)
 
-            // Month labels (top row)
             if month != currentMonth {
                 currentMonth = month
                 let label = monthFormatter.string(from: date)
@@ -88,10 +92,9 @@ struct GanttHeaderView: View {
                 var monthLine = Path()
                 monthLine.move(to: CGPoint(x: x, y: 0))
                 monthLine.addLine(to: CGPoint(x: x, y: size.height))
-                context.stroke(monthLine, with: .color(.gray.opacity(0.3)), lineWidth: 0.5)
+                context.stroke(monthLine, with: .color(.gray.opacity(gridLineOpacity)), lineWidth: 0.5)
             }
 
-            // Day labels (bottom row)
             if pixelsPerDay >= 20 || dayNum % 2 == 1 {
                 let dayText = Text(dayFormatter.string(from: date)).font(.system(size: 9)).foregroundColor(.secondary)
                 context.draw(
@@ -103,9 +106,10 @@ struct GanttHeaderView: View {
         }
     }
 
-    private func drawMonthsAndWeeks(context: GraphicsContext, size: CGSize, calendar: Calendar, totalDays: Int) {
-        let topRowHeight = size.height * 0.5
-        let bottomRowHeight = size.height * 0.5
+    // MARK: - Zoomed out: vertical week/day labels
+
+    private func drawMonthsAndWeeksVertical(context: GraphicsContext, size: CGSize, calendar: Calendar, totalDays: Int) {
+        let topRowHeight: CGFloat = 20
         let monthFormatter = DateFormatter()
         monthFormatter.dateFormat = "MMM yyyy"
         let weekFormatter = DateFormatter()
@@ -113,13 +117,18 @@ struct GanttHeaderView: View {
 
         var currentMonth: Int = -1
 
+        // Determine label interval based on how tight the zoom is
+        let weekPixels = 7 * pixelsPerDay
+        let labelEveryNWeeks: Int = weekPixels >= 30 ? 1 : (weekPixels >= 15 ? 2 : 4)
+        var weekCounter = 0
+
         for day in 0..<totalDays {
             let x = CGFloat(day) * pixelsPerDay
             let date = calendar.date(byAdding: .day, value: day, to: dateRange.start) ?? dateRange.start
             let month = calendar.component(.month, from: date)
             let weekday = calendar.component(.weekday, from: date)
 
-            // Month labels
+            // Month labels (top row, horizontal)
             if month != currentMonth {
                 currentMonth = month
                 let label = monthFormatter.string(from: date)
@@ -133,18 +142,25 @@ struct GanttHeaderView: View {
                 var monthLine = Path()
                 monthLine.move(to: CGPoint(x: x, y: 0))
                 monthLine.addLine(to: CGPoint(x: x, y: size.height))
-                context.stroke(monthLine, with: .color(.gray.opacity(0.3)), lineWidth: 0.5)
+                context.stroke(monthLine, with: .color(.gray.opacity(gridLineOpacity)), lineWidth: 0.5)
             }
 
-            // Week labels (on Mondays)
+            // Week labels (on Mondays) — drawn vertically
             if weekday == 2 {
-                let label = weekFormatter.string(from: date)
-                let text = Text(label).font(.system(size: 9)).foregroundColor(.secondary)
-                context.draw(
-                    context.resolve(text),
-                    at: CGPoint(x: x + 2, y: topRowHeight + bottomRowHeight / 2),
-                    anchor: .leading
-                )
+                weekCounter += 1
+                if weekCounter % labelEveryNWeeks == 0 {
+                    let label = weekFormatter.string(from: date)
+                    let text = Text(label).font(.system(size: 8)).foregroundColor(.secondary)
+                    let resolved = context.resolve(text)
+
+                    // Draw rotated -90 degrees (bottom-to-top)
+                    var rotatedContext = context
+                    let anchorX = x + 2
+                    let anchorY = size.height - 2
+                    rotatedContext.translateBy(x: anchorX, y: anchorY)
+                    rotatedContext.rotate(by: .degrees(-90))
+                    rotatedContext.draw(resolved, at: .zero, anchor: .leading)
+                }
             }
         }
     }

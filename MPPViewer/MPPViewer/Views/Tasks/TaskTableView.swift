@@ -6,20 +6,40 @@ struct TaskTableView: View {
     let searchText: String
     var resources: [ProjectResource] = []
     var assignments: [ResourceAssignment] = []
+    @Binding var flaggedTaskIDs: Set<Int>
+    var navigateToTaskID: Binding<Int?>? = nil
 
     @State private var collapsedIDs: Set<Int> = []
     @State private var selectedTaskID: Int? = nil
+    @State private var filterCriteria = TaskFilterCriteria()
+    @State private var grouping: TaskGrouping = .none
+    @State private var visibleCustomColumns: Set<String> = []
+    @State private var showColumnPicker = false
 
     var filteredTasks: [ProjectTask] {
-        if searchText.isEmpty {
-            return tasks
+        var result = tasks
+        if !searchText.isEmpty {
+            result = filterTasks(result, searchText: searchText.lowercased())
         }
-        return filterTasks(tasks, searchText: searchText.lowercased())
+        if filterCriteria.isActive {
+            result = applyFilterCriteria(result)
+        }
+        return result
     }
 
     private var selectedTask: ProjectTask? {
         guard let id = selectedTaskID else { return nil }
         return allTasks[id]
+    }
+
+    private var availableCustomFieldKeys: [String] {
+        var keys = Set<String>()
+        for task in project_tasks(tasks) {
+            if let cf = task.customFields {
+                keys.formUnion(cf.keys)
+            }
+        }
+        return keys.sorted()
     }
 
     var body: some View {
@@ -29,6 +49,14 @@ struct TaskTableView: View {
             HStack(spacing: 0) {
                 // Main table
                 VStack(spacing: 0) {
+                    // Filter Bar
+                    FilterBarView(
+                        criteria: $filterCriteria,
+                        grouping: $grouping,
+                        resources: resources
+                    )
+                    Divider()
+
                     // Toolbar
                     HStack {
                         Button("Expand All") {
@@ -69,6 +97,41 @@ struct TaskTableView: View {
 
                         Divider().frame(height: 16)
 
+                        // Custom columns picker
+                        if !availableCustomFieldKeys.isEmpty {
+                            Button {
+                                showColumnPicker.toggle()
+                            } label: {
+                                Label("Columns", systemImage: "slider.horizontal.3")
+                            }
+                            .buttonStyle(.borderless)
+                            .popover(isPresented: $showColumnPicker) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Custom Columns")
+                                        .font(.caption)
+                                        .fontWeight(.semibold)
+                                        .padding(.bottom, 4)
+                                    ForEach(availableCustomFieldKeys, id: \.self) { key in
+                                        Toggle(key, isOn: Binding(
+                                            get: { visibleCustomColumns.contains(key) },
+                                            set: { isOn in
+                                                if isOn && visibleCustomColumns.count < 5 {
+                                                    visibleCustomColumns.insert(key)
+                                                } else {
+                                                    visibleCustomColumns.remove(key)
+                                                }
+                                            }
+                                        ))
+                                        .font(.caption)
+                                    }
+                                }
+                                .padding()
+                                .frame(minWidth: 180)
+                            }
+
+                            Divider().frame(height: 16)
+                        }
+
                         Button {
                             PDFExporter.exportTaskListToPDF(
                                 tasks: filteredTasks,
@@ -80,6 +143,28 @@ struct TaskTableView: View {
                         }
                         .buttonStyle(.borderless)
                         .help("Export task list as PDF")
+
+                        Button {
+                            CSVExporter.exportTasksToCSV(
+                                tasks: filteredTasks,
+                                allTasks: allTasks,
+                                resources: resources,
+                                assignments: assignments,
+                                fileName: "Task List \(PDFExporter.fileNameTimestamp).csv"
+                            )
+                        } label: {
+                            Label("Export CSV", systemImage: "tablecells")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Export task list as CSV")
+
+                        Button {
+                            printTaskList()
+                        } label: {
+                            Label("Print", systemImage: "printer")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Print task list")
 
                         if selectedTaskID != nil {
                             Divider().frame(height: 16)
@@ -96,6 +181,23 @@ struct TaskTableView: View {
                     .padding(.vertical, 6)
 
                     Table(of: ProjectTask.self) {
+                        // Flag column
+                        TableColumn("") { task in
+                            Button {
+                                if flaggedTaskIDs.contains(task.uniqueID) {
+                                    flaggedTaskIDs.remove(task.uniqueID)
+                                } else {
+                                    flaggedTaskIDs.insert(task.uniqueID)
+                                }
+                            } label: {
+                                Image(systemName: flaggedTaskIDs.contains(task.uniqueID) ? "flag.fill" : "flag")
+                                    .font(.caption2)
+                                    .foregroundStyle(flaggedTaskIDs.contains(task.uniqueID) ? .orange : .secondary.opacity(0.4))
+                            }
+                            .buttonStyle(.borderless)
+                        }
+                        .width(24)
+
                         TableColumn("ID") { task in
                             Text(task.id.map(String.init) ?? "")
                                 .monospacedDigit()
@@ -200,10 +302,24 @@ struct TaskTableView: View {
                         }
                         .width(min: 60, ideal: 100, max: 150)
                     } rows: {
-                        ForEach(visibleTasks) { task in
-                            TableRow(task)
+                        if grouping != .none {
+                            ForEach(groupedTasks, id: \.key) { group in
+                                Section(group.key) {
+                                    ForEach(group.tasks) { task in
+                                        TableRow(task)
+                                    }
+                                }
+                            }
+                        } else {
+                            ForEach(visibleTasks) { task in
+                                TableRow(task)
+                            }
                         }
                     }
+                }
+                .onKeyPress(.escape) {
+                    selectedTaskID = nil
+                    return .handled
                 }
 
                 // Inspector panel
@@ -217,11 +333,21 @@ struct TaskTableView: View {
                     )
                 }
             }
+            .onChange(of: navigateToTaskID?.wrappedValue) { _, newID in
+                if let id = newID {
+                    selectedTaskID = id
+                    navigateToTaskID?.wrappedValue = nil
+                }
+            }
         }
     }
 
     private var visibleTasks: [ProjectTask] {
-        flattenTasks(filteredTasks, collapsedIDs: collapsedIDs)
+        var tasks = flattenTasks(filteredTasks, collapsedIDs: collapsedIDs)
+        if filterCriteria.flaggedOnly {
+            tasks = tasks.filter { flaggedTaskIDs.contains($0.uniqueID) }
+        }
+        return tasks
     }
 
     private func flattenTasks(_ tasks: [ProjectTask], collapsedIDs: Set<Int>) -> [ProjectTask] {
@@ -257,5 +383,105 @@ struct TaskTableView: View {
             }
         }
         return result
+    }
+
+    private func applyFilterCriteria(_ tasks: [ProjectTask]) -> [ProjectTask] {
+        let today = Calendar.current.startOfDay(for: Date())
+        var result: [ProjectTask] = []
+        for task in tasks {
+            if filterCriteria.matches(task, assignments: assignments, today: today) {
+                result.append(task)
+            }
+            // Also check children
+            for child in task.children {
+                if filterCriteria.matches(child, assignments: assignments, today: today) {
+                    if !result.contains(where: { $0.uniqueID == task.uniqueID }) {
+                        result.append(task)
+                    }
+                }
+            }
+        }
+        return result
+    }
+
+    private func printTaskList() {
+        let content = VStack(alignment: .leading, spacing: 2) {
+            Text("Task List")
+                .font(.title2)
+                .padding(.bottom, 8)
+            ForEach(visibleTasks) { task in
+                HStack {
+                    Text(task.id.map(String.init) ?? "")
+                        .frame(width: 40, alignment: .trailing)
+                    Text(task.wbs ?? "")
+                        .frame(width: 60)
+                    Text(task.displayName)
+                        .fontWeight(task.summary == true ? .semibold : .regular)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text(task.durationDisplay)
+                        .frame(width: 80)
+                    Text(DateFormatting.shortDate(task.start))
+                        .frame(width: 90)
+                    Text(DateFormatting.shortDate(task.finish))
+                        .frame(width: 90)
+                    Text(task.percentCompleteDisplay)
+                        .frame(width: 50)
+                }
+                .font(.caption)
+                Divider()
+            }
+        }
+        .padding()
+
+        let size = CGSize(width: 792, height: max(612, CGFloat(visibleTasks.count) * 20 + 80))
+        PrintManager.printView(content, size: size, title: "Task List")
+    }
+
+    private struct TaskGroup: Identifiable {
+        let key: String
+        let tasks: [ProjectTask]
+        var id: String { key }
+    }
+
+    private var groupedTasks: [TaskGroup] {
+        let flat = visibleTasks
+        var groups: [String: [ProjectTask]] = [:]
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+
+        for task in flat {
+            let key: String
+            switch grouping {
+            case .none:
+                key = ""
+            case .resource:
+                let taskAssignments = assignments.filter { $0.taskUniqueID == task.uniqueID }
+                let resourceNames = taskAssignments.compactMap { a in
+                    resources.first(where: { $0.uniqueID == a.resourceUniqueID })?.name
+                }
+                key = resourceNames.isEmpty ? "Unassigned" : resourceNames.joined(separator: ", ")
+            case .outlineLevel:
+                key = "Level \(task.outlineLevel ?? 0)"
+            case .status:
+                let pct = task.percentComplete ?? 0
+                if pct >= 100 {
+                    key = "Complete"
+                } else if pct > 0 {
+                    key = "In Progress"
+                } else if let finish = task.finishDate, finish < today {
+                    key = "Overdue"
+                } else {
+                    key = "Not Started"
+                }
+            case .priority:
+                key = "Priority \(task.priority ?? 500)"
+            case .wbsPrefix:
+                let wbs = task.wbs ?? ""
+                key = String(wbs.prefix(while: { $0 != "." }))
+            }
+            groups[key, default: []].append(task)
+        }
+
+        return groups.sorted { $0.key < $1.key }.map { TaskGroup(key: $0.key, tasks: $0.value) }
     }
 }

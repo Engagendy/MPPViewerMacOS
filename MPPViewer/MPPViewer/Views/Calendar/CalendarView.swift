@@ -3,6 +3,13 @@ import SwiftUI
 struct CalendarView: View {
     let calendars: [ProjectCalendar]
     @State private var selectedCalendar: ProjectCalendar?
+
+    var calendarsByID: [Int: ProjectCalendar] {
+        Dictionary(uniqueKeysWithValues: calendars.compactMap { cal -> (Int, ProjectCalendar)? in
+            guard let uid = cal.uniqueID else { return nil }
+            return (uid, cal)
+        })
+    }
     @State private var displayMonth = Date()
 
     var body: some View {
@@ -31,7 +38,7 @@ struct CalendarView: View {
 
                 // Calendar grid
                 if let cal = selectedCalendar ?? calendars.first {
-                    CalendarMonthGrid(calendar: cal, displayMonth: $displayMonth)
+                    CalendarMonthGrid(calendar: cal, calendarsByID: calendarsByID, displayMonth: $displayMonth)
                 } else {
                     Text("Select a calendar")
                         .foregroundStyle(.secondary)
@@ -44,6 +51,7 @@ struct CalendarView: View {
 
 struct CalendarMonthGrid: View {
     let calendar: ProjectCalendar
+    let calendarsByID: [Int: ProjectCalendar]
     @Binding var displayMonth: Date
 
     private let sysCalendar = Calendar.current
@@ -210,8 +218,8 @@ struct CalendarMonthGrid: View {
             }
         }
 
-        // Check regular days from calendar
-        let isWorking = calendar.isWorkingDay(weekday: weekday)
+        // Check regular days from calendar, resolving through parent chain
+        let isWorking = calendar.resolvedIsWorkingDay(weekday: weekday, calendarsByID: calendarsByID)
         return DayInfo(
             isWorking: isWorking,
             isException: false,

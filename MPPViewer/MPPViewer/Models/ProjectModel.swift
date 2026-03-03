@@ -94,6 +94,24 @@ final class ProjectTask: Codable, Identifiable {
     let guid: String?
     let type: String?
 
+    // Baseline fields
+    let baselineStart: String?
+    let baselineFinish: String?
+    let baselineDuration: Int?
+    let baselineCost: Double?
+    let baselineWork: Int?
+    let actualCost: Double?
+
+    // EVM fields
+    let bcws: Double?
+    let bcwp: Double?
+    let acwp: Double?
+    let cv: Double?
+    let sv: Double?
+
+    // Custom fields (decoded from extra keys like text1, number1, cost1, flag1, date1, etc.)
+    var customFields: [String: AnyCodable]? = nil
+
     // Derived (not decoded)
     var children: [ProjectTask] = []
 
@@ -119,7 +137,29 @@ final class ProjectTask: Codable, Identifiable {
         finish.flatMap { DateFormatting.parseMPXJDate($0) }
     }
 
-    enum CodingKeys: String, CodingKey {
+    var baselineStartDate: Date? {
+        baselineStart.flatMap { DateFormatting.parseMPXJDate($0) }
+    }
+
+    var baselineFinishDate: Date? {
+        baselineFinish.flatMap { DateFormatting.parseMPXJDate($0) }
+    }
+
+    var hasBaseline: Bool {
+        baselineStart != nil || baselineFinish != nil
+    }
+
+    var startVarianceDays: Int? {
+        guard let bs = baselineStartDate, let s = startDate else { return nil }
+        return Calendar.current.dateComponents([.day], from: bs, to: s).day
+    }
+
+    var finishVarianceDays: Int? {
+        guard let bf = baselineFinishDate, let f = finishDate else { return nil }
+        return Calendar.current.dateComponents([.day], from: bf, to: f).day
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
         case uniqueID = "unique_id"
         case id
         case name
@@ -150,6 +190,85 @@ final class ProjectTask: Codable, Identifiable {
         case active
         case guid
         case type
+        case baselineStart = "baseline_start"
+        case baselineFinish = "baseline_finish"
+        case baselineDuration = "baseline_duration"
+        case baselineCost = "baseline_cost"
+        case baselineWork = "baseline_work"
+        case actualCost = "actual_cost"
+        case bcws, bcwp, acwp, cv, sv
+    }
+
+    private struct DynamicCodingKey: CodingKey {
+        var stringValue: String
+        var intValue: Int?
+        init?(stringValue: String) { self.stringValue = stringValue }
+        init?(intValue: Int) { self.stringValue = "\(intValue)"; self.intValue = intValue }
+    }
+
+    private static let customFieldPattern = try! NSRegularExpression(pattern: "^(text|number|cost|flag|date|start|finish|duration|outline_code|enterprise_custom_field)\\d+$")
+
+    required init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+
+        uniqueID = try container.decode(Int.self, forKey: .uniqueID)
+        id = try container.decodeIfPresent(Int.self, forKey: .id)
+        name = try container.decodeIfPresent(String.self, forKey: .name)
+        wbs = try container.decodeIfPresent(String.self, forKey: .wbs)
+        outlineLevel = try container.decodeIfPresent(Int.self, forKey: .outlineLevel)
+        outlineNumber = try container.decodeIfPresent(String.self, forKey: .outlineNumber)
+        start = try container.decodeIfPresent(String.self, forKey: .start)
+        finish = try container.decodeIfPresent(String.self, forKey: .finish)
+        actualStart = try container.decodeIfPresent(String.self, forKey: .actualStart)
+        actualFinish = try container.decodeIfPresent(String.self, forKey: .actualFinish)
+        duration = try container.decodeIfPresent(Int.self, forKey: .duration)
+        actualDuration = try container.decodeIfPresent(Int.self, forKey: .actualDuration)
+        remainingDuration = try container.decodeIfPresent(Int.self, forKey: .remainingDuration)
+        percentComplete = try container.decodeIfPresent(Double.self, forKey: .percentComplete)
+        percentWorkComplete = try container.decodeIfPresent(Double.self, forKey: .percentWorkComplete)
+        milestone = try container.decodeIfPresent(Bool.self, forKey: .milestone)
+        summary = try container.decodeIfPresent(Bool.self, forKey: .summary)
+        critical = try container.decodeIfPresent(Bool.self, forKey: .critical)
+        cost = try container.decodeIfPresent(Double.self, forKey: .cost)
+        work = try container.decodeIfPresent(Int.self, forKey: .work)
+        notes = try container.decodeIfPresent(String.self, forKey: .notes)
+        priority = try container.decodeIfPresent(Int.self, forKey: .priority)
+        parentTaskUniqueID = try container.decodeIfPresent(Int.self, forKey: .parentTaskUniqueID)
+        constraintType = try container.decodeIfPresent(String.self, forKey: .constraintType)
+        constraintDate = try container.decodeIfPresent(String.self, forKey: .constraintDate)
+        predecessors = try container.decodeIfPresent([TaskRelation].self, forKey: .predecessors)
+        successors = try container.decodeIfPresent([TaskRelation].self, forKey: .successors)
+        active = try container.decodeIfPresent(Bool.self, forKey: .active)
+        guid = try container.decodeIfPresent(String.self, forKey: .guid)
+        type = try container.decodeIfPresent(String.self, forKey: .type)
+        baselineStart = try container.decodeIfPresent(String.self, forKey: .baselineStart)
+        baselineFinish = try container.decodeIfPresent(String.self, forKey: .baselineFinish)
+        baselineDuration = try container.decodeIfPresent(Int.self, forKey: .baselineDuration)
+        baselineCost = try container.decodeIfPresent(Double.self, forKey: .baselineCost)
+        baselineWork = try container.decodeIfPresent(Int.self, forKey: .baselineWork)
+        actualCost = try container.decodeIfPresent(Double.self, forKey: .actualCost)
+        bcws = try container.decodeIfPresent(Double.self, forKey: .bcws)
+        bcwp = try container.decodeIfPresent(Double.self, forKey: .bcwp)
+        acwp = try container.decodeIfPresent(Double.self, forKey: .acwp)
+        cv = try container.decodeIfPresent(Double.self, forKey: .cv)
+        sv = try container.decodeIfPresent(Double.self, forKey: .sv)
+
+        // Decode custom fields from remaining keys
+        let knownKeys = Set(CodingKeys.allCases.map { $0.rawValue })
+        let dynamicContainer = try decoder.container(keyedBy: DynamicCodingKey.self)
+        var customs: [String: AnyCodable] = [:]
+
+        for key in dynamicContainer.allKeys {
+            guard !knownKeys.contains(key.stringValue) else { continue }
+            let range = NSRange(key.stringValue.startIndex..., in: key.stringValue)
+            if Self.customFieldPattern.firstMatch(in: key.stringValue, range: range) != nil {
+                if let val = try? dynamicContainer.decode(AnyCodable.self, forKey: key) {
+                    customs[key.stringValue] = val
+                }
+            }
+        }
+
+        customFields = customs.isEmpty ? nil : customs
     }
 }
 
@@ -279,10 +398,46 @@ struct ProjectCalendar: Codable, Identifiable {
         case exceptions
     }
 
-    /// Returns whether a given weekday (1=Sunday, 7=Saturday) is a working day
+    /// Returns whether a given weekday (1=Sunday, 7=Saturday) is a working day.
+    /// Does NOT resolve parent calendars — use `resolvedIsWorkingDay` for that.
     func isWorkingDay(weekday: Int) -> Bool {
         let dayInfo = dayForWeekday(weekday)
-        return dayInfo?.isWorking ?? (weekday >= 2 && weekday <= 6)
+        guard let dayInfo else { return weekday >= 2 && weekday <= 6 }
+        if dayInfo.isDefault { return weekday >= 2 && weekday <= 6 }
+        return dayInfo.isWorking
+    }
+
+    /// Returns the working status for a weekday, resolving through parent calendars.
+    func resolvedIsWorkingDay(weekday: Int, calendarsByID: [Int: ProjectCalendar]) -> Bool {
+        let dayInfo = dayForWeekday(weekday)
+
+        // If we have a definite answer (working or non_working), use it
+        if let dayInfo, !dayInfo.isDefault {
+            return dayInfo.isWorking
+        }
+
+        // Type is "default" or nil — inherit from parent
+        if let parentID = parentUniqueID, let parent = calendarsByID[parentID] {
+            return parent.resolvedIsWorkingDay(weekday: weekday, calendarsByID: calendarsByID)
+        }
+
+        // No parent — fallback to Mon-Fri
+        return weekday >= 2 && weekday <= 6
+    }
+
+    /// Returns the working hours for a weekday, resolving through parent calendars.
+    func resolvedHours(weekday: Int, calendarsByID: [Int: ProjectCalendar]) -> [CalendarHours]? {
+        let dayInfo = dayForWeekday(weekday)
+
+        if let dayInfo, !dayInfo.isDefault {
+            return dayInfo.hours
+        }
+
+        if let parentID = parentUniqueID, let parent = calendarsByID[parentID] {
+            return parent.resolvedHours(weekday: weekday, calendarsByID: calendarsByID)
+        }
+
+        return nil
     }
 
     func dayForWeekday(_ weekday: Int) -> CalendarDayInfo? {
@@ -304,7 +459,11 @@ struct CalendarDayInfo: Codable {
     let hours: [CalendarHours]?
 
     var isWorking: Bool {
-        type == "working"
+        type?.lowercased() == "working"
+    }
+
+    var isDefault: Bool {
+        type == nil || type?.lowercased() == "default"
     }
 }
 

@@ -7,6 +7,8 @@ struct GanttChartView: View {
     @State private var pixelsPerDay: CGFloat = 8
     @State private var rowHeight: CGFloat = 24
     @State private var criticalPathOnly: Bool = false
+    @State private var showBaseline: Bool = false
+    @GestureState private var magnifyBy: CGFloat = 1.0
 
     private var flatTasks: [ProjectTask] {
         let tasks = searchText.isEmpty ? project.rootTasks : project.tasks.filter {
@@ -46,6 +48,14 @@ struct GanttChartView: View {
                 }
                 .buttonStyle(.borderless)
 
+                Button {
+                    printGantt()
+                } label: {
+                    Label("Print", systemImage: "printer")
+                        .font(.caption)
+                }
+                .buttonStyle(.borderless)
+
                 Divider().frame(height: 16)
 
                 Toggle(isOn: $criticalPathOnly) {
@@ -55,6 +65,14 @@ struct GanttChartView: View {
                 .toggleStyle(.button)
                 .buttonStyle(.bordered)
                 .tint(criticalPathOnly ? .red : nil)
+
+                Toggle(isOn: $showBaseline) {
+                    Label("Baseline", systemImage: "clock.arrow.2.circlepath")
+                        .font(.caption)
+                }
+                .toggleStyle(.button)
+                .buttonStyle(.bordered)
+                .tint(showBaseline ? .gray : nil)
 
                 Divider().frame(height: 16)
 
@@ -90,11 +108,21 @@ struct GanttChartView: View {
                             totalDays: totalDays,
                             pixelsPerDay: pixelsPerDay,
                             rowHeight: rowHeight,
-                            criticalPathOnly: criticalPathOnly
+                            criticalPathOnly: criticalPathOnly,
+                            showBaseline: showBaseline
                         )
                         .frame(width: timelineWidth, height: CGFloat(flatTasks.count) * rowHeight)
                     }
                 }
+                .gesture(
+                    MagnifyGesture()
+                        .updating($magnifyBy) { value, state, _ in
+                            state = value.magnification
+                        }
+                        .onEnded { value in
+                            pixelsPerDay = min(100, max(2, pixelsPerDay * value.magnification))
+                        }
+                )
             }
         }
     }
@@ -125,6 +153,30 @@ struct GanttChartView: View {
             contentSize: contentSize,
             fileName: "\(title) - Gantt \(PDFExporter.fileNameTimestamp).pdf"
         )
+    }
+
+    private func printGantt() {
+        let ganttContent = VStack(alignment: .leading, spacing: 0) {
+            GanttHeaderView(
+                dateRange: dateRange,
+                pixelsPerDay: pixelsPerDay,
+                totalWidth: timelineWidth
+            )
+            GanttCanvasView(
+                tasks: flatTasks,
+                allTasks: project.tasksByID,
+                startDate: dateRange.start,
+                totalDays: totalDays,
+                pixelsPerDay: pixelsPerDay,
+                rowHeight: rowHeight,
+                criticalPathOnly: criticalPathOnly
+            )
+            .frame(width: timelineWidth, height: CGFloat(flatTasks.count) * rowHeight)
+        }
+
+        let contentSize = CGSize(width: timelineWidth, height: CGFloat(flatTasks.count) * rowHeight + 44)
+        let title = project.properties.projectTitle ?? "Gantt Chart"
+        PrintManager.printView(ganttContent, size: contentSize, title: title)
     }
 
     private func flattenVisible(_ tasks: [ProjectTask]) -> [ProjectTask] {
@@ -174,6 +226,7 @@ struct GanttLegendBar: View {
             summaryLegendItem()
             milestoneLegendItem()
             progressLegendItem()
+            baselineLegendItem()
             Spacer()
         }
         .padding(.horizontal)
@@ -223,6 +276,15 @@ struct GanttLegendBar: View {
                     .frame(width: 10, height: 8)
             }
             Text("Progress").font(.caption2).foregroundStyle(.secondary)
+        }
+    }
+
+    private func baselineLegendItem() -> some View {
+        HStack(spacing: 4) {
+            RoundedRectangle(cornerRadius: 2)
+                .fill(Color.gray.opacity(0.3))
+                .frame(width: 16, height: 6)
+            Text("Baseline").font(.caption2).foregroundStyle(.secondary)
         }
     }
 }
@@ -284,6 +346,15 @@ struct GanttCanvasView: View {
     let pixelsPerDay: CGFloat
     let rowHeight: CGFloat
     var criticalPathOnly: Bool = false
+    var showBaseline: Bool = false
+
+    @Environment(\.colorScheme) var colorScheme
+
+    private var rowShadingOpacity: Double { colorScheme == .dark ? 0.08 : 0.04 }
+    private var gridLineOpacity: Double { colorScheme == .dark ? 0.25 : 0.15 }
+    private var weekendOpacity: Double { colorScheme == .dark ? 0.12 : 0.06 }
+    private var barBgOpacity: Double { colorScheme == .dark ? 0.35 : 0.25 }
+    private var baselineOpacity: Double { colorScheme == .dark ? 0.4 : 0.25 }
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -323,6 +394,14 @@ struct GanttCanvasView: View {
         if task.critical == true {
             parts.append("Critical Path")
         }
+        if task.hasBaseline {
+            if let sv = task.startVarianceDays {
+                parts.append("Start Variance: \(sv > 0 ? "+" : "")\(sv)d")
+            }
+            if let fv = task.finishVarianceDays {
+                parts.append("Finish Variance: \(fv > 0 ? "+" : "")\(fv)d")
+            }
+        }
         return parts.joined(separator: "\n")
     }
 
@@ -337,7 +416,7 @@ struct GanttCanvasView: View {
             for row in 0..<tasks.count {
                 if row % 2 == 0 {
                     let rowRect = CGRect(x: 0, y: CGFloat(row) * rowHeight, width: size.width, height: rowHeight)
-                    context.fill(Path(rowRect), with: .color(.gray.opacity(0.04)))
+                    context.fill(Path(rowRect), with: .color(.gray.opacity(rowShadingOpacity)))
                 }
             }
 
@@ -347,7 +426,7 @@ struct GanttCanvasView: View {
                 var path = Path()
                 path.move(to: CGPoint(x: 0, y: y))
                 path.addLine(to: CGPoint(x: size.width, y: y))
-                context.stroke(path, with: .color(.gray.opacity(0.15)), lineWidth: 0.5)
+                context.stroke(path, with: .color(.gray.opacity(gridLineOpacity)), lineWidth: 0.5)
             }
 
             for day in 0..<totalDays {
@@ -357,14 +436,38 @@ struct GanttCanvasView: View {
 
                 if weekday == 1 || weekday == 7 {
                     let rect = CGRect(x: x, y: 0, width: pixelsPerDay, height: size.height)
-                    context.fill(Path(rect), with: .color(.gray.opacity(0.06)))
+                    context.fill(Path(rect), with: .color(.gray.opacity(weekendOpacity)))
                 }
 
                 if weekday == 2 || pixelsPerDay >= 30 {
                     var vline = Path()
                     vline.move(to: CGPoint(x: x, y: 0))
                     vline.addLine(to: CGPoint(x: x, y: size.height))
-                    context.stroke(vline, with: .color(.gray.opacity(weekday == 2 ? 0.2 : 0.08)), lineWidth: 0.5)
+                    context.stroke(vline, with: .color(.gray.opacity(weekday == 2 ? gridLineOpacity + 0.05 : gridLineOpacity - 0.07)), lineWidth: 0.5)
+                }
+            }
+
+            // --- Baseline Bars (behind actual bars) ---
+            if showBaseline {
+                for (index, task) in tasks.enumerated() {
+                    guard task.hasBaseline,
+                          let bsDate = task.baselineStartDate,
+                          let bfDate = task.baselineFinishDate,
+                          task.milestone != true,
+                          task.summary != true else { continue }
+
+                    let y = CGFloat(index) * rowHeight
+                    let bsOffset = calendar.dateComponents([.day], from: startDate, to: bsDate).day ?? 0
+                    let bfOffset = calendar.dateComponents([.day], from: startDate, to: bfDate).day ?? 0
+                    let xStart = CGFloat(bsOffset) * pixelsPerDay
+                    let width = max(4, CGFloat(max(1, bfOffset - bsOffset)) * pixelsPerDay)
+
+                    let baselineBarHeight = barHeight * 0.5
+                    let baselineY = y + barInset + barHeight - baselineBarHeight // bottom-aligned
+                    let baseRect = CGRect(x: xStart, y: baselineY, width: width, height: baselineBarHeight)
+                    let rr = RoundedRectangle(cornerRadius: 2).path(in: baseRect)
+                    context.fill(rr, with: .color(.gray.opacity(baselineOpacity)))
+                    context.stroke(rr, with: .color(.gray.opacity(baselineOpacity + 0.15)), lineWidth: 0.5)
                 }
             }
 
@@ -427,7 +530,7 @@ struct GanttCanvasView: View {
                     context.stroke(rightTick, with: .color(.primary.opacity(0.6 * taskOpacity)), lineWidth: 1.5)
                 } else {
                     // Regular bar
-                    let bgColor: Color = isCritical ? .red.opacity(0.25 * taskOpacity) : .blue.opacity(0.25 * taskOpacity)
+                    let bgColor: Color = isCritical ? .red.opacity(barBgOpacity * taskOpacity) : .blue.opacity(barBgOpacity * taskOpacity)
                     let fgColor: Color = isCritical ? .red : .blue
 
                     let barRect = CGRect(x: xStart, y: y + barInset, width: width, height: barHeight)

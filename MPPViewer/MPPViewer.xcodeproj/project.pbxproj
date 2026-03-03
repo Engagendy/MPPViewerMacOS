@@ -34,6 +34,18 @@
 		A10000010000000000000030 /* MilestonesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000032 /* MilestonesView.swift */; };
 		A10000010000000000000050 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000052 /* DashboardView.swift */; };
 		A10000010000000000000040 /* MPPConverterProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000040 /* MPPConverterProtocol.swift */; };
+		A10000010000000000000080 /* TaskFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000080 /* TaskFilter.swift */; };
+		A10000010000000000000081 /* EVMCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000081 /* EVMCalculator.swift */; };
+		A10000010000000000000082 /* WorkloadCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000082 /* WorkloadCalculator.swift */; };
+		A10000010000000000000083 /* FilterBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000083 /* FilterBarView.swift */; };
+		A10000010000000000000084 /* EarnedValueView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000084 /* EarnedValueView.swift */; };
+		A10000010000000000000085 /* WorkloadView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000085 /* WorkloadView.swift */; };
+		A10000010000000000000090 /* CSVExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000090 /* CSVExporter.swift */; };
+		A10000010000000000000091 /* AnyCodable.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000091 /* AnyCodable.swift */; };
+		A10000010000000000000092 /* PrintManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000092 /* PrintManager.swift */; };
+		A10000010000000000000093 /* ProjectDiff.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000093 /* ProjectDiff.swift */; };
+		A10000010000000000000094 /* TimelineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000094 /* TimelineView.swift */; };
+		A10000010000000000000095 /* DiffView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000095 /* DiffView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -90,6 +102,18 @@
 		A20000010000000000000032 /* MilestonesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MilestonesView.swift; sourceTree = "<group>"; };
 		A20000010000000000000052 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
 		A20000010000000000000040 /* MPPConverterProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MPPConverterProtocol.swift; sourceTree = "<group>"; };
+		A20000010000000000000080 /* TaskFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskFilter.swift; sourceTree = "<group>"; };
+		A20000010000000000000081 /* EVMCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EVMCalculator.swift; sourceTree = "<group>"; };
+		A20000010000000000000082 /* WorkloadCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkloadCalculator.swift; sourceTree = "<group>"; };
+		A20000010000000000000083 /* FilterBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilterBarView.swift; sourceTree = "<group>"; };
+		A20000010000000000000084 /* EarnedValueView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EarnedValueView.swift; sourceTree = "<group>"; };
+		A20000010000000000000085 /* WorkloadView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkloadView.swift; sourceTree = "<group>"; };
+		A20000010000000000000090 /* CSVExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CSVExporter.swift; sourceTree = "<group>"; };
+		A20000010000000000000091 /* AnyCodable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnyCodable.swift; sourceTree = "<group>"; };
+		A20000010000000000000092 /* PrintManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrintManager.swift; sourceTree = "<group>"; };
+		A20000010000000000000093 /* ProjectDiff.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectDiff.swift; sourceTree = "<group>"; };
+		A20000010000000000000094 /* TimelineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineView.swift; sourceTree = "<group>"; };
+		A20000010000000000000095 /* DiffView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiffView.swift; sourceTree = "<group>"; };
 		A30000010000000000000001 /* MPPViewer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MPPViewer.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -164,6 +188,9 @@
 			children = (
 				A20000010000000000000004 /* ProjectModel.swift */,
 				A20000010000000000000005 /* ProjectStore.swift */,
+				A20000010000000000000080 /* TaskFilter.swift */,
+				A20000010000000000000091 /* AnyCodable.swift */,
+				A20000010000000000000093 /* ProjectDiff.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -174,6 +201,8 @@
 				A20000010000000000000006 /* MPPConverterService.swift */,
 				A20000010000000000000007 /* JSONProjectParser.swift */,
 				A20000010000000000000040 /* MPPConverterProtocol.swift */,
+				A20000010000000000000081 /* EVMCalculator.swift */,
+				A20000010000000000000082 /* WorkloadCalculator.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -190,6 +219,11 @@
 				A50000010000000000000014 /* Schedule */,
 				A50000010000000000000024 /* Milestones */,
 				A50000010000000000000034 /* Dashboard */,
+				A50000010000000000000080 /* Components */,
+				A50000010000000000000081 /* EarnedValue */,
+				A50000010000000000000082 /* Workload */,
+				A50000010000000000000090 /* Timeline */,
+				A50000010000000000000091 /* Diff */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -226,6 +260,8 @@
 				A20000010000000000000018 /* DurationFormatting.swift */,
 				A20000010000000000000019 /* ColorTheme.swift */,
 				A20000010000000000000070 /* PDFExporter.swift */,
+				A20000010000000000000090 /* CSVExporter.swift */,
+				A20000010000000000000092 /* PrintManager.swift */,
 			);
 			path = Utilities;
 			sourceTree = "<group>";
@@ -279,6 +315,46 @@
 				A20000010000000000000052 /* DashboardView.swift */,
 			);
 			path = Dashboard;
+			sourceTree = "<group>";
+		};
+		A50000010000000000000080 /* Components */ = {
+			isa = PBXGroup;
+			children = (
+				A20000010000000000000083 /* FilterBarView.swift */,
+			);
+			path = Components;
+			sourceTree = "<group>";
+		};
+		A50000010000000000000081 /* EarnedValue */ = {
+			isa = PBXGroup;
+			children = (
+				A20000010000000000000084 /* EarnedValueView.swift */,
+			);
+			path = EarnedValue;
+			sourceTree = "<group>";
+		};
+		A50000010000000000000082 /* Workload */ = {
+			isa = PBXGroup;
+			children = (
+				A20000010000000000000085 /* WorkloadView.swift */,
+			);
+			path = Workload;
+			sourceTree = "<group>";
+		};
+		A50000010000000000000090 /* Timeline */ = {
+			isa = PBXGroup;
+			children = (
+				A20000010000000000000094 /* TimelineView.swift */,
+			);
+			path = Timeline;
+			sourceTree = "<group>";
+		};
+		A50000010000000000000091 /* Diff */ = {
+			isa = PBXGroup;
+			children = (
+				A20000010000000000000095 /* DiffView.swift */,
+			);
+			path = Diff;
 			sourceTree = "<group>";
 		};
 		A50000010000000000000099 /* Products */ = {
@@ -426,6 +502,18 @@
 				A10000010000000000000030 /* MilestonesView.swift in Sources */,
 				A10000010000000000000050 /* DashboardView.swift in Sources */,
 				A10000010000000000000040 /* MPPConverterProtocol.swift in Sources */,
+				A10000010000000000000080 /* TaskFilter.swift in Sources */,
+				A10000010000000000000081 /* EVMCalculator.swift in Sources */,
+				A10000010000000000000082 /* WorkloadCalculator.swift in Sources */,
+				A10000010000000000000083 /* FilterBarView.swift in Sources */,
+				A10000010000000000000084 /* EarnedValueView.swift in Sources */,
+				A10000010000000000000085 /* WorkloadView.swift in Sources */,
+				A10000010000000000000090 /* CSVExporter.swift in Sources */,
+				A10000010000000000000091 /* AnyCodable.swift in Sources */,
+				A10000010000000000000092 /* PrintManager.swift in Sources */,
+				A10000010000000000000093 /* ProjectDiff.swift in Sources */,
+				A10000010000000000000094 /* TimelineView.swift in Sources */,
+				A10000010000000000000095 /* DiffView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

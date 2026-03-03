@@ -63,6 +63,29 @@ struct DashboardView: View {
                     )
                 }
 
+                // EVM KPI Row
+                if stats.evmMetrics.bac > 0 {
+                    LazyVGrid(columns: [
+                        GridItem(.flexible(), spacing: 16),
+                        GridItem(.flexible(), spacing: 16),
+                    ], spacing: 16) {
+                        KPICard(
+                            title: "Cost Performance (CPI)",
+                            value: String(format: "%.2f", stats.evmMetrics.cpi),
+                            subtitle: stats.evmMetrics.cpi >= 1.0 ? "Under budget" : "Over budget",
+                            icon: "dollarsign.circle.fill",
+                            color: stats.evmMetrics.cpi >= 1.0 ? .green : .red
+                        )
+                        KPICard(
+                            title: "Schedule Performance (SPI)",
+                            value: String(format: "%.2f", stats.evmMetrics.spi),
+                            subtitle: stats.evmMetrics.spi >= 1.0 ? "Ahead of schedule" : "Behind schedule",
+                            icon: "clock.fill",
+                            color: stats.evmMetrics.spi >= 1.0 ? .green : .red
+                        )
+                    }
+                }
+
                 // Second Row
                 HStack(alignment: .top, spacing: 16) {
                     // Task Status Breakdown
@@ -355,6 +378,7 @@ struct ProjectStats {
     let projectDurationDays: Int
     let daysElapsed: Int
     let daysRemaining: Int
+    let evmMetrics: EVMMetrics
 
     var totalCostFormatted: String {
         if totalCost == 0 { return "N/A" }
@@ -438,5 +462,14 @@ struct ProjectStats {
             self.daysElapsed = 0
             self.daysRemaining = 0
         }
+
+        // EVM
+        let statusDate: Date = {
+            if let sd = project.properties.statusDate {
+                return DateFormatting.parseMPXJDate(sd) ?? today
+            }
+            return today
+        }()
+        self.evmMetrics = EVMCalculator.projectMetrics(tasks: project.tasks, statusDate: statusDate)
     }
 }

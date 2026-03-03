@@ -36,6 +36,7 @@ enum PDFExporter {
         // Render the SwiftUI view (including Canvas) to a bitmap via NSHostingView
         let hostingView = NSHostingView(rootView: view.frame(width: contentSize.width, height: contentSize.height))
         hostingView.frame = CGRect(origin: .zero, size: contentSize)
+        hostingView.appearance = NSAppearance(named: .aqua)
 
         // Force layout
         hostingView.layoutSubtreeIfNeeded()

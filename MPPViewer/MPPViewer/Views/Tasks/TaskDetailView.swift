@@ -42,6 +42,31 @@ struct TaskDetailView: View {
                     }
                 }
 
+                // Baseline
+                if task.hasBaseline {
+                    GroupBox("Baseline") {
+                        detailGrid {
+                            detailRow("Baseline Start", value: DateFormatting.mediumDateTime(task.baselineStart))
+                            detailRow("Baseline Finish", value: DateFormatting.mediumDateTime(task.baselineFinish))
+                            detailRow("Baseline Duration", value: task.baselineDuration.map { DurationFormatting.formatSeconds($0) })
+                            if let bc = task.baselineCost {
+                                let formatter = NumberFormatter()
+                                let _ = (formatter.numberStyle = .currency)
+                                detailRow("Baseline Cost", value: formatter.string(from: NSNumber(value: bc)))
+                            }
+                            if let bw = task.baselineWork {
+                                detailRow("Baseline Work", value: DurationFormatting.formatSeconds(bw))
+                            }
+                            if let sv = task.startVarianceDays {
+                                detailRow("Start Variance", value: "\(sv > 0 ? "+" : "")\(sv) days")
+                            }
+                            if let fv = task.finishVarianceDays {
+                                detailRow("Finish Variance", value: "\(fv > 0 ? "+" : "")\(fv) days")
+                            }
+                        }
+                    }
+                }
+
                 // Progress
                 GroupBox("Progress") {
                     VStack(alignment: .leading, spacing: 8) {
@@ -123,7 +148,7 @@ struct TaskDetailView: View {
                                     Text(resourceName)
                                     Spacer()
                                     if let units = assignment.assignmentUnits {
-                                        Text("\(Int(units * 100))%")
+                                        Text("\(Int(units))%")
                                             .foregroundStyle(.secondary)
                                     }
                                 }
@@ -143,6 +168,19 @@ struct TaskDetailView: View {
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(2)
+                    }
+                }
+
+                // Custom Fields
+                if let customFields = task.customFields, !customFields.isEmpty {
+                    GroupBox("Custom Fields") {
+                        detailGrid {
+                            ForEach(customFields.keys.sorted(), id: \.self) { key in
+                                if let val = customFields[key] {
+                                    detailRow(key, value: val.displayString)
+                                }
+                            }
+                        }
                     }
                 }
             }

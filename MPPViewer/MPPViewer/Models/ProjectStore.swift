@@ -32,6 +32,11 @@ final class ProjectStore: ObservableObject {
         isLoading = false
     }
 
+    func loadProject(from url: URL) async throws -> ProjectModel {
+        let jsonData = try await converter.convert(mppFileURL: url)
+        return try parser.parse(jsonData: jsonData)
+    }
+
     func loadFromURL(_ url: URL) async {
         isLoading = true
         error = nil

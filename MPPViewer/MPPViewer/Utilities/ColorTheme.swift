@@ -25,4 +25,9 @@ enum ColorTheme {
     static let summaryTask = Color.primary
     static let completedFill = Color.accentColor
     static let progressBackground = Color.accentColor.opacity(0.3)
+    static let baselineBar = Color.gray
+    static let overAllocated = Color.red
+    static let normalAllocation = Color.green
+    static let evmHealthy = Color.green
+    static let evmUnhealthy = Color.red
 }
