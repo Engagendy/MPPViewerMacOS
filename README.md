@@ -5,71 +5,63 @@
 <h1 align="center">MPP Viewer</h1>
 
 <p align="center">
-  <strong>A native macOS app for viewing Microsoft Project (.mpp) files</strong><br>
+  <strong>A free, native macOS app for viewing Microsoft Project (.mpp) files</strong><br>
+  No Windows. No MS Project license. No subscriptions.<br>
   Built with SwiftUI &bull; Powered by MPXJ
 </p>
 
 <p align="center">
+  <a href="https://github.com/Engagendy/MPPViewerMacOS/releases"><img src="https://img.shields.io/github/v/release/Engagendy/MPPViewerMacOS?style=flat-square&label=download" alt="Release"></a>
   <img src="https://img.shields.io/badge/platform-macOS%2014%2B-blue?style=flat-square" alt="Platform">
   <img src="https://img.shields.io/badge/swift-5.9-orange?style=flat-square" alt="Swift">
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License">
-  <img src="https://img.shields.io/badge/category-Business-purple?style=flat-square" alt="Category">
+  <img src="https://img.shields.io/badge/price-free-brightgreen?style=flat-square" alt="Free">
 </p>
-
----
-
-MPP Viewer is a lightweight, native macOS application that opens Microsoft Project `.mpp` files without requiring Microsoft Project. It converts project data via the [MPXJ](https://www.mpxj.org/) library and presents it through a modern SwiftUI interface with interactive Gantt charts, dashboards, task management, and PDF export.
-
----
-
-## Features
-
-### Dashboard
-Get an instant overview of project health with KPI cards showing overall progress, on-track status, critical tasks, and total cost. Includes a task status breakdown bar, upcoming milestones, resource summary, and schedule timeline with days remaining.
-
-### Gantt Chart
-Interactive timeline visualization with:
-- **Zoom controls** — Fit All, Week, Month presets, and manual +/- adjustment (2–100 px/day)
-- **Critical path toggle** — Highlight critical tasks and dim non-critical ones
-- **Today marker** — Red dashed line at the current date
-- **Dependency arrows** — FS, SS, FF, SF relation types with routed connectors
-- **Task bars** — Color-coded by type (normal, critical, milestone, summary) with progress fill
-- **Row shading** — Alternating backgrounds and weekend highlighting
-- **PDF export** — Multi-page landscape output
-
-### Schedule View
-Microsoft Project-style split view with a task list on the left and Gantt timeline on the right. Both panes share collapse/expand state and scroll together.
-
-### Task List
-Hierarchical task table with expand/collapse, sortable columns (ID, WBS, Name, Duration, Start, Finish, % Complete, Predecessors), and a detail inspector panel. Click any task to view full details including schedule, cost, assigned resources, predecessors/successors, and notes.
-
-### Milestones & Deliverables
-Dedicated view for milestones and summary deliverables with filtering (All / Milestones / Deliverables), status badges (Completed, Upcoming, Overdue), and sortable columns.
-
-### Resources
-Resource sheet showing all work and material resources with standard rates, max units, email, group, and assignment counts.
-
-### Calendar
-Visual calendar display with working/non-working day highlighting, exception days (holidays, special dates), and month navigation.
-
-### PDF Export
-- **Task List** — Vector PDF table with proper typography, hierarchy indentation, milestone markers, critical task highlighting, alternate row shading, pagination, and export timestamps
-- **Gantt Chart** — Full-resolution bitmap capture across multiple landscape pages
-
-### Additional
-- **Project Summary** — Metadata, schedule info, statistics, and file information
-- **Search** — Filter tasks by name across all views
-- **Document-based** — Double-click any `.mpp` file to open it directly
 
 ---
 
 ## Screenshots
 
-> _Open an `.mpp` file to see the Dashboard, Gantt Chart, Schedule, Task List, Milestones, Resources, and Calendar views._
+<p align="center">
+  <img src="docs/screenshots/dashboard.png" width="800" alt="Dashboard — project health at a glance">
+  <br><em>Dashboard — project health overview with KPIs, milestones, and schedule status</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/tasks.png" width="800" alt="Task Table — hierarchical WBS with progress tracking">
+  <br><em>Task Table — hierarchical WBS with duration, dates, progress bars, and predecessors</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/gantt-chart.png" width="800" alt="Gantt Chart — interactive timeline with critical path">
+  <br><em>Gantt Chart — zoomable timeline with critical path, baselines, milestones, and dependency arrows</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/schedule.png" width="800" alt="Schedule View — split task list and Gantt">
+  <br><em>Schedule View — MS Project-style split view with task list and Gantt side by side</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/earned-value.png" width="800" alt="Earned Value Analysis — CPI, SPI, S-Curve">
+  <br><em>Earned Value Analysis — CPI, SPI, EAC, VAC with S-Curve chart and task-level EVM table</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/workload.png" width="800" alt="Resource Workload — allocation heatmap">
+  <br><em>Resource Workload — weekly allocation view with over-allocation highlighting</em>
+</p>
 
 ---
 
 ## Installation
+
+### Homebrew (recommended)
+
+```bash
+brew tap Engagendy/tap
+brew install --cask mpp-viewer
+```
 
 ### Direct Download
 
@@ -78,13 +70,6 @@ Visual calendar display with working/non-working day highlighting, exception day
 3. On first launch, right-click the app → **Open** → **Open** (required for unsigned apps)
 
 > The app bundles its own Java runtime and converter — no prerequisites needed.
-
-### Homebrew
-
-```bash
-brew tap Engagendy/tap
-brew install --cask mpp-viewer
-```
 
 ### Gatekeeper Bypass
 
@@ -100,6 +85,57 @@ xattr -cr /Applications/MPP\ Viewer.app
 
 **Option C — System Settings:**
 Go to **System Settings → Privacy & Security**, scroll down, and click **Open Anyway** next to the MPP Viewer message.
+
+---
+
+## Features
+
+### Dashboard
+Instant overview of project health with KPI cards for overall progress, on-track status, critical tasks, total cost, CPI, and SPI. Includes task status breakdown, upcoming milestones, resource summary, and schedule timeline with days remaining.
+
+### Gantt Chart
+Interactive timeline visualization with:
+- Zoom controls — Fit All, Week, Month presets, and manual px/day adjustment
+- Critical path toggle and baseline comparison overlay
+- Today marker, dependency arrows (FS, SS, FF, SF), and weekend shading
+- Color-coded task bars with progress fill
+- Pinch-to-zoom gesture support
+- PDF export — multi-page landscape output
+
+### Schedule View
+Microsoft Project-style split view with a task list on the left and Gantt timeline on the right. Both panes share collapse/expand state and scroll together.
+
+### Task Table
+Hierarchical task table with expand/collapse, sortable columns (ID, WBS, Name, Duration, Start, Finish, % Complete, Cost, Predecessors), detail inspector panel, flag/bookmark tasks, and custom field columns. Filter by critical, milestones, flagged, or behind schedule. Export to CSV or PDF.
+
+### Milestones & Deliverables
+Dedicated view for milestones and summary deliverables with status badges (Completed, Upcoming, Overdue) and sortable columns.
+
+### Earned Value Analysis
+Full EVM dashboard with CPI, SPI, EAC, VAC indicators, an S-Curve chart plotting PV/EV/AC over time, and a task-level EVM breakdown table.
+
+### Resources
+Resource sheet showing all work, material, and cost resources with standard rates, max units, email, group, and assignment counts.
+
+### Resource Workload
+Calendar-aware weekly workload view per resource. Green bars for normal allocation, red for over-allocation. Uses project calendar working days and exception dates.
+
+### Calendar
+Visual calendar display with working/non-working day highlighting, exception days (holidays), and month navigation. Supports calendar inheritance (parent calendar chains).
+
+### Timeline View
+Executive-level summary showing only summary tasks and milestones as horizontal ribbons and diamond markers.
+
+### Compare (Diff Two Versions)
+Open a second `.mpp` file to compare against the current project. Shows added, removed, and modified tasks with field-level change details.
+
+### Additional
+- **Project Summary** — metadata, schedule info, statistics, and file information
+- **Search** — filter and navigate tasks by name, WBS, or notes across all views
+- **Keyboard Navigation** — Cmd+1 through Cmd+9 for sidebar navigation
+- **Dark Mode** — optimized contrast for all views
+- **Print** — native macOS print dialog for tasks and Gantt views
+- **Document-based** — double-click any `.mpp` file to open it directly
 
 ---
 
@@ -136,11 +172,9 @@ Select the **MPPViewer** scheme, choose **My Mac** as the destination, and hit *
 ./scripts/package.sh
 ```
 
-This script builds the JAR, builds the app, bundles the Eclipse Temurin JRE and converter JAR into the app, and creates a `.dmg` ready for distribution. See `scripts/package.sh --help` for options.
+This script builds the JAR, builds the app, bundles the Eclipse Temurin JRE and converter JAR into the app, and creates a `.dmg` ready for distribution.
 
-### 5. Open a `.mpp` file
-
-Use **File > Open** or drag-and-drop any `.mpp` file onto the app.
+Options: `--skip-jar`, `--skip-app`, `--arch arm64|x86_64`, `--version X.Y.Z`
 
 ---
 
@@ -151,21 +185,27 @@ MPPViewerMacOS/
 ├── MPPViewer/                          # macOS app (Swift/SwiftUI)
 │   ├── App/                            # Entry point, routing, document handling
 │   ├── Models/                         # Data models (tasks, resources, calendars)
-│   ├── Services/                       # MPP conversion, JSON parsing, XPC protocol
+│   ├── Services/                       # MPP conversion, JSON parsing, workload calculator
 │   ├── Views/
 │   │   ├── Dashboard/                  # KPI cards, status breakdown, schedule health
 │   │   ├── Gantt/                      # Interactive Gantt chart with Canvas rendering
 │   │   ├── Schedule/                   # Split-view task list + Gantt
-│   │   ├── Tasks/                      # Task table, detail inspector panel
+│   │   ├── Tasks/                      # Task table, detail inspector, CSV export
 │   │   ├── Milestones/                 # Milestone & deliverable tracking
 │   │   ├── Resources/                  # Resource sheet
+│   │   ├── EarnedValue/               # EVM dashboard with S-Curve
+│   │   ├── Workload/                   # Resource workload heatmap
 │   │   ├── Calendar/                   # Calendar visualization
+│   │   ├── Timeline/                   # Executive timeline view
+│   │   ├── Diff/                       # Two-version comparison
 │   │   ├── Summary/                    # Project metadata
-│   │   └── Sidebar/                    # Navigation
-│   └── Utilities/                      # PDF export, date/duration formatting
-├── MPPConverterXPC/                    # XPC service target (App Store sandboxing)
-└── MPPConverter/                       # Java converter (Maven project)
-    └── src/main/java/.../MppToJson.java
+│   │   └── Components/                 # Shared UI (filter bar, zoom controls)
+│   └── Utilities/                      # PDF/CSV export, print, date formatting
+├── MPPConverterXPC/                    # XPC service target (sandboxed builds)
+├── MPPConverter/                       # Java converter (Maven project)
+│   └── src/main/java/.../MppToJson.java
+└── scripts/
+    └── package.sh                      # Build & package script
 ```
 
 ### How it works
@@ -190,25 +230,13 @@ MPPViewerMacOS/
 
 ---
 
-## Data Model
-
-| Model | Description |
-|-------|-------------|
-| `ProjectModel` | Root container with properties, tasks, resources, assignments, calendars |
-| `ProjectTask` | Task with schedule, progress, cost, dependencies, hierarchy (parent/children) |
-| `ProjectResource` | Work or material resource with rates and contact info |
-| `ResourceAssignment` | Links tasks to resources with work and cost tracking |
-| `ProjectCalendar` | Working hours per weekday, exception days (holidays) |
-| `TaskRelation` | Predecessor/successor with relation type (FS, SS, FF, SF) and lag |
-
----
-
 ## Tech Stack
 
-- **UI Framework:** SwiftUI with Canvas for Gantt rendering
-- **Platform APIs:** AppKit (PDF generation, file dialogs, cursor management)
+- **UI Framework:** SwiftUI with Canvas for Gantt and workload rendering
+- **Platform APIs:** AppKit (PDF generation, printing, file dialogs)
 - **Project Parsing:** [MPXJ 13.4.0](https://www.mpxj.org/) — the industry-standard library for reading Microsoft Project files
 - **Build Tools:** Xcode (Swift), Maven (Java)
+- **CI/CD:** GitHub Actions — automated build, release, and Homebrew cask update on tag push
 - **Minimum Target:** macOS 14.0 Sonoma
 
 ---
