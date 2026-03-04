@@ -303,9 +303,6 @@ struct ProjectResource: Codable, Identifiable {
     let name: String?
     let type: String?
     let maxUnits: Double?
-    let standardRate: Double?
-    let overtimeRate: Double?
-    let costPerUse: Double?
     let emailAddress: String?
     let group: String?
     let initials: String?
@@ -315,15 +312,24 @@ struct ProjectResource: Codable, Identifiable {
     let active: Bool?
     let guid: String?
 
+    // Rates can be either a number or a string like "10.0/h"
+    private let _standardRate: FlexibleDouble?
+    private let _overtimeRate: FlexibleDouble?
+    private let _costPerUse: FlexibleDouble?
+
+    var standardRate: Double? { _standardRate?.value }
+    var overtimeRate: Double? { _overtimeRate?.value }
+    var costPerUse: Double? { _costPerUse?.value }
+
     enum CodingKeys: String, CodingKey {
         case uniqueID = "unique_id"
         case id
         case name
         case type
         case maxUnits = "max_units"
-        case standardRate = "standard_rate"
-        case overtimeRate = "overtime_rate"
-        case costPerUse = "cost_per_use"
+        case _standardRate = "standard_rate"
+        case _overtimeRate = "overtime_rate"
+        case _costPerUse = "cost_per_use"
         case emailAddress = "email_address"
         case group
         case initials
@@ -332,6 +338,30 @@ struct ProjectResource: Codable, Identifiable {
         case accrueAt = "accrue_at"
         case active
         case guid
+    }
+}
+
+/// Decodes a value that may be a JSON number or a string like "10.0/h".
+struct FlexibleDouble: Codable {
+    let value: Double?
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let d = try? container.decode(Double.self) {
+            value = d
+        } else if let s = try? container.decode(String.self) {
+            // Extract leading numeric portion (e.g. "10.0/h" -> 10.0)
+            let scanner = Scanner(string: s)
+            value = scanner.scanDouble()
+        } else {
+            value = nil
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        if let v = value { try container.encode(v) }
+        else { try container.encodeNil() }
     }
 }
 

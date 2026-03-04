@@ -59,10 +59,19 @@ final class MPPConverterService {
         let jarPath = locateJAR()
 
         guard FileManager.default.fileExists(atPath: javaPath) else {
-            throw MPPConverterError.conversionFailed("Java runtime not found.")
+            throw MPPConverterError.conversionFailed(
+                "Java runtime not found. Searched bundled JRE and system paths."
+            )
         }
         guard FileManager.default.fileExists(atPath: jarPath) else {
-            throw MPPConverterError.conversionFailed("MPXJ converter JAR not found.")
+            throw MPPConverterError.conversionFailed(
+                "MPXJ converter JAR not found at: \(jarPath)"
+            )
+        }
+        guard FileManager.default.fileExists(atPath: mppFileURL.path) else {
+            throw MPPConverterError.conversionFailed(
+                "Input file not found at: \(mppFileURL.path)"
+            )
         }
 
         let outputURL = FileManager.default.temporaryDirectory
@@ -81,14 +90,21 @@ final class MPPConverterService {
         )
 
         guard FileManager.default.fileExists(atPath: outputURL.path) else {
-            throw MPPConverterError.conversionFailed("Converter produced no output file.")
+            throw MPPConverterError.conversionFailed(
+                "Converter produced no output file. Java: \(javaPath)"
+            )
         }
 
-        return try Data(contentsOf: outputURL)
+        let data = try Data(contentsOf: outputURL)
+        guard !data.isEmpty else {
+            throw MPPConverterError.conversionFailed("Converter produced an empty output file.")
+        }
+
+        return data
     }
 
     private func locateJava() -> String {
-        // 1. Check bundled JRE first (for production/App Store)
+        // 1. Check bundled JRE first (for production/packaged app)
         if let pluginsURL = Bundle.main.builtInPlugInsURL {
             let bundledPath = pluginsURL
                 .appendingPathComponent("jre")
@@ -100,7 +116,27 @@ final class MPPConverterService {
             }
         }
 
-        // 2. Check Homebrew OpenJDK 21 first (required by the converter JAR)
+        // 2. Check packaged app's JRE in build output (for Xcode development runs)
+        let sourceRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()  // Services/
+            .deletingLastPathComponent()  // MPPViewer/
+            .deletingLastPathComponent()  // MPPViewer/
+            .deletingLastPathComponent()  // MPPViewer/ (xcodeproj level)
+        let devJreCandidates = [
+            // From package.sh build output
+            sourceRoot.appendingPathComponent("build/DerivedData/Build/Products/Release/MPPViewer.app/Contents/PlugIns/jre/bin/java").path,
+            // Cached JRE download (arm64)
+            sourceRoot.appendingPathComponent(".cache/jre/temurin-jre-21-aarch64/Contents/Home/bin/java").path,
+            // Cached JRE download (x86_64)
+            sourceRoot.appendingPathComponent(".cache/jre/temurin-jre-21-x64/Contents/Home/bin/java").path,
+        ]
+        for path in devJreCandidates {
+            if FileManager.default.fileExists(atPath: path) {
+                return path
+            }
+        }
+
+        // 3. Check Homebrew OpenJDK 21
         let candidates = [
             "/usr/local/opt/openjdk@21/bin/java",
             "/opt/homebrew/opt/openjdk@21/bin/java",
@@ -113,7 +149,7 @@ final class MPPConverterService {
             }
         }
 
-        // 3. Try /usr/libexec/java_home requesting Java 21+
+        // 4. Try /usr/libexec/java_home requesting Java 21+
         if let javaHome = resolveJavaHome(version: "21") {
             let javaPath = javaHome + "/bin/java"
             if FileManager.default.fileExists(atPath: javaPath) {
@@ -121,7 +157,7 @@ final class MPPConverterService {
             }
         }
 
-        // 4. Fallback to any java_home
+        // 5. Fallback to any java_home
         if let javaHome = resolveJavaHome(version: nil) {
             let javaPath = javaHome + "/bin/java"
             if FileManager.default.fileExists(atPath: javaPath) {
