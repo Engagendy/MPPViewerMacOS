@@ -5,13 +5,21 @@ struct TaskDetailView: View {
     let allTasks: [Int: ProjectTask]
     let resources: [ProjectResource]
     let assignments: [ResourceAssignment]
+    let breadcrumbTaskIDs: [Int]
+    var onSelectTask: ((Int) -> Void)? = nil
+    var onSelectBreadcrumb: ((Int) -> Void)? = nil
     @AppStorage("taskReviewNotes") private var taskReviewNotesData: Data = Data()
+    @State private var dependencyDepth: Int = 1
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 // Header
                 header
+
+                if !breadcrumbTasks.isEmpty {
+                    breadcrumbBar
+                }
 
                 Divider()
 
@@ -144,12 +152,31 @@ struct TaskDetailView: View {
                     }
 
                     GroupBox("Dependency Map") {
-                        DependencyMapView(
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack {
+                                Text("Depth")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Picker("Depth", selection: $dependencyDepth) {
+                                    Text("1").tag(1)
+                                    Text("2").tag(2)
+                                    Text("3").tag(3)
+                                }
+                                .pickerStyle(.segmented)
+                                .frame(width: 160)
+                                Spacer()
+                            }
+
+                            DependencyMapView(
                             currentTask: task,
-                            predecessors: predecessorLinks,
-                            successors: successorLinks
+                            predecessors: visiblePredecessorLinks,
+                            successors: visibleSuccessorLinks,
+                            onSelectTask: { uniqueID in
+                                onSelectTask?(uniqueID)
+                            }
                         )
                         .padding(.vertical, 2)
+                        }
                     }
                 }
 
@@ -304,14 +331,26 @@ struct TaskDetailView: View {
 
     private var predecessorLinks: [DependencyLink] {
         (task.predecessors ?? []).map { relation in
-            DependencyLink(relation: relation, task: allTasks[relation.targetTaskUniqueID], direction: .predecessor)
+            DependencyLink(relation: relation, task: allTasks[relation.targetTaskUniqueID], direction: .predecessor, level: 1)
         }
     }
 
     private var successorLinks: [DependencyLink] {
         (task.successors ?? []).map { relation in
-            DependencyLink(relation: relation, task: allTasks[relation.targetTaskUniqueID], direction: .successor)
+            DependencyLink(relation: relation, task: allTasks[relation.targetTaskUniqueID], direction: .successor, level: 1)
         }
+    }
+
+    private var visiblePredecessorLinks: [DependencyLink] {
+        gatherDependencyLinks(from: task, direction: .predecessor, maxDepth: dependencyDepth)
+    }
+
+    private var visibleSuccessorLinks: [DependencyLink] {
+        gatherDependencyLinks(from: task, direction: .successor, maxDepth: dependencyDepth)
+    }
+
+    private var breadcrumbTasks: [ProjectTask] {
+        breadcrumbTaskIDs.compactMap { allTasks[$0] }
     }
 
     private var blockingPredecessors: [DependencyLink] {
@@ -398,6 +437,30 @@ struct TaskDetailView: View {
         (try? JSONDecoder().decode([Int: String].self, from: taskReviewNotesData)) ?? [:]
     }
 
+    private var breadcrumbBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(Array(breadcrumbTasks.enumerated()), id: \.element.uniqueID) { index, crumb in
+                    Button {
+                        onSelectBreadcrumb?(crumb.uniqueID)
+                    } label: {
+                        Text(crumb.displayName)
+                            .font(.caption)
+                            .lineLimit(1)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+
+                    if index < breadcrumbTasks.count - 1 {
+                        Image(systemName: "chevron.right")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+    }
+
     @ViewBuilder
     private func detailGrid(@ViewBuilder content: () -> some View) -> some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -443,32 +506,89 @@ struct TaskDetailView: View {
     }
 
     private func dependencyRow(_ link: DependencyLink) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            Circle()
-                .fill(link.statusColor)
-                .frame(width: 8, height: 8)
-                .padding(.top, 4)
+        Button {
+            if let uniqueID = link.task?.uniqueID {
+                onSelectTask?(uniqueID)
+            }
+        } label: {
+            HStack(alignment: .top, spacing: 8) {
+                Circle()
+                    .fill(link.statusColor)
+                    .frame(width: 8, height: 8)
+                    .padding(.top, 4)
 
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text(link.taskIDText)
-                        .fontWeight(.medium)
-                    Text(link.displayName)
-                }
-                Text(link.detailText)
-                    .foregroundStyle(.secondary)
-                if let scheduleText = link.scheduleText {
-                    Text(scheduleText)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(link.taskIDText)
+                            .fontWeight(.medium)
+                        Text(link.displayName)
+                    }
+                    Text(link.detailText)
                         .foregroundStyle(.secondary)
+                    if let scheduleText = link.scheduleText {
+                        Text(scheduleText)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Spacer()
+
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(link.statusLabel)
+                        .foregroundStyle(link.statusColor)
+                    if link.level > 1 {
+                        Text("Depth \(link.level)")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
-
-            Spacer()
-
-            Text(link.statusLabel)
-                .foregroundStyle(link.statusColor)
+            .font(.caption)
+            .contentShape(Rectangle())
         }
-        .font(.caption)
+        .buttonStyle(.plain)
+        .disabled(link.task == nil)
+    }
+
+    private func gatherDependencyLinks(from rootTask: ProjectTask, direction: DependencyDirection, maxDepth: Int) -> [DependencyLink] {
+        guard maxDepth > 0 else { return [] }
+
+        var queue: [(task: ProjectTask, depth: Int)] = [(rootTask, 1)]
+        var seen = Set<Int>([rootTask.uniqueID])
+        var links: [DependencyLink] = []
+
+        while let current = queue.first {
+            queue.removeFirst()
+            guard current.depth <= maxDepth else { continue }
+
+            let relations: [TaskRelation] = {
+                switch direction {
+                case .predecessor:
+                    return current.task.predecessors ?? []
+                case .successor:
+                    return current.task.successors ?? []
+                }
+            }()
+
+            for relation in relations {
+                guard let targetTask = allTasks[relation.targetTaskUniqueID] else { continue }
+                let link = DependencyLink(
+                    relation: relation,
+                    task: targetTask,
+                    direction: direction,
+                    level: current.depth
+                )
+                if !links.contains(where: { $0.id == link.id && $0.level == link.level }) {
+                    links.append(link)
+                }
+                if !seen.contains(targetTask.uniqueID) {
+                    seen.insert(targetTask.uniqueID)
+                    queue.append((targetTask, current.depth + 1))
+                }
+            }
+        }
+
+        return links
     }
 }
 
@@ -481,8 +601,9 @@ private struct DependencyLink: Identifiable {
     let relation: TaskRelation
     let task: ProjectTask?
     let direction: DependencyDirection
+    let level: Int
 
-    var id: String { "\(direction)-\(relation.id)" }
+    var id: String { "\(direction)-\(relation.id)-\(task?.uniqueID ?? 0)" }
 
     var displayName: String {
         task?.displayName ?? "Task \(relation.targetTaskUniqueID)"
@@ -532,6 +653,7 @@ private struct DependencyMapView: View {
     let currentTask: ProjectTask
     let predecessors: [DependencyLink]
     let successors: [DependencyLink]
+    var onSelectTask: ((Int) -> Void)? = nil
 
     var body: some View {
         GeometryReader { geometry in
@@ -564,7 +686,7 @@ private struct DependencyMapView: View {
                 .foregroundStyle(.secondary)
 
             if links.isEmpty {
-                dependencyNode(title: "None", subtitle: "No linked tasks", color: .secondary, width: width)
+                dependencyNode(title: "None", subtitle: "No linked tasks", color: .secondary, width: width, action: nil)
             } else {
                 let visibleLinks = Array(links.prefix(6))
                 ForEach(visibleLinks) { link in
@@ -575,9 +697,14 @@ private struct DependencyMapView: View {
 
                         dependencyNode(
                             title: link.displayName,
-                            subtitle: "\(link.taskIDText) · \(link.statusLabel)",
+                            subtitle: "\(link.taskIDText) · \(link.statusLabel)\(link.level > 1 ? " · D\(link.level)" : "")",
                             color: link.statusColor,
-                            width: width
+                            width: width,
+                            action: {
+                                if let uniqueID = link.task?.uniqueID {
+                                    onSelectTask?(uniqueID)
+                                }
+                            }
                         )
 
                         if direction == .predecessor && link.id != visibleLinks.last?.id {
@@ -585,8 +712,8 @@ private struct DependencyMapView: View {
                         }
                     }
                 }
-                if links.count > 3 {
-                    Text("+\(links.count - 3) more")
+                if links.count > 6 {
+                    Text("+\(links.count - 6) more")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -604,7 +731,8 @@ private struct DependencyMapView: View {
                 title: currentTask.displayName,
                 subtitle: currentTask.id.map { "Task \($0)" } ?? "Selected Task",
                 color: currentTask.critical == true ? .red : (currentTask.isDisplayMilestone ? .orange : .accentColor),
-                width: width
+                width: width,
+                action: nil
             )
 
             if !successors.isEmpty {
@@ -621,8 +749,9 @@ private struct DependencyMapView: View {
             .padding(.leading, 12)
     }
 
-    private func dependencyNode(title: String, subtitle: String, color: Color, width: CGFloat) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+    @ViewBuilder
+    private func dependencyNode(title: String, subtitle: String, color: Color, width: CGFloat, action: (() -> Void)?) -> some View {
+        let node = VStack(alignment: .leading, spacing: 4) {
             Text(title)
                 .font(.caption)
                 .fontWeight(.semibold)
@@ -642,5 +771,14 @@ private struct DependencyMapView: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .stroke(color.opacity(0.25), lineWidth: 1)
         )
+
+        if let action {
+            Button(action: action) {
+                node
+            }
+            .buttonStyle(.plain)
+        } else {
+            node
+        }
     }
 }

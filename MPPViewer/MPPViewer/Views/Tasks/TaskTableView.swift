@@ -15,6 +15,7 @@ struct TaskTableView: View {
     @State private var grouping: TaskGrouping = .none
     @State private var visibleCustomColumns: Set<String> = []
     @State private var showColumnPicker = false
+    @State private var dependencyBreadcrumbs: [Int] = []
     @AppStorage("selectedTaskViewPreset") private var selectedTaskViewPresetRaw = TaskViewPreset.none.rawValue
     @AppStorage("taskInspectorWidth") private var storedInspectorWidth = 360.0
 
@@ -284,6 +285,7 @@ struct TaskTableView: View {
                                     }
                                 }
                                 selectedTaskID = task.uniqueID
+                                dependencyBreadcrumbs = [task.uniqueID]
                             }
                             .cursor(isSummaryWithChildren ? .pointingHand : .arrow)
                         }
@@ -359,7 +361,18 @@ struct TaskTableView: View {
                         task: task,
                         allTasks: allTasks,
                         resources: resources,
-                        assignments: assignments
+                        assignments: assignments,
+                        breadcrumbTaskIDs: dependencyBreadcrumbs,
+                        onSelectTask: { uniqueID in
+                            if selectedTaskID != uniqueID {
+                                selectedTaskID = uniqueID
+                                appendDependencyBreadcrumb(uniqueID)
+                            }
+                        },
+                        onSelectBreadcrumb: { uniqueID in
+                            selectedTaskID = uniqueID
+                            trimDependencyBreadcrumbs(to: uniqueID)
+                        }
                     )
                     .frame(width: inspectorWidth)
                 }
@@ -368,11 +381,17 @@ struct TaskTableView: View {
         .onChange(of: navigateToTaskID?.wrappedValue) { _, newID in
             if let id = newID {
                 selectedTaskID = id
+                if dependencyBreadcrumbs.last != id {
+                    appendDependencyBreadcrumb(id)
+                }
                 navigateToTaskID?.wrappedValue = nil
             }
         }
         .onAppear {
             filterCriteria.applyPreset(TaskViewPreset(rawValue: selectedTaskViewPresetRaw) ?? .none)
+            if let selectedTaskID, dependencyBreadcrumbs.isEmpty {
+                dependencyBreadcrumbs = [selectedTaskID]
+            }
         }
     }
 
@@ -418,6 +437,22 @@ struct TaskTableView: View {
             return "No tasks match the current search or filters. Adjust the filters above to see tasks again."
         }
         return "There are no tasks to display."
+    }
+
+    private func appendDependencyBreadcrumb(_ uniqueID: Int) {
+        if let existingIndex = dependencyBreadcrumbs.firstIndex(of: uniqueID) {
+            dependencyBreadcrumbs = Array(dependencyBreadcrumbs.prefix(existingIndex + 1))
+        } else {
+            dependencyBreadcrumbs.append(uniqueID)
+        }
+    }
+
+    private func trimDependencyBreadcrumbs(to uniqueID: Int) {
+        if let existingIndex = dependencyBreadcrumbs.firstIndex(of: uniqueID) {
+            dependencyBreadcrumbs = Array(dependencyBreadcrumbs.prefix(existingIndex + 1))
+        } else {
+            dependencyBreadcrumbs = [uniqueID]
+        }
     }
 
     private func flattenTasks(_ tasks: [ProjectTask], collapsedIDs: Set<Int>) -> [ProjectTask] {

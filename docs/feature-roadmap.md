@@ -128,6 +128,9 @@ Current implementation:
 - Isolated critical task and blocked-start signals
 - Task inspector relationship analysis showing blockers, downstream impact, and network position
 - Compact dependency map for the selected task
+- Clickable predecessor and successor nodes that refocus the inspector
+- Breadcrumb trail for dependency navigation history
+- Depth selector for expanding the dependency map to multi-hop relationships
 
 ### 6. Resource Allocation Diagnostics
 
@@ -148,6 +151,9 @@ Current implementation:
 - Peak overlapping task summary
 - Sustained overload window detection
 - Date-range details on overloaded assignments
+- Resource drill-down inspector with per-resource assignment list
+- Daily load timeline with visible overload bars
+- Direct navigation from a resource assignment back to the related task
 
 ## Larger Features
 
@@ -196,6 +202,8 @@ Examples:
 - Relationship inspector in the task detail panel
 - Milestone health reasoning with baseline and predecessor-aware risk signals
 - Compact dependency visualization for the selected task
+- Interactive dependency navigation with breadcrumbs and depth control
+- Resource drill-down with assignment and load timeline inspection
 - Grouped sidebar ordering
 
 ## Notes on Deliverables

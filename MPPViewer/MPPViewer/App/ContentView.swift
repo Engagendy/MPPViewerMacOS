@@ -218,7 +218,13 @@ struct ContentView: View {
         case .milestones:
             MilestonesView(tasks: project.tasks, allTasks: project.tasksByID, searchText: searchText)
         case .resources:
-            ResourceSheetView(resources: project.resources, assignments: project.assignments)
+            ResourceSheetView(
+                resources: project.resources,
+                assignments: project.assignments,
+                allTasks: project.tasksByID,
+                navigateToTaskID: $navigateToTaskID,
+                selectedNav: $selectedNav
+            )
         case .earnedValue:
             EarnedValueView(project: project)
         case .workload:
