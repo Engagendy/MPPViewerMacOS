@@ -91,7 +91,10 @@ Go to **System Settings → Privacy & Security**, scroll down, and click **Open 
 ## Features
 
 ### Dashboard
-Instant overview of project health with KPI cards for overall progress, on-track status, critical tasks, total cost, CPI, and SPI. Includes task status breakdown, upcoming milestones, resource summary, and schedule timeline with days remaining.
+Instant overview of project health with KPI cards for average task progress, completed-task ratio, on-track status, critical tasks, total cost, CPI, and SPI. Includes task status breakdown, upcoming milestones, resource summary, schedule timeline with days remaining, baseline analysis, executive summary export, and review pack export.
+
+### Executive Mode
+Presentation-focused management view with headline health messaging, top risks, major milestones, and concise summary cards separated from the more operational dashboard.
 
 ### Gantt Chart
 Interactive timeline visualization with:
@@ -106,10 +109,26 @@ Interactive timeline visualization with:
 Microsoft Project-style split view with a task list on the left and Gantt timeline on the right. Both panes share collapse/expand state and scroll together.
 
 ### Task Table
-Hierarchical task table with expand/collapse, sortable columns (ID, WBS, Name, Duration, Start, Finish, % Complete, Cost, Predecessors), detail inspector panel, flag/bookmark tasks, and custom field columns. Filter by critical, milestones, flagged, or behind schedule. Export to CSV or PDF.
+Hierarchical task table with expand/collapse, sortable columns (ID, WBS, Name, Duration, Start, Finish, % Complete, Cost, Predecessors), detail inspector panel, resizable inspector sidebar, flag/bookmark tasks, and custom field columns. Filter by critical, milestones, flagged, baseline slip, linked tasks, status, resources, and richer text matching across IDs, notes, resources, and custom fields. Export to CSV or PDF.
+
+The task inspector includes:
+- source-data inspection for raw task flags and classification
+- baseline details and variance
+- relationship inspector for predecessors/successors and blockers
+- dependency map
+- local persistent review notes
 
 ### Milestones
-Dedicated view for explicit project milestones with status badges (Completed, Upcoming, Overdue) and sortable columns.
+Dedicated view for explicit project milestones with status badges, baseline variance, predecessor-aware health reasoning, and sortable columns.
+
+### Validation
+Project validation screen for suspicious source data and planning issues such as summary tasks marked as milestones, invalid dates, missing links, progress inconsistencies, and inactive tasks with assignments. Includes severity filters, CSV export, and task drill-down.
+
+### Diagnostics
+Dependency and constraint diagnostics for schedule-structure review, including explicit constraints, date drift, long lag/lead links, dependency-heavy tasks, successor fan-out, blocked-start signals, and critical-chain hubs.
+
+### Resource Risks
+Resource-focused diagnostics for over-allocation, assignment units above max capacity, overload windows, sustained overload periods, and overlapping task hotspots.
 
 ### Earned Value Analysis
 Full EVM dashboard with CPI, SPI, EAC, VAC indicators, an S-Curve chart plotting PV/EV/AC over time, and a task-level EVM breakdown table.
@@ -124,14 +143,20 @@ Calendar-aware weekly workload view per resource. Green bars for normal allocati
 Visual calendar display with working/non-working day highlighting, exception days (holidays), and month navigation. Supports calendar inheritance (parent calendar chains).
 
 ### Timeline View
-Executive-level summary showing only summary tasks and milestones as horizontal ribbons and diamond markers.
+Executive-level summary showing only summary tasks and milestones as horizontal ribbons and diamond markers, with optional baseline overlays.
+
+### Critical Path
+Dedicated critical-path and near-critical review screen showing driving tasks, float/slack where available from the source data, and direct navigation back into the task view.
 
 ### Compare (Diff Two Versions)
 Open a second `.mpp` file to compare against the current project. Shows added, removed, and modified tasks with field-level change details.
 
 ### Additional
 - **Project Summary** — metadata, schedule info, statistics, and file information
-- **Search** — filter and navigate tasks by name, WBS, or notes across all views
+- **Search** — filter and navigate tasks by name, ID, WBS, notes, resources, and custom fields across all views
+- **Saved Presets** — reusable task presets such as overdue critical, in progress, upcoming milestones, flagged review, and completed
+- **Review Notes** — persistent local notes per task for internal review workflows
+- **Review Pack Export** — consolidated Markdown export with executive summary, validation, diagnostics, resource risks, milestone outlook, and review notes
 - **Keyboard Navigation** — Cmd+1 through Cmd+9 for sidebar navigation
 - **Dark Mode** — optimized contrast for all views
 - **Print** — native macOS print dialog for tasks and Gantt views
@@ -191,12 +216,13 @@ MPPViewerMacOS/
 │   │   ├── Gantt/                      # Interactive Gantt chart with Canvas rendering
 │   │   ├── Schedule/                   # Split-view task list + Gantt
 │   │   ├── Tasks/                      # Task table, detail inspector, CSV export
-│   │   ├── Milestones/                 # Milestone & deliverable tracking
+│   │   ├── Milestones/                 # Milestone tracking and health analysis
 │   │   ├── Resources/                  # Resource sheet
 │   │   ├── EarnedValue/               # EVM dashboard with S-Curve
 │   │   ├── Workload/                   # Resource workload heatmap
 │   │   ├── Calendar/                   # Calendar visualization
 │   │   ├── Timeline/                   # Executive timeline view
+│   │   ├── Critical/                   # Critical-path and float review
 │   │   ├── Diff/                       # Two-version comparison
 │   │   ├── Summary/                    # Project metadata
 │   │   └── Components/                 # Shared UI (filter bar, zoom controls)
