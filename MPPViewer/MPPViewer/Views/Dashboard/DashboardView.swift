@@ -409,52 +409,62 @@ struct DashboardView: View {
         }
         .sorted { $0.0.displayName < $1.0.displayName }
 
-        let lines: [String] =
-            [
-                "# \(project.properties.projectTitle ?? "Project") Review Pack",
-                "",
-                "Generated: \(ISO8601DateFormatter().string(from: Date()))",
-                "",
-                "## Executive Summary",
-                "- Average task progress: \(stats.averageProgressPercent)%",
-                "- Completed-task ratio: \(stats.completedPercent)%",
-                "- Days remaining: \(stats.daysRemainingText)",
-                "- Critical incomplete tasks: \(stats.criticalIncompleteTasks)",
-                "- Baseline tracked tasks: \(stats.baselineTrackedTasks)",
-                "- Baseline slipped tasks: \(stats.baselineSlippedTasks)",
-                "",
-                "## Validation",
-                "- Errors: \(validationIssues.filter { $0.severity == .error }.count)",
-                "- Warnings: \(validationIssues.filter { $0.severity == .warning }.count)",
-                "- Info: \(validationIssues.filter { $0.severity == .info }.count)",
-            ]
-            + validationIssues.prefix(10).map { "- [\($0.severity.label)] \($0.taskName ?? "Project"): \($0.message)" }
-            + [
-                "",
-                "## Diagnostics",
-                "- Total findings: \(diagnostics.count)",
-            ]
-            + diagnostics.prefix(10).map { "- [\($0.category.label)] \($0.taskName ?? "Project"): \($0.message)" }
-            + [
-                "",
-                "## Resource Risks",
-                "- Total findings: \(resourceIssues.count)",
-            ]
-            + resourceIssues.prefix(10).map { "- [\($0.severity.label)] \($0.resourceName): \($0.message)" }
-            + [
-                "",
-                "## Milestone Outlook",
-            ]
-            + milestones.map { milestone in
-                let variance = milestone.finishVarianceDays ?? milestone.startVarianceDays
-                let varianceText = variance.map { "\($0 > 0 ? "+" : "")\($0)d vs baseline" } ?? "No baseline"
-                return "- \(milestone.displayName): \(DateFormatting.shortDate(milestone.start)) · \(varianceText)"
+        let validationSummaryLines = [
+            "- Errors: \(validationIssues.filter { $0.severity == .error }.count)",
+            "- Warnings: \(validationIssues.filter { $0.severity == .warning }.count)",
+            "- Info: \(validationIssues.filter { $0.severity == .info }.count)",
+        ]
+        let validationDetailLines = validationIssues.prefix(10).map { issue in
+            "- [\(issue.severity.label)] \(issue.taskName ?? "Project"): \(issue.message)"
+        }
+        let diagnosticsLines = diagnostics.prefix(10).map { item in
+            "- [\(item.category.label)] \(item.taskName ?? "Project"): \(item.message)"
+        }
+        let resourceRiskLines = resourceIssues.prefix(10).map { item in
+            "- [\(item.severity.label)] \(item.resourceName): \(item.message)"
+        }
+        let milestoneLines = milestones.map { milestone in
+            let variance = milestone.finishVarianceDays ?? milestone.startVarianceDays
+            let varianceText = variance.map { "\($0 > 0 ? "+" : "")\($0)d vs baseline" } ?? "No baseline"
+            return "- \(milestone.displayName): \(DateFormatting.shortDate(milestone.start)) · \(varianceText)"
+        }
+        let reviewNoteLines = notedTasks.isEmpty
+            ? ["- No local review notes"]
+            : notedTasks.map { task, note in
+                "- \(task.displayName): \(note.replacingOccurrences(of: "\n", with: " "))"
             }
-            + [
-                "",
-                "## Review Notes",
-            ]
-            + (notedTasks.isEmpty ? ["- No local review notes"] : notedTasks.map { "- \($0.0.displayName): \($0.1.replacingOccurrences(of: "\n", with: " "))" })
+
+        var lines: [String] = [
+            "# \(project.properties.projectTitle ?? "Project") Review Pack",
+            "",
+            "Generated: \(ISO8601DateFormatter().string(from: Date()))",
+            "",
+            "## Executive Summary",
+            "- Average task progress: \(stats.averageProgressPercent)%",
+            "- Completed-task ratio: \(stats.completedPercent)%",
+            "- Days remaining: \(stats.daysRemainingText)",
+            "- Critical incomplete tasks: \(stats.criticalIncompleteTasks)",
+            "- Baseline tracked tasks: \(stats.baselineTrackedTasks)",
+            "- Baseline slipped tasks: \(stats.baselineSlippedTasks)",
+            "",
+            "## Validation",
+        ]
+        lines.append(contentsOf: validationSummaryLines)
+        lines.append(contentsOf: validationDetailLines)
+        lines.append("")
+        lines.append("## Diagnostics")
+        lines.append("- Total findings: \(diagnostics.count)")
+        lines.append(contentsOf: diagnosticsLines)
+        lines.append("")
+        lines.append("## Resource Risks")
+        lines.append("- Total findings: \(resourceIssues.count)")
+        lines.append(contentsOf: resourceRiskLines)
+        lines.append("")
+        lines.append("## Milestone Outlook")
+        lines.append(contentsOf: milestoneLines)
+        lines.append("")
+        lines.append("## Review Notes")
+        lines.append(contentsOf: reviewNoteLines)
 
         let markdown = lines.joined(separator: "\n")
         let panel = NSSavePanel()

@@ -1,5 +1,5 @@
 cask "mpp-viewer" do
-  version "2.2.3"
+  version "2.2.4"
   sha256 :no_check # Update with actual SHA256 after first release
 
   url "https://github.com/Engagendy/MPPViewerMacOS/releases/download/v#{version}/MPPViewer-#{version}-arm64.dmg",
