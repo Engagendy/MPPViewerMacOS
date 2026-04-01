@@ -88,6 +88,7 @@ fi
 if [[ "$SKIP_APP" == false ]]; then
     echo ""
     echo "▸ Building macOS app…"
+    mkdir -p "$BUILD_DIR"
     BUILD_LOG="$BUILD_DIR/xcodebuild.log"
     if ! xcodebuild -project "$XCODEPROJ" \
         -scheme "$SCHEME" \
