@@ -88,6 +88,8 @@ final class ProjectTask: Codable, Identifiable {
     let parentTaskUniqueID: Int?
     let constraintType: String?
     let constraintDate: String?
+    let totalSlack: Int?
+    let freeSlack: Int?
     let predecessors: [TaskRelation]?
     let successors: [TaskRelation]?
     let active: Bool?
@@ -145,6 +147,20 @@ final class ProjectTask: Codable, Identifiable {
         baselineFinish.flatMap { DateFormatting.parseMPXJDate($0) }
     }
 
+    var isCompleted: Bool {
+        (percentComplete ?? 0) >= 100
+    }
+
+    var isInProgress: Bool {
+        let pct = percentComplete ?? 0
+        return pct > 0 && pct < 100
+    }
+
+    var isOverdue: Bool {
+        guard !isCompleted, let finishDate else { return false }
+        return finishDate < Calendar.current.startOfDay(for: Date())
+    }
+
     var hasBaseline: Bool {
         baselineStart != nil || baselineFinish != nil
     }
@@ -157,6 +173,34 @@ final class ProjectTask: Codable, Identifiable {
     var finishVarianceDays: Int? {
         guard let bf = baselineFinishDate, let f = finishDate else { return nil }
         return Calendar.current.dateComponents([.day], from: bf, to: f).day
+    }
+
+    var worstBaselineVarianceDays: Int? {
+        [startVarianceDays, finishVarianceDays]
+            .compactMap { $0 }
+            .max(by: { abs($0) < abs($1) })
+    }
+
+    var totalSlackDisplay: String? {
+        totalSlack.map(DurationFormatting.formatSeconds)
+    }
+
+    var freeSlackDisplay: String? {
+        freeSlack.map(DurationFormatting.formatSeconds)
+    }
+
+    var isDisplayMilestone: Bool {
+        guard milestone == true, summary != true else { return false }
+
+        if let duration, duration == 0 {
+            return true
+        }
+
+        if let startDate, let finishDate {
+            return startDate == finishDate
+        }
+
+        return duration == nil
     }
 
     enum CodingKeys: String, CodingKey, CaseIterable {
@@ -185,6 +229,8 @@ final class ProjectTask: Codable, Identifiable {
         case parentTaskUniqueID = "parent_task_unique_id"
         case constraintType = "constraint_type"
         case constraintDate = "constraint_date"
+        case totalSlack = "total_slack"
+        case freeSlack = "free_slack"
         case predecessors
         case successors
         case active
@@ -236,6 +282,8 @@ final class ProjectTask: Codable, Identifiable {
         parentTaskUniqueID = try container.decodeIfPresent(Int.self, forKey: .parentTaskUniqueID)
         constraintType = try container.decodeIfPresent(String.self, forKey: .constraintType)
         constraintDate = try container.decodeIfPresent(String.self, forKey: .constraintDate)
+        totalSlack = try container.decodeIfPresent(Int.self, forKey: .totalSlack)
+        freeSlack = try container.decodeIfPresent(Int.self, forKey: .freeSlack)
         predecessors = try container.decodeIfPresent([TaskRelation].self, forKey: .predecessors)
         successors = try container.decodeIfPresent([TaskRelation].self, forKey: .successors)
         active = try container.decodeIfPresent(Bool.self, forKey: .active)

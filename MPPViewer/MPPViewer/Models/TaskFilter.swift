@@ -26,6 +26,17 @@ enum TaskGrouping: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+enum TaskViewPreset: String, CaseIterable, Identifiable {
+    case none = "Default"
+    case overdueCritical = "Overdue Critical"
+    case upcomingMilestones = "Upcoming Milestones"
+    case inProgress = "In Progress"
+    case flaggedReview = "Flagged Review"
+    case completed = "Completed"
+
+    var id: String { rawValue }
+}
+
 // MARK: - Filter Criteria
 
 struct TaskFilterCriteria {
@@ -38,10 +49,13 @@ struct TaskFilterCriteria {
     var priorityRange: ClosedRange<Int>? = nil
     var textSearch: String = ""
     var flaggedOnly: Bool = false
+    var baselineSlippedOnly: Bool = false
+    var hasDependenciesOnly: Bool = false
 
     var isActive: Bool {
         status != .all || resourceID != nil || dateRangeStart != nil || dateRangeEnd != nil ||
-        criticalOnly || milestoneOnly || priorityRange != nil || !textSearch.isEmpty || flaggedOnly
+        criticalOnly || milestoneOnly || priorityRange != nil || !textSearch.isEmpty || flaggedOnly ||
+        baselineSlippedOnly || hasDependenciesOnly
     }
 
     mutating func clear() {
@@ -54,9 +68,11 @@ struct TaskFilterCriteria {
         priorityRange = nil
         textSearch = ""
         flaggedOnly = false
+        baselineSlippedOnly = false
+        hasDependenciesOnly = false
     }
 
-    func matches(_ task: ProjectTask, assignments: [ResourceAssignment], today: Date = Date()) -> Bool {
+    func matches(_ task: ProjectTask, assignments: [ResourceAssignment], resources: [ProjectResource], today: Date = Date()) -> Bool {
         // Status filter
         switch status {
         case .all:
@@ -104,15 +120,58 @@ struct TaskFilterCriteria {
             guard range.contains(p) else { return false }
         }
 
+        if baselineSlippedOnly {
+            guard (task.finishVarianceDays ?? task.startVarianceDays ?? 0) > 0 else { return false }
+        }
+
+        if hasDependenciesOnly {
+            let predecessorCount = task.predecessors?.count ?? 0
+            let successorCount = task.successors?.count ?? 0
+            guard predecessorCount + successorCount > 0 else { return false }
+        }
+
         // Text search
         if !textSearch.isEmpty {
             let search = textSearch.lowercased()
             let nameMatch = task.name?.lowercased().contains(search) == true
             let wbsMatch = task.wbs?.lowercased().contains(search) == true
+            let idMatch = task.id.map(String.init)?.contains(search) == true
             let notesMatch = task.notes?.lowercased().contains(search) == true
-            guard nameMatch || wbsMatch || notesMatch else { return false }
+            let customFieldMatch = task.customFields?.values.contains(where: { $0.displayString.lowercased().contains(search) }) == true
+            let taskAssignments = assignments.filter { $0.taskUniqueID == task.uniqueID }
+            let resourceMatch = taskAssignments.contains { assignment in
+                guard let resourceID = assignment.resourceUniqueID else { return false }
+                return resources.first(where: { $0.uniqueID == resourceID })?.name?.lowercased().contains(search) == true
+            }
+            let keywordMatch =
+                (search == "critical" && task.critical == true) ||
+                (search == "milestone" && task.isDisplayMilestone) ||
+                (search == "summary" && task.summary == true) ||
+                (search == "overdue" && task.isOverdue) ||
+                (search == "baseline slip" && (task.finishVarianceDays ?? task.startVarianceDays ?? 0) > 0)
+            guard nameMatch || wbsMatch || idMatch || notesMatch || customFieldMatch || resourceMatch || keywordMatch else { return false }
         }
 
         return true
+    }
+
+    mutating func applyPreset(_ preset: TaskViewPreset) {
+        clear()
+        switch preset {
+        case .none:
+            break
+        case .overdueCritical:
+            status = .overdue
+            criticalOnly = true
+        case .upcomingMilestones:
+            status = .incomplete
+            milestoneOnly = true
+        case .inProgress:
+            status = .inProgress
+        case .flaggedReview:
+            flaggedOnly = true
+        case .completed:
+            status = .complete
+        }
     }
 }

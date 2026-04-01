@@ -5,21 +5,11 @@ struct MilestonesView: View {
     let allTasks: [Int: ProjectTask]
     let searchText: String
 
-    @State private var selectedFilter: MilestoneFilter = .all
     @State private var sortOrder = [KeyPathComparator(\MilestoneItem.sortDate, order: .forward)]
 
     private var items: [MilestoneItem] {
-        let filtered: [ProjectTask]
-        switch selectedFilter {
-        case .all:
-            filtered = tasks.filter { $0.milestone == true || $0.summary == true }
-        case .milestones:
-            filtered = tasks.filter { $0.milestone == true }
-        case .deliverables:
-            filtered = tasks.filter { $0.summary == true }
-        }
-
-        let searched = searchText.isEmpty ? filtered : filtered.filter {
+        let searched = searchText.isEmpty ? tasks.filter { $0.isDisplayMilestone } : tasks.filter {
+            $0.isDisplayMilestone &&
             $0.name?.lowercased().contains(searchText.lowercased()) == true
         }
 
@@ -39,11 +29,15 @@ struct MilestonesView: View {
         items.filter { $0.percentComplete < 100 && $0.date != nil && $0.date! < Date() }.count
     }
 
+    private var atRiskCount: Int {
+        items.filter { $0.healthLevel == .high || $0.healthLevel == .medium }.count
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // Toolbar
             HStack {
-                Text("Milestones & Deliverables")
+                Text("Milestones")
                     .font(.headline)
                 Text("(\(items.count) items)")
                     .font(.caption)
@@ -56,18 +50,8 @@ struct MilestonesView: View {
                     statusChip(count: completedCount, label: "Completed", color: .green)
                     statusChip(count: upcomingCount, label: "Upcoming", color: .blue)
                     statusChip(count: overdueCount, label: "Overdue", color: .red)
+                    statusChip(count: atRiskCount, label: "At Risk", color: .orange)
                 }
-
-                Divider().frame(height: 16)
-
-                // Filter picker
-                Picker("Filter", selection: $selectedFilter) {
-                    ForEach(MilestoneFilter.allCases) { filter in
-                        Text(filter.rawValue).tag(filter)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .frame(width: 280)
             }
             .padding(.horizontal)
             .padding(.vertical, 8)
@@ -79,27 +63,16 @@ struct MilestonesView: View {
                 ContentUnavailableView(
                     "No Milestones",
                     systemImage: "diamond",
-                    description: Text(searchText.isEmpty ? "This project has no milestones or deliverables." : "No items match your search.")
+                    description: Text(searchText.isEmpty ? "This project has no explicit milestones." : "No items match your search.")
                 )
             } else {
                 Table(items, sortOrder: $sortOrder) {
-                    TableColumn("Type") { item in
-                        HStack(spacing: 4) {
-                            if item.isMilestone {
-                                Image(systemName: "diamond.fill")
-                                    .font(.caption2)
-                                    .foregroundStyle(.orange)
-                                Text("Milestone")
-                            } else {
-                                Image(systemName: "folder.fill")
-                                    .font(.caption2)
-                                    .foregroundStyle(.blue)
-                                Text("Deliverable")
-                            }
-                        }
-                        .font(.caption)
+                    TableColumn("") { _ in
+                        Image(systemName: "diamond.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.orange)
                     }
-                    .width(min: 80, ideal: 100, max: 120)
+                    .width(min: 24, ideal: 28, max: 32)
 
                     TableColumn("ID", value: \.taskID) { item in
                         Text(item.taskID)
@@ -109,7 +82,6 @@ struct MilestonesView: View {
 
                     TableColumn("Name", value: \.name) { item in
                         Text(item.name)
-                            .fontWeight(item.isMilestone ? .regular : .semibold)
                             .foregroundStyle(item.isCritical ? .red : .primary)
                             .lineLimit(2)
                     }
@@ -125,6 +97,13 @@ struct MilestonesView: View {
 
                     TableColumn("Status") { item in
                         statusBadge(for: item)
+                    }
+                    .width(min: 80, ideal: 100, max: 120)
+
+                    TableColumn("Baseline") { item in
+                        Text(item.baselineText)
+                            .font(.caption)
+                            .foregroundStyle(item.healthColor)
                     }
                     .width(min: 80, ideal: 100, max: 120)
 
@@ -145,6 +124,20 @@ struct MilestonesView: View {
                             .foregroundStyle(.secondary)
                     }
                     .width(min: 60, ideal: 100, max: 150)
+
+                    TableColumn("Health") { item in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(item.healthLabel)
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(item.healthColor)
+                            Text(item.healthReason)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        }
+                    }
+                    .width(min: 220, ideal: 320)
                 }
             }
         }
@@ -174,16 +167,6 @@ struct MilestonesView: View {
     }
 }
 
-// MARK: - Supporting Types
-
-enum MilestoneFilter: String, CaseIterable, Identifiable {
-    case all = "All"
-    case milestones = "Milestones"
-    case deliverables = "Deliverables"
-
-    var id: String { rawValue }
-}
-
 struct MilestoneItem: Identifiable {
     let id: Int
     let taskID: String
@@ -191,13 +174,44 @@ struct MilestoneItem: Identifiable {
     let date: Date?
     let finishDate: Date?
     let percentComplete: Double
-    let isMilestone: Bool
     let isCritical: Bool
     let predecessorText: String
     let isOverdue: Bool
+    let baselineVarianceDays: Int?
+    let blockedPredecessorCount: Int
+    let healthReason: String
+    let healthLevel: HealthLevel
 
     var sortDate: Date {
         date ?? .distantFuture
+    }
+
+    var baselineText: String {
+        guard let baselineVarianceDays else { return "No baseline" }
+        if baselineVarianceDays == 0 { return "On baseline" }
+        return "\(baselineVarianceDays > 0 ? "+" : "")\(baselineVarianceDays)d"
+    }
+
+    var healthLabel: String {
+        switch healthLevel {
+        case .low:
+            return "Stable"
+        case .medium:
+            return "Watch"
+        case .high:
+            return "Risk"
+        }
+    }
+
+    var healthColor: Color {
+        switch healthLevel {
+        case .low:
+            return .green
+        case .medium:
+            return .orange
+        case .high:
+            return .red
+        }
     }
 
     var statusInfo: (String, Color) {
@@ -216,11 +230,10 @@ struct MilestoneItem: Identifiable {
         self.id = task.uniqueID
         self.taskID = task.id.map(String.init) ?? ""
         self.name = task.displayName
-        self.isMilestone = task.milestone == true
         self.isCritical = task.critical == true
         self.percentComplete = task.percentComplete ?? 0
 
-        let targetDate = task.milestone == true ? task.startDate : task.finishDate
+        let targetDate = task.startDate
         self.date = targetDate
         self.finishDate = task.finishDate
 
@@ -230,6 +243,11 @@ struct MilestoneItem: Identifiable {
         } else {
             self.isOverdue = false
         }
+        self.baselineVarianceDays = task.finishVarianceDays ?? task.startVarianceDays
+
+        let predecessorTasks = (task.predecessors ?? []).compactMap { allTasks[$0.targetTaskUniqueID] }
+        let incompletePredecessors = predecessorTasks.filter { !$0.isCompleted }
+        self.blockedPredecessorCount = incompletePredecessors.count
 
         if let preds = task.predecessors, !preds.isEmpty {
             self.predecessorText = preds.compactMap { rel -> String? in
@@ -241,7 +259,44 @@ struct MilestoneItem: Identifiable {
         } else {
             self.predecessorText = ""
         }
+
+        let slippedDays = max(0, baselineVarianceDays ?? 0)
+        let latePredecessorNames = incompletePredecessors
+            .filter { ($0.finishDate ?? .distantPast) < now || ($0.finishDate ?? .distantPast) > (targetDate ?? .distantFuture) }
+            .map(\.displayName)
+
+        if percentComplete >= 100 {
+            self.healthLevel = .low
+            self.healthReason = "Milestone is complete."
+        } else if !latePredecessorNames.isEmpty {
+            self.healthLevel = .high
+            self.healthReason = "Blocked by predecessor: \(latePredecessorNames.prefix(2).joined(separator: ", "))"
+        } else if isOverdue && blockedPredecessorCount > 0 {
+            self.healthLevel = .high
+            self.healthReason = "Past due and still waiting on \(blockedPredecessorCount) predecessor(s)."
+        } else if isOverdue && percentComplete == 0 {
+            self.healthLevel = .high
+            self.healthReason = "Target date passed with no progress recorded."
+        } else if slippedDays > 0 {
+            self.healthLevel = slippedDays >= 7 ? .high : .medium
+            self.healthReason = "Slipped \(slippedDays) day(s) against the baseline."
+        } else if blockedPredecessorCount > 0 {
+            self.healthLevel = .medium
+            self.healthReason = "Waiting on \(blockedPredecessorCount) predecessor task(s)."
+        } else if percentComplete > 0 {
+            self.healthLevel = .low
+            self.healthReason = "Work has started and no active dependency block is visible."
+        } else {
+            self.healthLevel = .low
+            self.healthReason = "No active blocker is visible from current dependencies."
+        }
     }
+}
+
+enum HealthLevel {
+    case low
+    case medium
+    case high
 }
 
 extension MilestoneItem: Comparable {

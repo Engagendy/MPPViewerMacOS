@@ -141,7 +141,8 @@ struct GanttChartView: View {
                 totalDays: totalDays,
                 pixelsPerDay: pixelsPerDay,
                 rowHeight: rowHeight,
-                criticalPathOnly: criticalPathOnly
+                criticalPathOnly: criticalPathOnly,
+                showBaseline: showBaseline
             )
             .frame(width: timelineWidth, height: CGFloat(flatTasks.count) * rowHeight)
         }
@@ -169,7 +170,8 @@ struct GanttChartView: View {
                 totalDays: totalDays,
                 pixelsPerDay: pixelsPerDay,
                 rowHeight: rowHeight,
-                criticalPathOnly: criticalPathOnly
+                criticalPathOnly: criticalPathOnly,
+                showBaseline: showBaseline
             )
             .frame(width: timelineWidth, height: CGFloat(flatTasks.count) * rowHeight)
         }

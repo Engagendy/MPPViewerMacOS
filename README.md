@@ -108,8 +108,8 @@ Microsoft Project-style split view with a task list on the left and Gantt timeli
 ### Task Table
 Hierarchical task table with expand/collapse, sortable columns (ID, WBS, Name, Duration, Start, Finish, % Complete, Cost, Predecessors), detail inspector panel, flag/bookmark tasks, and custom field columns. Filter by critical, milestones, flagged, or behind schedule. Export to CSV or PDF.
 
-### Milestones & Deliverables
-Dedicated view for milestones and summary deliverables with status badges (Completed, Upcoming, Overdue) and sortable columns.
+### Milestones
+Dedicated view for explicit project milestones with status badges (Completed, Upcoming, Overdue) and sortable columns.
 
 ### Earned Value Analysis
 Full EVM dashboard with CPI, SPI, EAC, VAC indicators, an S-Curve chart plotting PV/EV/AC over time, and a task-level EVM breakdown table.

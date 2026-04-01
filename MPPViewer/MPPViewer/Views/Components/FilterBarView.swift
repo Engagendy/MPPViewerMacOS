@@ -4,11 +4,16 @@ struct FilterBarView: View {
     @Binding var criteria: TaskFilterCriteria
     @Binding var grouping: TaskGrouping
     let resources: [ProjectResource]
+    var onClear: (() -> Void)? = nil
     @State private var showMore = false
 
     var body: some View {
         VStack(spacing: 6) {
             HStack(spacing: 12) {
+                TextField("Search task, WBS, ID, resource, custom fields", text: $criteria.textSearch)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(minWidth: 240, maxWidth: 320)
+
                 // Status picker
                 Picker("Status", selection: $criteria.status) {
                     ForEach(TaskStatus.allCases) { status in
@@ -49,6 +54,18 @@ struct FilterBarView: View {
                     .controlSize(.small)
                     .tint(criteria.flaggedOnly ? .orange : nil)
 
+                Toggle("Baseline Slip", isOn: $criteria.baselineSlippedOnly)
+                    .toggleStyle(.button)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .tint(criteria.baselineSlippedOnly ? .red : nil)
+
+                Toggle("Linked", isOn: $criteria.hasDependenciesOnly)
+                    .toggleStyle(.button)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .tint(criteria.hasDependenciesOnly ? .blue : nil)
+
                 Divider().frame(height: 16)
 
                 // Group by
@@ -74,6 +91,7 @@ struct FilterBarView: View {
                     Button("Clear") {
                         criteria.clear()
                         grouping = .none
+                        onClear?()
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)

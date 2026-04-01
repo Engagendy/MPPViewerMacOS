@@ -5,6 +5,7 @@ struct TimelineView: View {
 
     @State private var pixelsPerDay: CGFloat = 10
     @State private var preparedData: TimelinePreparedData?
+    @State private var showBaseline: Bool = false
     @Environment(\.colorScheme) var colorScheme
 
     private let rowHeight: CGFloat = 44
@@ -33,6 +34,16 @@ struct TimelineView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
+
+                    Divider().frame(height: 16)
+
+                    Toggle(isOn: $showBaseline) {
+                        Label("Baseline", systemImage: "clock.arrow.2.circlepath")
+                            .font(.caption)
+                    }
+                    .toggleStyle(.button)
+                    .buttonStyle(.bordered)
+                    .tint(showBaseline ? .gray : nil)
 
                     Divider().frame(height: 16)
 
@@ -132,7 +143,7 @@ struct TimelineView: View {
             items.append(TimelineItem(
                 uniqueID: task.uniqueID,
                 name: task.displayName,
-                isMilestone: task.milestone == true,
+                isMilestone: task.isDisplayMilestone,
                 isSummary: task.summary == true,
                 outlineLevel: task.outlineLevel ?? 1,
                 percentComplete: task.percentComplete ?? 0,
@@ -142,6 +153,8 @@ struct TimelineView: View {
                 hasEnd: task.finishDate != nil,
                 startDateStr: task.startDate.map { _ in DateFormatting.shortDate(task.start) } ?? "",
                 endDateStr: task.finishDate.map { _ in DateFormatting.shortDate(task.finish) } ?? "",
+                baselineStartDayOffset: task.baselineStartDate.map { calendar.dateComponents([.day], from: range.start, to: $0).day ?? 0 },
+                baselineEndDayOffset: task.baselineFinishDate.map { calendar.dateComponents([.day], from: range.start, to: $0).day ?? 0 },
                 color: color,
                 laneIndex: laneIndex,
                 isLevel1: (task.outlineLevel ?? 1) <= 1 && task.summary == true
@@ -154,7 +167,7 @@ struct TimelineView: View {
             endDate: range.end,
             totalDays: totalDays,
             summaryCount: tasks.filter { $0.summary == true }.count,
-            milestoneCount: tasks.filter { $0.milestone == true }.count
+            milestoneCount: tasks.filter { $0.isDisplayMilestone }.count
         )
     }
 
@@ -188,6 +201,26 @@ struct TimelineView: View {
 
             guard item.hasStart else { continue }
             let xStart = CGFloat(item.startDayOffset) * pixelsPerDay
+
+            if showBaseline, let baselineStart = item.baselineStartDayOffset {
+                let xBase = CGFloat(baselineStart) * pixelsPerDay
+                if item.isMilestone {
+                    var basePath = Path()
+                    let cy = y + rowHeight / 2
+                    let size: CGFloat = 8
+                    basePath.move(to: CGPoint(x: xBase, y: cy - size / 2))
+                    basePath.addLine(to: CGPoint(x: xBase + size / 2, y: cy))
+                    basePath.addLine(to: CGPoint(x: xBase, y: cy + size / 2))
+                    basePath.addLine(to: CGPoint(x: xBase - size / 2, y: cy))
+                    basePath.closeSubpath()
+                    context.stroke(basePath, with: .color(.gray.opacity(0.55)), lineWidth: 1)
+                } else if item.isSummary, let baselineEnd = item.baselineEndDayOffset {
+                    let baselineWidth = max(6, CGFloat(max(1, baselineEnd - baselineStart)) * pixelsPerDay)
+                    let baselineRect = CGRect(x: xBase, y: y + rowHeight * 0.68, width: baselineWidth, height: 4)
+                    let baselinePath = RoundedRectangle(cornerRadius: 2).path(in: baselineRect)
+                    context.fill(baselinePath, with: .color(.gray.opacity(isDark ? 0.45 : 0.25)))
+                }
+            }
 
             if item.isMilestone {
                 drawMilestone(context: context, item: item, x: xStart, y: y)
@@ -301,6 +334,8 @@ private struct TimelineItem {
     let hasEnd: Bool
     let startDateStr: String
     let endDateStr: String
+    let baselineStartDayOffset: Int?
+    let baselineEndDayOffset: Int?
     let color: Color
     let laneIndex: Int
     let isLevel1: Bool

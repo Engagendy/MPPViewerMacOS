@@ -15,6 +15,8 @@ struct TaskTableView: View {
     @State private var grouping: TaskGrouping = .none
     @State private var visibleCustomColumns: Set<String> = []
     @State private var showColumnPicker = false
+    @AppStorage("selectedTaskViewPreset") private var selectedTaskViewPresetRaw = TaskViewPreset.none.rawValue
+    @AppStorage("taskInspectorWidth") private var storedInspectorWidth = 360.0
 
     var filteredTasks: [ProjectTask] {
         var result = tasks
@@ -43,9 +45,9 @@ struct TaskTableView: View {
     }
 
     var body: some View {
-        if filteredTasks.isEmpty {
-            ContentUnavailableView("No Tasks", systemImage: "list.bullet.indent", description: Text(searchText.isEmpty ? "This project has no tasks." : "No tasks match your search."))
-        } else {
+        GeometryReader { geometry in
+            let inspectorWidth = clampedInspectorWidth(for: geometry.size.width)
+
             HStack(spacing: 0) {
                 // Main table
                 VStack(spacing: 0) {
@@ -53,7 +55,10 @@ struct TaskTableView: View {
                     FilterBarView(
                         criteria: $filterCriteria,
                         grouping: $grouping,
-                        resources: resources
+                        resources: resources,
+                        onClear: {
+                            selectedTaskViewPresetRaw = TaskViewPreset.none.rawValue
+                        }
                     )
                     Divider()
 
@@ -72,9 +77,25 @@ struct TaskTableView: View {
                         }
                         .buttonStyle(.borderless)
 
+                        Divider().frame(height: 16)
+
+                        Picker("Preset", selection: Binding(
+                            get: { TaskViewPreset(rawValue: selectedTaskViewPresetRaw) ?? .none },
+                            set: { newValue in
+                                selectedTaskViewPresetRaw = newValue.rawValue
+                                filterCriteria.applyPreset(newValue)
+                                grouping = .none
+                            }
+                        )) {
+                            ForEach(TaskViewPreset.allCases) { preset in
+                                Text(preset.rawValue).tag(preset)
+                            }
+                        }
+                        .frame(width: 180)
+                        .font(.caption)
+
                         Spacer()
 
-                        // Legend
                         HStack(spacing: 14) {
                             HStack(spacing: 4) {
                                 Image(systemName: "folder.fill").font(.caption2).foregroundStyle(.blue)
@@ -97,7 +118,6 @@ struct TaskTableView: View {
 
                         Divider().frame(height: 16)
 
-                        // Custom columns picker
                         if !availableCustomFieldKeys.isEmpty {
                             Button {
                                 showColumnPicker.toggle()
@@ -180,7 +200,15 @@ struct TaskTableView: View {
                     .padding(.horizontal)
                     .padding(.vertical, 6)
 
-                    Table(of: ProjectTask.self) {
+                    if visibleTasks.isEmpty {
+                        ContentUnavailableView(
+                            filteredTasks.isEmpty ? "No Matching Tasks" : "No Visible Tasks",
+                            systemImage: "line.3.horizontal.decrease.circle",
+                            description: Text(emptyStateDescription)
+                        )
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
+                        Table(of: ProjectTask.self) {
                         // Flag column
                         TableColumn("") { task in
                             Button {
@@ -317,28 +345,34 @@ struct TaskTableView: View {
                         }
                     }
                 }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .onKeyPress(.escape) {
                     selectedTaskID = nil
                     return .handled
                 }
 
-                // Inspector panel
                 if let task = selectedTask {
-                    Divider()
+                    inspectorResizeHandle(totalWidth: geometry.size.width)
+
                     TaskDetailView(
                         task: task,
                         allTasks: allTasks,
                         resources: resources,
                         assignments: assignments
                     )
+                    .frame(width: inspectorWidth)
                 }
             }
-            .onChange(of: navigateToTaskID?.wrappedValue) { _, newID in
-                if let id = newID {
-                    selectedTaskID = id
-                    navigateToTaskID?.wrappedValue = nil
-                }
+        }
+        .onChange(of: navigateToTaskID?.wrappedValue) { _, newID in
+            if let id = newID {
+                selectedTaskID = id
+                navigateToTaskID?.wrappedValue = nil
             }
+        }
+        .onAppear {
+            filterCriteria.applyPreset(TaskViewPreset(rawValue: selectedTaskViewPresetRaw) ?? .none)
         }
     }
 
@@ -348,6 +382,42 @@ struct TaskTableView: View {
             tasks = tasks.filter { flaggedTaskIDs.contains($0.uniqueID) }
         }
         return tasks
+    }
+
+    private func clampedInspectorWidth(for totalWidth: CGFloat) -> CGFloat {
+        let minWidth: CGFloat = 320
+        let maxWidth = max(minWidth, totalWidth - 420)
+        return min(max(CGFloat(storedInspectorWidth), minWidth), maxWidth)
+    }
+
+    private func inspectorResizeHandle(totalWidth: CGFloat) -> some View {
+        Rectangle()
+            .fill(Color.clear)
+            .frame(width: 10)
+            .overlay {
+                Rectangle()
+                    .fill(Color.secondary.opacity(0.18))
+                    .frame(width: 1)
+            }
+            .contentShape(Rectangle())
+            .cursor(.resizeLeftRight)
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        let proposedWidth = storedInspectorWidth - value.translation.width
+                        storedInspectorWidth = Double(min(max(proposedWidth, 320), totalWidth - 420))
+                    }
+            )
+    }
+
+    private var emptyStateDescription: String {
+        if tasks.isEmpty {
+            return "This project has no tasks."
+        }
+        if !searchText.isEmpty || filterCriteria.isActive || grouping != .none {
+            return "No tasks match the current search or filters. Adjust the filters above to see tasks again."
+        }
+        return "There are no tasks to display."
     }
 
     private func flattenTasks(_ tasks: [ProjectTask], collapsedIDs: Set<Int>) -> [ProjectTask] {
@@ -389,12 +459,12 @@ struct TaskTableView: View {
         let today = Calendar.current.startOfDay(for: Date())
         var result: [ProjectTask] = []
         for task in tasks {
-            if filterCriteria.matches(task, assignments: assignments, today: today) {
+            if filterCriteria.matches(task, assignments: assignments, resources: resources, today: today) {
                 result.append(task)
             }
             // Also check children
             for child in task.children {
-                if filterCriteria.matches(child, assignments: assignments, today: today) {
+                if filterCriteria.matches(child, assignments: assignments, resources: resources, today: today) {
                     if !result.contains(where: { $0.uniqueID == task.uniqueID }) {
                         result.append(task)
                     }
