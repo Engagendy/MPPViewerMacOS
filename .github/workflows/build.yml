@@ -43,7 +43,16 @@ jobs:
       - name: Build & Package
         run: ./scripts/package.sh --arch ${{ matrix.arch }} --version ${{ steps.version.outputs.version }}
 
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodebuild-log-${{ matrix.arch }}
+          path: build/xcodebuild.log
+          if-no-files-found: ignore
+
       - name: Upload DMG artifact
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: dmg-${{ matrix.arch }}

@@ -100,6 +100,9 @@ if [[ "$SKIP_APP" == false ]]; then
         CODE_SIGNING_ALLOWED=NO \
         $VERSION_BUILD_FLAG \
         clean build >"$BUILD_LOG" 2>&1; then
+        echo "  xcodebuild failed. Matching error lines:"
+        grep -nE "error:|SwiftCompile|CompileSwift" "$BUILD_LOG" | tail -80 || true
+        echo ""
         echo "  xcodebuild failed. Showing the last 200 log lines:"
         tail -200 "$BUILD_LOG"
         exit 1
