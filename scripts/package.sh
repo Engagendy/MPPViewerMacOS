@@ -88,7 +88,8 @@ fi
 if [[ "$SKIP_APP" == false ]]; then
     echo ""
     echo "▸ Building macOS app…"
-    xcodebuild -project "$XCODEPROJ" \
+    BUILD_LOG="$BUILD_DIR/xcodebuild.log"
+    if ! xcodebuild -project "$XCODEPROJ" \
         -scheme "$SCHEME" \
         -configuration Release \
         -derivedDataPath "$BUILD_DIR/DerivedData" \
@@ -98,7 +99,11 @@ if [[ "$SKIP_APP" == false ]]; then
         CODE_SIGNING_REQUIRED=NO \
         CODE_SIGNING_ALLOWED=NO \
         $VERSION_BUILD_FLAG \
-        clean build 2>&1 | tail -5
+        clean build >"$BUILD_LOG" 2>&1; then
+        echo "  xcodebuild failed. Showing the last 200 log lines:"
+        tail -200 "$BUILD_LOG"
+        exit 1
+    fi
     echo "  ✓ App built"
 else
     echo "▸ Skipping app build (--skip-app)"
