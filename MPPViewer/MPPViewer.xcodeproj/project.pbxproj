@@ -46,6 +46,7 @@
 		A10000010000000000000093 /* ProjectDiff.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000093 /* ProjectDiff.swift */; };
 		A10000010000000000000094 /* TimelineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000094 /* TimelineView.swift */; };
 		A10000010000000000000095 /* DiffView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000095 /* DiffView.swift */; };
+		A10000010000000000000100 /* DependencyGraphExplorerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000100 /* DependencyGraphExplorerView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -114,6 +115,7 @@
 		A20000010000000000000093 /* ProjectDiff.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectDiff.swift; sourceTree = "<group>"; };
 		A20000010000000000000094 /* TimelineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineView.swift; sourceTree = "<group>"; };
 		A20000010000000000000095 /* DiffView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiffView.swift; sourceTree = "<group>"; };
+		A20000010000000000000100 /* DependencyGraphExplorerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DependencyGraphExplorerView.swift; sourceTree = "<group>"; };
 		A30000010000000000000001 /* MPPViewer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MPPViewer.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -249,6 +251,7 @@
 			children = (
 				A20000010000000000000010 /* TaskTableView.swift */,
 				A20000010000000000000060 /* TaskDetailView.swift */,
+				A20000010000000000000100 /* DependencyGraphExplorerView.swift */,
 			);
 			path = Tasks;
 			sourceTree = "<group>";
@@ -488,6 +491,7 @@
 				A10000010000000000000009 /* ProjectSummaryView.swift in Sources */,
 				A10000010000000000000010 /* TaskTableView.swift in Sources */,
 				A10000010000000000000060 /* TaskDetailView.swift in Sources */,
+				A10000010000000000000100 /* DependencyGraphExplorerView.swift in Sources */,
 				A10000010000000000000011 /* GanttChartView.swift in Sources */,
 				A10000010000000000000012 /* GanttBarView.swift in Sources */,
 				A10000010000000000000013 /* GanttHeaderView.swift in Sources */,
