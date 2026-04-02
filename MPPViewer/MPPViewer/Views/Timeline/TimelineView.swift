@@ -155,6 +155,7 @@ struct TimelineView: View {
                 endDateStr: task.finishDate.map { _ in DateFormatting.shortDate(task.finish) } ?? "",
                 baselineStartDayOffset: task.baselineStartDate.map { calendar.dateComponents([.day], from: range.start, to: $0).day ?? 0 },
                 baselineEndDayOffset: task.baselineFinishDate.map { calendar.dateComponents([.day], from: range.start, to: $0).day ?? 0 },
+                baselineDescriptor: task.baselineVarianceDescriptor,
                 color: color,
                 laneIndex: laneIndex,
                 isLevel1: (task.outlineLevel ?? 1) <= 1 && task.summary == true
@@ -240,10 +241,16 @@ struct TimelineView: View {
 
             if item.isMilestone {
                 drawMilestone(context: context, item: item, x: xStart, y: y)
+                if let descriptor = item.baselineDescriptor, descriptor.days != 0 {
+                    drawTimelineBaselineBadge(context: context, descriptor: descriptor, anchorX: xStart + 12, y: y)
+                }
             } else if item.isSummary {
                 guard item.hasEnd else { continue }
                 let barWidth = max(6, CGFloat(max(1, item.endDayOffset - item.startDayOffset)) * pixelsPerDay)
                 drawBar(context: context, item: item, x: xStart, y: y, width: barWidth, isDark: isDark)
+                if let descriptor = item.baselineDescriptor, descriptor.days != 0 {
+                    drawTimelineBaselineBadge(context: context, descriptor: descriptor, anchorX: xStart + barWidth + 6, y: y)
+                }
             }
         }
 
@@ -276,6 +283,21 @@ struct TimelineView: View {
             .font(.system(size: 9))
             .foregroundColor(.secondary)
         context.draw(context.resolve(label), at: CGPoint(x: x + dSize / 2 + 6, y: cy), anchor: .leading)
+    }
+
+    private func drawTimelineBaselineBadge(context: GraphicsContext, descriptor: BaselineVarianceDescriptor, anchorX: CGFloat, y: CGFloat) {
+        let label = Text(descriptor.label)
+            .font(.system(size: 8, weight: .semibold))
+            .foregroundColor(.primary)
+        let resolved = context.resolve(label)
+        let badgeWidth = max(CGFloat(descriptor.label.count) * CGFloat(7) + CGFloat(10), CGFloat(32))
+        let badgeHeight: CGFloat = 16
+        let badgeRect = CGRect(x: anchorX, y: y + rowHeight * 0.18, width: badgeWidth, height: badgeHeight)
+        let border = RoundedRectangle(cornerRadius: badgeHeight / 2).path(in: badgeRect)
+
+        context.fill(border, with: .color(descriptor.color.opacity(0.2)))
+        context.stroke(border, with: .color(descriptor.color.opacity(0.6)), lineWidth: 0.5)
+        context.draw(resolved, at: CGPoint(x: badgeRect.midX, y: badgeRect.midY), anchor: .center)
     }
 
     private func drawBar(context: GraphicsContext, item: TimelineItem, x: CGFloat, y: CGFloat, width: CGFloat, isDark: Bool) {
@@ -352,6 +374,7 @@ private struct TimelineItem {
     let endDateStr: String
     let baselineStartDayOffset: Int?
     let baselineEndDayOffset: Int?
+    let baselineDescriptor: BaselineVarianceDescriptor?
     let color: Color
     let laneIndex: Int
     let isLevel1: Bool

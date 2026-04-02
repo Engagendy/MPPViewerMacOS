@@ -8,7 +8,7 @@ struct TaskDetailView: View {
     let breadcrumbTaskIDs: [Int]
     var onSelectTask: ((Int) -> Void)? = nil
     var onSelectBreadcrumb: ((Int) -> Void)? = nil
-    @AppStorage("taskReviewNotes") private var taskReviewNotesData: Data = Data()
+    @AppStorage(ReviewNotesStore.key) private var taskReviewNotesData: Data = Data()
     @State private var dependencyDepth: Int = 1
 
     var body: some View {
@@ -434,7 +434,7 @@ struct TaskDetailView: View {
     }
 
     private var reviewNotes: [Int: String] {
-        (try? JSONDecoder().decode([Int: String].self, from: taskReviewNotesData)) ?? [:]
+        ReviewNotesStore.decode(taskReviewNotesData)
     }
 
     private var breadcrumbBar: some View {

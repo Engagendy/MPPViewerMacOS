@@ -112,14 +112,17 @@ struct CriticalPathView: View {
                         meta("Progress", task.percentCompleteDisplay)
                     }
 
-                    if let preds = task.predecessors, !preds.isEmpty {
-                        Text("Predecessors: \(preds.compactMap { project.tasksByID[$0.targetTaskUniqueID]?.id.map(String.init) ?? "\($0.targetTaskUniqueID)" }.joined(separator: ", "))")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+                if let preds = task.predecessors, !preds.isEmpty {
+                    Text("Predecessors: \(preds.compactMap { project.tasksByID[$0.targetTaskUniqueID]?.id.map(String.init) ?? "\($0.targetTaskUniqueID)" }.joined(separator: ", "))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
+                if let descriptor = task.baselineVarianceDescriptor, descriptor.days != 0 {
+                    baselineBadge(descriptor)
+                }
+            }
 
-                Spacer()
+            Spacer()
 
                 Image(systemName: "arrow.right")
                     .foregroundStyle(.secondary)
@@ -150,5 +153,22 @@ struct CriticalPathView: View {
             .background(color.opacity(0.14))
             .foregroundStyle(color)
             .clipShape(Capsule())
+    }
+
+    private func baselineBadge(_ descriptor: BaselineVarianceDescriptor) -> some View {
+        Text(descriptor.label)
+            .font(.caption2)
+            .fontWeight(.semibold)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(descriptor.color.opacity(0.2))
+            )
+            .foregroundStyle(descriptor.color)
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(descriptor.color.opacity(0.6), lineWidth: 0.8)
+            )
     }
 }

@@ -102,6 +102,7 @@ Current implementation:
 - Dedicated Executive Mode screen for presentation-oriented review
 - Baseline analysis summary for tracked tasks, slips, and largest variance
 - Sidebar reordered into grouped overview, planning, and analysis sections
+- Executive view now surfaces a live baseline variance alert (green/red badges) and quick actions for both summary and review-pack exports.
 
 ### 5. Dependency and Constraint Diagnostics
 
@@ -131,6 +132,10 @@ Current implementation:
 - Clickable predecessor and successor nodes that refocus the inspector
 - Breadcrumb trail for dependency navigation history
 - Depth selector for expanding the dependency map to multi-hop relationships
+Next steps:
+- Anchor the dependency explorer on a vertical spine with tighter spacing and safe margins so deep chains stay readable.
+- Highlight the inspected node, expose the zoom/reset controls, and document the breadcrumb trail for focused navigation.
+- Surface the dependency explorer as the entry point for the presentation/executive mode refresh and baseline variance alerts.
 
 ### 6. Resource Allocation Diagnostics
 
@@ -205,6 +210,17 @@ Examples:
 - Interactive dependency navigation with breadcrumbs and depth control
 - Resource drill-down with assignment and load timeline inspection
 - Grouped sidebar ordering
+- Gantt/timeline/critical-path views now surface baseline slip badges and overlays so the worst deltas are obvious without opening inspectors.
+- Dependency explorer now renders vertically with highlight/zoom controls, breadcrumbs, and synced inspection.
+- BaselineVariance helpers expose finish/start deltas so the task table can render delta badges.
+
+## Immediate roadmap
+
+1. Presentation/executive mode polish (focus messaging, live baseline alerts, review-pack export)
+2. Baseline visuals across the Gantt/timeline plus float/critical-path signaling
+3. Task relationship inspector completion (resource/constraint drill-down, dependency-focus navigation)
+4. Persistent review notes plus exported review packs
+5. Dependency graph explorer polish (bread-crumb trail, focus + zoom reset, scroll/legend support)
 
 ## Notes on Deliverables
 

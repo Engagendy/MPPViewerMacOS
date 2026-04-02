@@ -43,6 +43,8 @@
 		A10000010000000000000090 /* CSVExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000090 /* CSVExporter.swift */; };
 		A10000010000000000000091 /* AnyCodable.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000091 /* AnyCodable.swift */; };
 		A10000010000000000000092 /* PrintManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000092 /* PrintManager.swift */; };
+		A10000010000000000000110 /* BaselineVariance.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000110 /* BaselineVariance.swift */; };
+		A10000010000000000000120 /* ReviewNotesStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000120 /* ReviewNotesStore.swift */; };
 		A10000010000000000000093 /* ProjectDiff.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000093 /* ProjectDiff.swift */; };
 		A10000010000000000000094 /* TimelineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000094 /* TimelineView.swift */; };
 		A10000010000000000000095 /* DiffView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000095 /* DiffView.swift */; };
@@ -112,6 +114,8 @@
 		A20000010000000000000090 /* CSVExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CSVExporter.swift; sourceTree = "<group>"; };
 		A20000010000000000000091 /* AnyCodable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnyCodable.swift; sourceTree = "<group>"; };
 		A20000010000000000000092 /* PrintManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrintManager.swift; sourceTree = "<group>"; };
+		A20000010000000000000110 /* BaselineVariance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BaselineVariance.swift; sourceTree = "<group>"; };
+		A20000010000000000000120 /* ReviewNotesStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewNotesStore.swift; sourceTree = "<group>"; };
 		A20000010000000000000093 /* ProjectDiff.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectDiff.swift; sourceTree = "<group>"; };
 		A20000010000000000000094 /* TimelineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineView.swift; sourceTree = "<group>"; };
 		A20000010000000000000095 /* DiffView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiffView.swift; sourceTree = "<group>"; };
@@ -265,6 +269,8 @@
 				A20000010000000000000070 /* PDFExporter.swift */,
 				A20000010000000000000090 /* CSVExporter.swift */,
 				A20000010000000000000092 /* PrintManager.swift */,
+				A20000010000000000000110 /* BaselineVariance.swift */,
+				A20000010000000000000120 /* ReviewNotesStore.swift */,
 			);
 			path = Utilities;
 			sourceTree = "<group>";
@@ -515,6 +521,8 @@
 				A10000010000000000000090 /* CSVExporter.swift in Sources */,
 				A10000010000000000000091 /* AnyCodable.swift in Sources */,
 				A10000010000000000000092 /* PrintManager.swift in Sources */,
+				A10000010000000000000110 /* BaselineVariance.swift in Sources */,
+				A10000010000000000000120 /* ReviewNotesStore.swift in Sources */,
 				A10000010000000000000093 /* ProjectDiff.swift in Sources */,
 				A10000010000000000000094 /* TimelineView.swift in Sources */,
 				A10000010000000000000095 /* DiffView.swift in Sources */,

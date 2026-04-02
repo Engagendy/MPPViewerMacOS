@@ -6,7 +6,7 @@ struct DashboardView: View {
     let project: ProjectModel
 
     @State private var stats: ProjectStats?
-    @AppStorage("taskReviewNotes") private var taskReviewNotesData: Data = Data()
+    @AppStorage(ReviewNotesStore.key) private var taskReviewNotesData: Data = Data()
 
     var body: some View {
         Group {
@@ -363,7 +363,7 @@ struct DashboardView: View {
 
     private func exportExecutiveSummary(stats: ProjectStats) {
         let validationIssues = ProjectValidator.validate(project: project)
-        let lines: [String] = [
+        var lines: [String] = [
             "# \(project.properties.projectTitle ?? "Project") Executive Summary",
             "",
             "Generated: \(ISO8601DateFormatter().string(from: Date()))",
@@ -385,7 +385,8 @@ struct DashboardView: View {
             "- Info: \(validationIssues.filter { $0.severity == .info }.count)",
             "",
             "## Upcoming Milestones",
-        ] + milestoneSummaryLines(stats.upcomingMilestones)
+        ]
+        lines.append(contentsOf: milestoneSummaryLines(stats.upcomingMilestones))
 
         let markdown = lines.joined(separator: "\n")
         let panel = NSSavePanel()
@@ -399,85 +400,11 @@ struct DashboardView: View {
 
     private func exportReviewPack() {
         guard let stats else { return }
-        let validationIssues = ProjectValidator.validate(project: project)
-        let diagnostics = ProjectDiagnostics.analyze(project: project)
-        let resourceIssues = ResourceDiagnostics.analyze(project: project)
-        let milestones = project.tasks.filter { $0.isDisplayMilestone }.prefix(10)
-        let notedTasks = reviewNotes.compactMap { uniqueID, note -> (ProjectTask, String)? in
-            guard let task = project.tasksByID[uniqueID] else { return nil }
-            return (task, note)
-        }
-        .sorted { $0.0.displayName < $1.0.displayName }
-
-        let validationSummaryLines = [
-            "- Errors: \(validationIssues.filter { $0.severity == .error }.count)",
-            "- Warnings: \(validationIssues.filter { $0.severity == .warning }.count)",
-            "- Info: \(validationIssues.filter { $0.severity == .info }.count)",
-        ]
-        let validationDetailLines = validationIssues.prefix(10).map { issue in
-            "- [\(issue.severity.label)] \(issue.taskName ?? "Project"): \(issue.message)"
-        }
-        let diagnosticsLines = diagnostics.prefix(10).map { item in
-            "- [\(item.category.label)] \(item.taskName ?? "Project"): \(item.message)"
-        }
-        let resourceRiskLines = resourceIssues.prefix(10).map { item in
-            "- [\(item.severity.label)] \(item.resourceName): \(item.message)"
-        }
-        let milestoneLines = milestones.map { milestone in
-            let variance = milestone.finishVarianceDays ?? milestone.startVarianceDays
-            let varianceText = variance.map { "\($0 > 0 ? "+" : "")\($0)d vs baseline" } ?? "No baseline"
-            return "- \(milestone.displayName): \(DateFormatting.shortDate(milestone.start)) · \(varianceText)"
-        }
-        let reviewNoteLines = notedTasks.isEmpty
-            ? ["- No local review notes"]
-            : notedTasks.map { task, note in
-                "- \(task.displayName): \(note.replacingOccurrences(of: "\n", with: " "))"
-            }
-
-        var lines: [String] = [
-            "# \(project.properties.projectTitle ?? "Project") Review Pack",
-            "",
-            "Generated: \(ISO8601DateFormatter().string(from: Date()))",
-            "",
-            "## Executive Summary",
-            "- Average task progress: \(stats.averageProgressPercent)%",
-            "- Completed-task ratio: \(stats.completedPercent)%",
-            "- Days remaining: \(stats.daysRemainingText)",
-            "- Critical incomplete tasks: \(stats.criticalIncompleteTasks)",
-            "- Baseline tracked tasks: \(stats.baselineTrackedTasks)",
-            "- Baseline slipped tasks: \(stats.baselineSlippedTasks)",
-            "",
-            "## Validation",
-        ]
-        lines.append(contentsOf: validationSummaryLines)
-        lines.append(contentsOf: validationDetailLines)
-        lines.append("")
-        lines.append("## Diagnostics")
-        lines.append("- Total findings: \(diagnostics.count)")
-        lines.append(contentsOf: diagnosticsLines)
-        lines.append("")
-        lines.append("## Resource Risks")
-        lines.append("- Total findings: \(resourceIssues.count)")
-        lines.append(contentsOf: resourceRiskLines)
-        lines.append("")
-        lines.append("## Milestone Outlook")
-        lines.append(contentsOf: milestoneLines)
-        lines.append("")
-        lines.append("## Review Notes")
-        lines.append(contentsOf: reviewNoteLines)
-
-        let markdown = lines.joined(separator: "\n")
-        let panel = NSSavePanel()
-        panel.nameFieldStringValue = "Review Pack \(PDFExporter.fileNameTimestamp).md"
-        panel.allowedContentTypes = [UTType.plainText]
-        panel.begin { response in
-            guard response == .OK, let url = panel.url else { return }
-            try? markdown.write(to: url, atomically: true, encoding: .utf8)
-        }
+        exportReviewPackReport(project: project, stats: stats, reviewNotes: reviewNotes)
     }
 
     private var reviewNotes: [Int: String] {
-        (try? JSONDecoder().decode([Int: String].self, from: taskReviewNotesData)) ?? [:]
+        ReviewNotesStore.decode(taskReviewNotesData)
     }
 
     private func milestoneSummaryLines(_ milestones: [ProjectTask]) -> [String] {
@@ -536,12 +463,25 @@ struct ExecutiveModeView: View {
 
                     Spacer()
 
-                    Button {
-                        exportExecutiveSummary(stats: stats)
-                    } label: {
-                        Label("Export Summary", systemImage: "doc.text")
+                    HStack(spacing: 10) {
+                        Button {
+                            exportExecutiveSummary(stats: stats)
+                        } label: {
+                            Label("Export Summary", systemImage: "doc.text")
+                        }
+                        .buttonStyle(.borderedProminent)
+
+                        Button {
+                            exportReviewPackReport(project: project, stats: stats, reviewNotes: ReviewNotesStore.currentNotes())
+                        } label: {
+                            Label("Export Review Pack", systemImage: "doc.on.clipboard")
+                        }
+                        .buttonStyle(.bordered)
                     }
-                    .buttonStyle(.borderedProminent)
+                }
+
+                if stats.hasBaselineData {
+                    baselineAlert(stats: stats)
                 }
 
                 LazyVGrid(columns: [
@@ -738,6 +678,47 @@ struct ExecutiveModeView: View {
         ]
     }
 
+    private func baselineAlert(stats: ProjectStats) -> some View {
+        let hasSlip = stats.baselineSlippedTasks > 0 || stats.baselineSlippedMilestones > 0
+        let accentColor = hasSlip ? Color.red : Color.green
+        let icon = hasSlip ? "exclamationmark.triangle.fill" : "checkmark.seal.fill"
+        let message = hasSlip
+            ? "Baseline slipped tasks: \(stats.baselineSlippedTasks) · worst slip \(stats.worstFinishVarianceText)"
+            : "Baseline is tracked for \(stats.baselineTrackedTasks) tasks · avg variance \(stats.averageFinishVarianceText)"
+
+        return HStack(alignment: .center, spacing: 10) {
+            Image(systemName: icon)
+                .font(.title3)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(hasSlip ? "Baseline variance alert" : "Baseline tracking")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(accentColor)
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Text(hasSlip ? "Needs review" : "On track")
+                .font(.caption2)
+                .fontWeight(.semibold)
+                .foregroundStyle(accentColor)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(accentColor.opacity(0.18))
+                .clipShape(Capsule())
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(accentColor.opacity(0.08))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(accentColor.opacity(0.35), lineWidth: 1)
+        )
+    }
+
     @ViewBuilder
     private func milestoneBadge(for task: ProjectTask) -> some View {
         let pct = task.percentComplete ?? 0
@@ -775,7 +756,7 @@ struct ExecutiveModeView: View {
 
     private func exportExecutiveSummary(stats: ProjectStats) {
         let validationIssues = ProjectValidator.validate(project: project)
-        let lines: [String] = [
+        var lines: [String] = [
             "# \(project.properties.projectTitle ?? "Project") Executive Summary",
             "",
             "Generated: \(ISO8601DateFormatter().string(from: Date()))",
@@ -824,6 +805,84 @@ struct ExecutiveModeView: View {
             }
             return "- \(milestone.displayName) — \(dateText) — \(status)"
         }
+    }
+}
+
+private func exportReviewPackReport(project: ProjectModel, stats: ProjectStats, reviewNotes: [Int: String]) {
+    let validationIssues = ProjectValidator.validate(project: project)
+    let diagnostics = ProjectDiagnostics.analyze(project: project)
+    let resourceIssues = ResourceDiagnostics.analyze(project: project)
+    let milestones = project.tasks.filter { $0.isDisplayMilestone }.prefix(10)
+    let notedTasks = reviewNotes.compactMap { uniqueID, note -> (ProjectTask, String)? in
+        guard let task = project.tasksByID[uniqueID] else { return nil }
+        return (task, note)
+    }
+    .sorted { $0.0.displayName < $1.0.displayName }
+
+    let validationSummaryLines = [
+        "- Errors: \(validationIssues.filter { $0.severity == .error }.count)",
+        "- Warnings: \(validationIssues.filter { $0.severity == .warning }.count)",
+        "- Info: \(validationIssues.filter { $0.severity == .info }.count)",
+    ]
+    let validationDetailLines = validationIssues.prefix(10).map { issue in
+        "- [\(issue.severity.label)] \(issue.taskName ?? "Project"): \(issue.message)"
+    }
+    let diagnosticsLines = diagnostics.prefix(10).map { item in
+        "- [\(item.category.label)] \(item.taskName ?? "Project"): \(item.message)"
+    }
+    let resourceRiskLines = resourceIssues.prefix(10).map { item in
+        "- [\(item.severity.label)] \(item.resourceName): \(item.message)"
+    }
+    let milestoneLines = milestones.map { milestone in
+        let variance = milestone.finishVarianceDays ?? milestone.startVarianceDays
+        let varianceText = variance.map { "\($0 > 0 ? "+" : "")\($0)d vs baseline" } ?? "No baseline"
+        return "- \(milestone.displayName): \(DateFormatting.shortDate(milestone.start)) · \(varianceText)"
+    }
+    let reviewNoteLines = notedTasks.isEmpty
+        ? ["- No local review notes"]
+        : notedTasks.map { task, note in
+            "- \(task.displayName): \(note.replacingOccurrences(of: "\n", with: " "))"
+        }
+
+    var lines: [String] = [
+        "# \(project.properties.projectTitle ?? "Project") Review Pack",
+        "",
+        "Generated: \(ISO8601DateFormatter().string(from: Date()))",
+        "",
+        "## Executive Summary",
+        "- Average task progress: \(stats.averageProgressPercent)%",
+        "- Completed-task ratio: \(stats.completedPercent)%",
+        "- Days remaining: \(stats.daysRemainingText)",
+        "- Critical incomplete tasks: \(stats.criticalIncompleteTasks)",
+        "- Baseline tracked tasks: \(stats.baselineTrackedTasks)",
+        "- Baseline slipped tasks: \(stats.baselineSlippedTasks)",
+        "",
+        "## Validation",
+    ]
+    lines.append(contentsOf: validationSummaryLines)
+    lines.append(contentsOf: validationDetailLines)
+    lines.append("")
+    lines.append("## Diagnostics")
+    lines.append("- Total findings: \(diagnostics.count)")
+    lines.append(contentsOf: diagnosticsLines)
+    lines.append("")
+    lines.append("## Resource Risks")
+    lines.append("- Total findings: \(resourceIssues.count)")
+    lines.append(contentsOf: resourceRiskLines)
+    lines.append("")
+    lines.append("## Milestone Outlook")
+    lines.append(contentsOf: milestoneLines)
+    lines.append("")
+    lines.append("## Review Notes")
+    lines.append(contentsOf: reviewNoteLines)
+
+    let markdown = lines.joined(separator: "\n")
+    let panel = NSSavePanel()
+    panel.nameFieldStringValue = "Review Pack \(PDFExporter.fileNameTimestamp).md"
+    panel.allowedContentTypes = [UTType.plainText]
+    panel.begin { response in
+        guard response == .OK, let url = panel.url else { return }
+        try? markdown.write(to: url, atomically: true, encoding: .utf8)
     }
 }
 

@@ -514,7 +514,7 @@ struct TaskTableView: View {
 
     @ViewBuilder
     private func baselineDeltaBadge(for task: ProjectTask) -> some View {
-        if let descriptor = baselineDeltaDescriptor(for: task) {
+        if let descriptor = task.baselineVarianceDescriptor {
             Text(descriptor.label)
                 .font(.caption2)
                 .foregroundStyle(.primary)
@@ -529,18 +529,6 @@ struct TaskTableView: View {
                         .stroke(descriptor.color.opacity(0.7), lineWidth: 0.8)
                 )
         }
-    }
-
-    private func baselineDeltaDescriptor(for task: ProjectTask) -> (label: String, color: Color)? {
-        if let finish = task.finishVarianceDays {
-            let prefix = finish >= 0 ? "+" : ""
-            return ("F\(prefix)\(finish)d", finish > 0 ? Color.red : Color.green)
-        }
-        if let start = task.startVarianceDays {
-            let prefix = start >= 0 ? "+" : ""
-            return ("S\(prefix)\(start)d", start > 0 ? Color.orange : Color.green)
-        }
-        return nil
     }
 
     private func printTaskList() {

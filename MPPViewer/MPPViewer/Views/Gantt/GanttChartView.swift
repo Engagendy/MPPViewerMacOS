@@ -556,42 +556,52 @@ struct GanttCanvasView: View {
                     rightTick.addLine(to: CGPoint(x: xStart + width, y: bracketY + bracketH + tick))
                     context.stroke(rightTick, with: .color(.primary.opacity(0.6 * taskOpacity)), lineWidth: 1.5)
                 } else {
-                    // Regular bar
-                    let bgColor: Color = isCritical ? .red.opacity(barBgOpacity * taskOpacity) : .blue.opacity(barBgOpacity * taskOpacity)
-                    let fgColor: Color = isCritical ? .red : .blue
+                // Regular bar
+                let bgColor: Color = isCritical ? .red.opacity(barBgOpacity * taskOpacity) : .blue.opacity(barBgOpacity * taskOpacity)
+                let fgColor: Color = isCritical ? .red : .blue
 
-                    let barRect = CGRect(x: xStart, y: y + barInset, width: width, height: barHeight)
-                    let rr = RoundedRectangle(cornerRadius: 3).path(in: barRect)
-                    context.fill(rr, with: .color(bgColor))
-                    context.stroke(rr, with: .color(fgColor.opacity(0.4 * taskOpacity)), lineWidth: isCritical && criticalPathOnly ? 1.5 : 0.5)
+                let barRect = CGRect(x: xStart, y: y + barInset, width: width, height: barHeight)
+                let rr = RoundedRectangle(cornerRadius: 3).path(in: barRect)
+                context.fill(rr, with: .color(bgColor))
+                context.stroke(rr, with: .color(fgColor.opacity(0.4 * taskOpacity)), lineWidth: isCritical && criticalPathOnly ? 1.5 : 0.5)
 
-                    // Progress fill
-                    let pct = (task.percentComplete ?? 0) / 100.0
-                    if pct > 0 {
-                        let fillWidth = width * CGFloat(pct)
-                        let fillRect = CGRect(x: xStart, y: y + barInset, width: fillWidth, height: barHeight)
-                        let fillRR = RoundedRectangle(cornerRadius: 3).path(in: fillRect)
-                        context.fill(fillRR, with: .color(fgColor.opacity(0.6 * taskOpacity)))
-                    }
+                // Progress fill
+                let pct = (task.percentComplete ?? 0) / 100.0
+                if pct > 0 {
+                    let fillWidth = width * CGFloat(pct)
+                    let fillRect = CGRect(x: xStart, y: y + barInset, width: fillWidth, height: barHeight)
+                    let fillRR = RoundedRectangle(cornerRadius: 3).path(in: fillRect)
+                    context.fill(fillRR, with: .color(fgColor.opacity(0.6 * taskOpacity)))
+                }
 
-                    // Task name: inline if enough space, otherwise right of bar
-                    if width > 60 {
-                        let label = Text(task.displayName).font(.system(size: 9)).foregroundColor(.primary.opacity(taskOpacity))
-                        context.draw(
-                            context.resolve(label),
-                            at: CGPoint(x: xStart + 4, y: y + rowHeight / 2),
-                            anchor: .leading
-                        )
-                    } else {
-                        let label = Text(task.displayName).font(.system(size: 9)).foregroundColor(.secondary.opacity(taskOpacity))
-                        context.draw(
-                            context.resolve(label),
-                            at: CGPoint(x: xStart + width + 4, y: y + rowHeight / 2),
-                            anchor: .leading
-                        )
-                    }
+                // Task name: inline if enough space, otherwise right of bar
+                if width > 60 {
+                    let label = Text(task.displayName).font(.system(size: 9)).foregroundColor(.primary.opacity(taskOpacity))
+                    context.draw(
+                        context.resolve(label),
+                        at: CGPoint(x: xStart + 4, y: y + rowHeight / 2),
+                        anchor: .leading
+                    )
+                } else {
+                    let label = Text(task.displayName).font(.system(size: 9)).foregroundColor(.secondary.opacity(taskOpacity))
+                    context.draw(
+                        context.resolve(label),
+                        at: CGPoint(x: xStart + width + 4, y: y + rowHeight / 2),
+                        anchor: .leading
+                    )
+                }
+
+                if let descriptor = task.baselineVarianceDescriptor, descriptor.days != 0 {
+                    drawBaselineBadge(
+                        context: context,
+                        descriptor: descriptor,
+                        x: xStart + width + 8,
+                        y: y + barInset,
+                        opacity: taskOpacity
+                    )
                 }
             }
+        }
 
             // --- Today Marker ---
             if let todayOffset = GanttDateHelpers.todayDayOffset(from: startDate) {
@@ -650,5 +660,26 @@ struct GanttCanvasView: View {
         guard let date = date else { return 0 }
         let days = calendar.dateComponents([.day], from: startDate, to: date).day ?? 0
         return CGFloat(days) * pixelsPerDay
+    }
+
+    private func drawBaselineBadge(
+        context: GraphicsContext,
+        descriptor: BaselineVarianceDescriptor,
+        x: CGFloat,
+        y: CGFloat,
+        opacity: Double
+    ) {
+        let label = Text(descriptor.label)
+            .font(.system(size: 8, weight: .semibold))
+            .foregroundColor(.primary)
+        let resolved = context.resolve(label)
+        let badgeWidth = max(CGFloat(descriptor.label.count) * CGFloat(7) + CGFloat(10), CGFloat(32))
+        let badgeHeight: CGFloat = 16
+        let badgeRect = CGRect(x: x, y: y, width: badgeWidth, height: badgeHeight)
+        let border = RoundedRectangle(cornerRadius: badgeHeight / 2).path(in: badgeRect)
+
+        context.fill(border, with: .color(descriptor.color.opacity(0.2 * opacity)))
+        context.stroke(border, with: .color(descriptor.color.opacity(0.6 * opacity)), lineWidth: 0.5)
+        context.draw(resolved, at: CGPoint(x: badgeRect.midX, y: badgeRect.midY), anchor: .center)
     }
 }

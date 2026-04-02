@@ -95,6 +95,7 @@ Instant overview of project health with KPI cards for average task progress, com
 
 ### Executive Mode
 Presentation-focused management view with headline health messaging, top risks, major milestones, and concise summary cards separated from the more operational dashboard.
+It now surfaces the live baseline variance alert so slipped tasks pop in red, and the executive header includes both summary and review-pack exports so stakeholders can capture the latest insights with one click.
 
 ### Gantt Chart
 Interactive timeline visualization with:
@@ -105,6 +106,7 @@ Interactive timeline visualization with:
 - Pinch-to-zoom gesture support
 - PDF export — multi-page landscape output
 - Baseline variance markers always visible plus a toggle for the full baseline overlay to compare plan vs actual at a glance
+- Slipped tasks now display delta badges beside their bars so variance is visible without extra drilling.
 
 ### Schedule View
 Microsoft Project-style split view with a task list on the left and Gantt timeline on the right. Both panes share collapse/expand state and scroll together.
@@ -130,7 +132,7 @@ Project validation screen for suspicious source data and planning issues such as
 ### Diagnostics
 Dependency and constraint diagnostics for schedule-structure review, including explicit constraints, date drift, long lag/lead links, dependency-heavy tasks, successor fan-out, blocked-start signals, and critical-chain hubs.
 
-- **Dependency Explorer** — immersive pan/zoom graph of multi-hop predecessors/successors with clickable nodes and synced inspector detail.
+- **Dependency Explorer** — immersive pan/zoom graph that stacks linked tasks vertically with consistent spacing, plus highlight/zoom controls, clickable nodes, a breadcrumb trail, and synced inspector detail.
 
 ### Resource Risks
 Resource-focused diagnostics for over-allocation, assignment units above max capacity, overload windows, sustained overload periods, and overlapping task hotspots.
@@ -154,9 +156,11 @@ Visual calendar display with working/non-working day highlighting, exception day
 
 ### Timeline View
 Executive-level summary showing only summary tasks and milestones as horizontal ribbons and diamond markers, with optional baseline overlays.
+- Baseline slips also draw inline delta badges and planned-range outlines when the baseline toggle is enabled so timeline deviations are easy to scan.
 
 ### Critical Path
 Dedicated critical-path and near-critical review screen showing driving tasks, float/slack where available from the source data, and direct navigation back into the task view.
+- Baseline variance badges now accompany critical-path entries to surface the worst slips while reviewing dependencies.
 
 ### Compare (Diff Two Versions)
 Open a second `.mpp` file to compare against the current project. Shows added, removed, and modified tasks with field-level change details.

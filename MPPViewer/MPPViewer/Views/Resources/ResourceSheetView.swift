@@ -188,6 +188,9 @@ private struct ResourceInspectorView: View {
     let allTasks: [Int: ProjectTask]
     let navigateToTask: (Int) -> Void
 
+    @State private var cachedLoadBuckets: [ResourceLoadBucket] = []
+    @State private var cachedWeeklyWeeks: [ResourceWeek] = []
+
     private var assignmentRows: [ResourceAssignmentRow] {
         assignments.compactMap { assignment in
             guard let task = allTasks[assignment.taskUniqueID ?? -1] else { return nil }
@@ -196,11 +199,18 @@ private struct ResourceInspectorView: View {
         .sorted { ($0.startDate ?? .distantFuture) < ($1.startDate ?? .distantFuture) }
     }
 
-    private var loadBuckets: [ResourceLoadBucket] {
-        guard !assignmentRows.isEmpty else { return [] }
+    private func refreshLoadData() {
+        let rows = assignmentRows
+        let buckets = rows.isEmpty ? [] : Self.buildLoadBuckets(from: rows)
+        cachedLoadBuckets = buckets
+        cachedWeeklyWeeks = buckets.isEmpty ? [] : Self.buildWeeklyWeeks(from: buckets)
+    }
+
+    private static func buildLoadBuckets(from rows: [ResourceAssignmentRow]) -> [ResourceLoadBucket] {
+        guard !rows.isEmpty else { return [] }
         let calendar = Calendar.current
-        let starts = assignmentRows.compactMap(\.startDate)
-        let finishes = assignmentRows.compactMap(\.finishDate)
+        let starts = rows.compactMap(\.startDate)
+        let finishes = rows.compactMap(\.finishDate)
         guard let first = starts.min(), let last = finishes.max() else { return [] }
 
         var buckets: [ResourceLoadBucket] = []
@@ -208,12 +218,13 @@ private struct ResourceInspectorView: View {
         let endDay = calendar.startOfDay(for: last)
 
         while day <= endDay {
-            let active = assignmentRows.filter {
+            let active = rows.filter {
                 guard let start = $0.startDate, let finish = $0.finishDate else { return false }
                 return calendar.startOfDay(for: start) <= day && calendar.startOfDay(for: finish) >= day
             }
             let units = active.reduce(0.0) { $0 + ($1.assignment.assignmentUnits ?? 100) }
-            buckets.append(ResourceLoadBucket(date: day, units: units, taskNames: active.map(\.task.displayName)))
+            let taskNames = active.map(\.task.displayName)
+            buckets.append(ResourceLoadBucket(date: day, units: units, taskNames: taskNames))
             guard let next = calendar.date(byAdding: .day, value: 1, to: day) else { break }
             day = next
         }
@@ -221,19 +232,26 @@ private struct ResourceInspectorView: View {
         return buckets
     }
 
-    private var weeklyLoadWeeks: [ResourceWeek] {
-        guard !loadBuckets.isEmpty else { return [] }
+    private static func buildWeeklyWeeks(from buckets: [ResourceLoadBucket]) -> [ResourceWeek] {
+        guard !buckets.isEmpty else { return [] }
         let calendar = Calendar.current
-        let firstDay = calendar.dateInterval(of: .weekOfYear, for: loadBuckets.first!.date)?.start ?? loadBuckets.first!.date
-        let lastDay = calendar.dateInterval(of: .weekOfYear, for: loadBuckets.last!.date)?.end ?? loadBuckets.last!.date
+        let sortedBuckets = buckets.sorted { $0.date < $1.date }
+        let firstDay = calendar.dateInterval(of: .weekOfYear, for: sortedBuckets.first!.date)?.start ?? sortedBuckets.first!.date
+        let lastDay = calendar.dateInterval(of: .weekOfYear, for: sortedBuckets.last!.date)?.end ?? sortedBuckets.last!.date
         var weeks: [ResourceWeek] = []
         var cursor = firstDay
+        let bucketMap = Dictionary(grouping: buckets) { calendar.startOfDay(for: $0.date) }
 
         while cursor <= lastDay {
             var weekBuckets: [ResourceLoadBucket] = []
             for offset in 0..<7 {
                 guard let day = calendar.date(byAdding: .day, value: offset, to: cursor) else { continue }
-                weekBuckets.append(bucketForDay(day))
+                let dayKey = calendar.startOfDay(for: day)
+                if let existing = bucketMap[dayKey]?.first {
+                    weekBuckets.append(existing)
+                } else {
+                    weekBuckets.append(ResourceLoadBucket(date: day, units: 0, taskNames: []))
+                }
             }
             weeks.append(ResourceWeek(startDate: cursor, dailyBuckets: weekBuckets))
             guard let next = calendar.date(byAdding: .day, value: 7, to: cursor) else { break }
@@ -243,20 +261,27 @@ private struct ResourceInspectorView: View {
         return weeks
     }
 
-    private func bucketForDay(_ date: Date) -> ResourceLoadBucket {
-        if let existing = loadBuckets.first(where: { Calendar.current.isDate($0.date, inSameDayAs: date) }) {
-            return existing
-        }
-        return ResourceLoadBucket(date: date, units: 0, taskNames: [])
-    }
-
     private func weeklyBarHeight(for bucket: ResourceLoadBucket, maxUnits: Double) -> CGFloat {
         let normalized = min(bucket.units / maxUnits, 2)
         return 30 + CGFloat(normalized) * 28
     }
 
+    private func timelineBarHeight(for bucket: ResourceLoadBucket, maxUnits: Double) -> CGFloat {
+        let normalized = min(bucket.units / max(maxUnits, 1), 2)
+        return 30 + CGFloat(normalized) * 28
+    }
+
+    private func overloadSuggestion(maxUnits: Double) -> String {
+        let overloaded = cachedLoadBuckets.filter { $0.units > maxUnits }
+        guard let peak = overloaded.max(by: { $0.units < $1.units }) else {
+            return "Allocations are within the resource's max units."
+        }
+        let tasks = peak.taskNames.prefix(2).joined(separator: ", ")
+        return "Peak \(Int(peak.units))% on \(DateFormatting.shortDate(peak.date)). Consider shifting \(tasks) to reduce pressure."
+    }
+
     private var peakBucket: ResourceLoadBucket? {
-        loadBuckets.max(by: { $0.units < $1.units })
+        cachedLoadBuckets.max(by: { $0.units < $1.units })
     }
 
     var body: some View {
@@ -280,15 +305,15 @@ private struct ResourceInspectorView: View {
                         infoRow("Group", resource.group)
                         infoRow("Email", resource.emailAddress)
                         infoRow("Peak Allocation", peakBucket.map { "\(Int($0.units))% on \(DateFormatting.shortDate($0.date))" })
-                        infoRow("Overload Days", "\(loadBuckets.filter { $0.units > (resource.maxUnits ?? 100) }.count)")
+                        infoRow("Overload Days", "\(cachedLoadBuckets.filter { $0.units > (resource.maxUnits ?? 100) }.count)")
                     }
                     .padding(4)
                 }
 
-                if !loadBuckets.isEmpty {
+                if !cachedLoadBuckets.isEmpty {
                     GroupBox("Load Timeline") {
                         VStack(alignment: .leading, spacing: 8) {
-                            ForEach(loadBuckets.prefix(21)) { bucket in
+                            ForEach(cachedLoadBuckets.prefix(21)) { bucket in
                                 VStack(alignment: .leading, spacing: 4) {
                                     HStack {
                                         Text(DateFormatting.shortDate(bucket.date))
@@ -317,42 +342,86 @@ private struct ResourceInspectorView: View {
                                     }
                                 }
                             }
+                        }
+                        .padding(4)
+                    }
                 }
-                .padding(4)
-            }
-        }
 
-        if !weeklyLoadWeeks.isEmpty {
-            GroupBox("Weekly Overload Calendar") {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(alignment: .top, spacing: 18) {
-                        ForEach(weeklyLoadWeeks) { week in
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Week of \(DateFormatting.shortDate(week.startDate))")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                                HStack(alignment: .bottom, spacing: 6) {
-                                    ForEach(week.dailyBuckets) { bucket in
-                                        VStack(spacing: 4) {
-                                            RoundedRectangle(cornerRadius: 4)
-                                                .fill(bucket.units > (resource.maxUnits ?? 100) ? Color.red.opacity(0.85) : Color.blue.opacity(0.65))
-                                                .frame(width: 26, height: weeklyBarHeight(for: bucket, maxUnits: resource.maxUnits ?? 100))
-                                            Text(DateFormatting.shortWeekday(bucket.date))
+                if !cachedLoadBuckets.isEmpty {
+                    GroupBox("Overload Timeline") {
+                        ScrollView(.horizontal, showsIndicators: true) {
+                            HStack(alignment: .bottom, spacing: 10) {
+                                ForEach(cachedLoadBuckets) { bucket in
+                                    let maxUnits = resource.maxUnits ?? 100
+                                    let barHeight = timelineBarHeight(for: bucket, maxUnits: maxUnits)
+                                    VStack(spacing: 6) {
+                                        ZStack(alignment: .bottom) {
+                                            RoundedRectangle(cornerRadius: 6)
+                                                .fill(Color.secondary.opacity(0.15))
+                                                .frame(width: 40, height: 110)
+                                            RoundedRectangle(cornerRadius: 6)
+                                                .fill(bucket.units > maxUnits ? Color.red.opacity(0.9) : Color.blue.opacity(0.65))
+                                                .frame(width: 40, height: barHeight)
+                                                .shadow(color: bucket.units > maxUnits ? Color.red.opacity(0.25) : Color.blue.opacity(0.15), radius: 4, x: 0, y: 3)
+                                        }
+                                        Text(DateFormatting.shortDate(bucket.date))
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                        Text("\(Int(bucket.units))%")
+                                            .font(.caption)
+                                            .fontWeight(.semibold)
+                                            .foregroundStyle(bucket.units > maxUnits ? .red : .primary)
+                                        if bucket.units > maxUnits, let highlight = bucket.taskNames.first {
+                                            Text(highlight)
                                                 .font(.caption2)
+                                                .lineLimit(1)
                                                 .foregroundStyle(.secondary)
                                         }
-                                        .help(bucket.taskNames.prefix(3).joined(separator: ", "))
                                     }
+                                    .frame(width: 54)
                                 }
                             }
-                            .frame(width: 220)
+                            .padding(.vertical, 10)
+                            .padding(.horizontal, 6)
                         }
+                        Text(overloadSuggestion(maxUnits: resource.maxUnits ?? 100))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(.top, 4)
                     }
-                    .padding(.vertical, 4)
                 }
-                .frame(height: 140)
-            }
-        }
+
+                if !cachedWeeklyWeeks.isEmpty {
+                    GroupBox("Weekly Overload Calendar") {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(alignment: .top, spacing: 18) {
+                                ForEach(cachedWeeklyWeeks) { week in
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        Text("Week of \(DateFormatting.shortDate(week.startDate))")
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                        HStack(alignment: .bottom, spacing: 6) {
+                                            ForEach(week.dailyBuckets) { bucket in
+                                                VStack(spacing: 4) {
+                                                    RoundedRectangle(cornerRadius: 4)
+                                                        .fill(bucket.units > (resource.maxUnits ?? 100) ? Color.red.opacity(0.85) : Color.blue.opacity(0.65))
+                                                        .frame(width: 26, height: weeklyBarHeight(for: bucket, maxUnits: resource.maxUnits ?? 100))
+                                                    Text(DateFormatting.shortWeekday(bucket.date))
+                                                        .font(.caption2)
+                                                        .foregroundStyle(.secondary)
+                                                }
+                                                .help(bucket.taskNames.prefix(3).joined(separator: ", "))
+                                            }
+                                        }
+                                    }
+                                    .frame(width: 220)
+                                }
+                            }
+                            .padding(.vertical, 4)
+                        }
+                        .frame(height: 140)
+                    }
+                }
 
                 GroupBox("Assignments") {
                     if assignmentRows.isEmpty {
@@ -404,6 +473,12 @@ private struct ResourceInspectorView: View {
             .padding()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onAppear {
+            refreshLoadData()
+        }
+        .task(id: resource.uniqueID ?? -1) {
+            refreshLoadData()
+        }
     }
 
     private func statPill(_ label: String, color: Color) -> some View {
