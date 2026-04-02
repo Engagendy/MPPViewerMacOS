@@ -117,6 +117,7 @@ The task inspector includes:
 - relationship inspector for predecessors/successors and blockers
 - dependency map
 - local persistent review notes
+- interactive dependency navigation with clickable predecessor/successor nodes, breadcrumb history, and depth control
 
 ### Milestones
 Dedicated view for explicit project milestones with status badges, baseline variance, predecessor-aware health reasoning, and sortable columns.
@@ -135,6 +136,9 @@ Full EVM dashboard with CPI, SPI, EAC, VAC indicators, an S-Curve chart plotting
 
 ### Resources
 Resource sheet showing all work, material, and cost resources with standard rates, max units, email, group, and assignment counts.
+
+### Resource Drill-down
+Resizable resource inspector with overview stats, daily load timeline highlighting overload days, assignment list, and clickable links that jump back to the task table for quick analysis.
 
 ### Resource Workload
 Calendar-aware weekly workload view per resource. Green bars for normal allocation, red for over-allocation. Uses project calendar working days and exception dates.
