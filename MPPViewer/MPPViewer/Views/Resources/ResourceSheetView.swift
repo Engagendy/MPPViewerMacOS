@@ -221,6 +221,40 @@ private struct ResourceInspectorView: View {
         return buckets
     }
 
+    private var weeklyLoadWeeks: [ResourceWeek] {
+        guard !loadBuckets.isEmpty else { return [] }
+        let calendar = Calendar.current
+        let firstDay = calendar.dateInterval(of: .weekOfYear, for: loadBuckets.first!.date)?.start ?? loadBuckets.first!.date
+        let lastDay = calendar.dateInterval(of: .weekOfYear, for: loadBuckets.last!.date)?.end ?? loadBuckets.last!.date
+        var weeks: [ResourceWeek] = []
+        var cursor = firstDay
+
+        while cursor <= lastDay {
+            var weekBuckets: [ResourceLoadBucket] = []
+            for offset in 0..<7 {
+                guard let day = calendar.date(byAdding: .day, value: offset, to: cursor) else { continue }
+                weekBuckets.append(bucketForDay(day))
+            }
+            weeks.append(ResourceWeek(startDate: cursor, dailyBuckets: weekBuckets))
+            guard let next = calendar.date(byAdding: .day, value: 7, to: cursor) else { break }
+            cursor = next
+        }
+
+        return weeks
+    }
+
+    private func bucketForDay(_ date: Date) -> ResourceLoadBucket {
+        if let existing = loadBuckets.first(where: { Calendar.current.isDate($0.date, inSameDayAs: date) }) {
+            return existing
+        }
+        return ResourceLoadBucket(date: date, units: 0, taskNames: [])
+    }
+
+    private func weeklyBarHeight(for bucket: ResourceLoadBucket, maxUnits: Double) -> CGFloat {
+        let normalized = min(bucket.units / maxUnits, 2)
+        return 30 + CGFloat(normalized) * 28
+    }
+
     private var peakBucket: ResourceLoadBucket? {
         loadBuckets.max(by: { $0.units < $1.units })
     }
@@ -283,10 +317,42 @@ private struct ResourceInspectorView: View {
                                     }
                                 }
                             }
-                        }
-                        .padding(4)
-                    }
                 }
+                .padding(4)
+            }
+        }
+
+        if !weeklyLoadWeeks.isEmpty {
+            GroupBox("Weekly Overload Calendar") {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(alignment: .top, spacing: 18) {
+                        ForEach(weeklyLoadWeeks) { week in
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Week of \(DateFormatting.shortDate(week.startDate))")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                HStack(alignment: .bottom, spacing: 6) {
+                                    ForEach(week.dailyBuckets) { bucket in
+                                        VStack(spacing: 4) {
+                                            RoundedRectangle(cornerRadius: 4)
+                                                .fill(bucket.units > (resource.maxUnits ?? 100) ? Color.red.opacity(0.85) : Color.blue.opacity(0.65))
+                                                .frame(width: 26, height: weeklyBarHeight(for: bucket, maxUnits: resource.maxUnits ?? 100))
+                                            Text(DateFormatting.shortWeekday(bucket.date))
+                                                .font(.caption2)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        .help(bucket.taskNames.prefix(3).joined(separator: ", "))
+                                    }
+                                }
+                            }
+                            .frame(width: 220)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+                .frame(height: 140)
+            }
+        }
 
                 GroupBox("Assignments") {
                     if assignmentRows.isEmpty {
@@ -393,4 +459,11 @@ private struct ResourceLoadBucket: Identifiable {
     let taskNames: [String]
 
     var id: Date { date }
+}
+
+private struct ResourceWeek: Identifiable {
+    let startDate: Date
+    let dailyBuckets: [ResourceLoadBucket]
+
+    var id: Date { startDate }
 }

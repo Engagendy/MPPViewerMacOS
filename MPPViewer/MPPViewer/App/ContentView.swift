@@ -13,6 +13,7 @@ enum NavigationItem: String, CaseIterable, Identifiable {
     case summary = "Summary"
     case validation = "Validation"
     case diagnostics = "Diagnostics"
+    case dependencyExplorer = "Dependency Explorer"
     case resourceRisks = "Resource Risks"
     case criticalPath = "Critical Path"
     case tasks = "Tasks"
@@ -35,6 +36,7 @@ enum NavigationItem: String, CaseIterable, Identifiable {
         case .summary: return "doc.text"
         case .validation: return "checklist.unchecked"
         case .diagnostics: return "stethoscope"
+        case .dependencyExplorer: return "network"
         case .resourceRisks: return "person.crop.circle.badge.exclamationmark"
         case .criticalPath: return "point.topleft.down.curvedto.point.bottomright.up"
         case .tasks: return "list.bullet.indent"
@@ -185,6 +187,12 @@ struct ContentView: View {
             )
         case .diagnostics:
             ProjectDiagnosticsView(
+                project: project,
+                navigateToTaskID: $navigateToTaskID,
+                selectedNav: $selectedNav
+            )
+        case .dependencyExplorer:
+            DependencyGraphExplorerView(
                 project: project,
                 navigateToTaskID: $navigateToTaskID,
                 selectedNav: $selectedNav

@@ -244,32 +244,35 @@ struct TaskTableView: View {
                             let isCollapsed = collapsedIDs.contains(task.uniqueID)
                             let isSelected = selectedTaskID == task.uniqueID
 
-                            HStack(spacing: 4) {
-                                let indent = CGFloat((task.outlineLevel ?? 1) - 1) * 16
-                                Spacer().frame(width: max(0, indent))
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack(spacing: 4) {
+                                    let indent = CGFloat((task.outlineLevel ?? 1) - 1) * 16
+                                    Spacer().frame(width: max(0, indent))
 
-                                if isSummaryWithChildren {
-                                    Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
-                                        .frame(width: 12)
+                                    if isSummaryWithChildren {
+                                        Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                            .frame(width: 12)
 
-                                    Image(systemName: "folder.fill")
-                                        .font(.caption2)
-                                        .foregroundStyle(.blue)
-                                } else if task.milestone == true {
-                                    Spacer().frame(width: 16)
-                                    Image(systemName: "diamond.fill")
-                                        .font(.caption2)
-                                        .foregroundStyle(.orange)
-                                } else {
-                                    Spacer().frame(width: 16)
+                                        Image(systemName: "folder.fill")
+                                            .font(.caption2)
+                                            .foregroundStyle(.blue)
+                                    } else if task.milestone == true {
+                                        Spacer().frame(width: 16)
+                                        Image(systemName: "diamond.fill")
+                                            .font(.caption2)
+                                            .foregroundStyle(.orange)
+                                    } else {
+                                        Spacer().frame(width: 16)
+                                    }
+
+                                    Text(task.displayName)
+                                        .fontWeight(task.summary == true ? .semibold : .regular)
+                                        .foregroundStyle(task.critical == true ? .red : .primary)
+                                        .lineLimit(1)
                                 }
-
-                                Text(task.displayName)
-                                    .fontWeight(task.summary == true ? .semibold : .regular)
-                                    .foregroundStyle(task.critical == true ? .red : .primary)
-                                    .lineLimit(1)
+                                baselineDeltaBadge(for: task)
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.vertical, 1)
@@ -507,6 +510,37 @@ struct TaskTableView: View {
             }
         }
         return result
+    }
+
+    @ViewBuilder
+    private func baselineDeltaBadge(for task: ProjectTask) -> some View {
+        if let descriptor = baselineDeltaDescriptor(for: task) {
+            Text(descriptor.label)
+                .font(.caption2)
+                .foregroundStyle(.primary)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(descriptor.color.opacity(0.14))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(descriptor.color.opacity(0.7), lineWidth: 0.8)
+                )
+        }
+    }
+
+    private func baselineDeltaDescriptor(for task: ProjectTask) -> (label: String, color: Color)? {
+        if let finish = task.finishVarianceDays {
+            let prefix = finish >= 0 ? "+" : ""
+            return ("F\(prefix)\(finish)d", finish > 0 ? Color.red : Color.green)
+        }
+        if let start = task.startVarianceDays {
+            let prefix = start >= 0 ? "+" : ""
+            return ("S\(prefix)\(start)d", start > 0 ? Color.orange : Color.green)
+        }
+        return nil
     }
 
     private func printTaskList() {

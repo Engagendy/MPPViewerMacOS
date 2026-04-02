@@ -449,6 +449,31 @@ struct GanttCanvasView: View {
                 }
             }
 
+            // --- Baseline Markers (always visible) ---
+            let markerStyle = StrokeStyle(lineWidth: 0.8, dash: [3, 3])
+            for (index, task) in tasks.enumerated() {
+                let y = CGFloat(index) * rowHeight
+                guard task.hasBaseline else { continue }
+
+                if let bsDate = task.baselineStartDate {
+                    let startDays = calendar.dateComponents([.day], from: startDate, to: bsDate).day ?? 0
+                    let xStart = CGFloat(startDays) * pixelsPerDay
+                    var line = Path()
+                    line.move(to: CGPoint(x: xStart, y: y + 6))
+                    line.addLine(to: CGPoint(x: xStart, y: y + rowHeight - 6))
+                    context.stroke(line, with: .color(.gray.opacity(0.4)), style: markerStyle)
+                }
+
+                if let bfDate = task.baselineFinishDate {
+                    let finishDays = calendar.dateComponents([.day], from: startDate, to: bfDate).day ?? 0
+                    let xFinish = CGFloat(finishDays) * pixelsPerDay
+                    var line = Path()
+                    line.move(to: CGPoint(x: xFinish, y: y + 6))
+                    line.addLine(to: CGPoint(x: xFinish, y: y + rowHeight - 6))
+                    context.stroke(line, with: .color(.gray.opacity(0.4)), style: markerStyle)
+                }
+            }
+
             // --- Baseline Bars (behind actual bars) ---
             if showBaseline {
                 for (index, task) in tasks.enumerated() {

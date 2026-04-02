@@ -24,6 +24,7 @@ struct SidebarView: View {
             Section("Analysis") {
                 sidebarRow(.validation)
                 sidebarRow(.diagnostics)
+                sidebarRow(.dependencyExplorer)
                 sidebarRow(.resourceRisks)
                 sidebarRow(.criticalPath)
                 sidebarRow(.earnedValue)

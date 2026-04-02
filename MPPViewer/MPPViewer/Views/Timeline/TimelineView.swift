@@ -199,6 +199,22 @@ struct TimelineView: View {
                 context.stroke(topSep, with: .color(item.color.opacity(0.3)), lineWidth: 1)
             }
 
+            let markerStyle = StrokeStyle(lineWidth: 1, dash: [3, 3])
+            if let baselineStart = item.baselineStartDayOffset {
+                let xBase = CGFloat(baselineStart) * pixelsPerDay
+                var startLine = Path()
+                startLine.move(to: CGPoint(x: xBase, y: y + rowHeight * 0.2))
+                startLine.addLine(to: CGPoint(x: xBase, y: y + rowHeight * 0.8))
+                context.stroke(startLine, with: .color(.gray.opacity(0.55)), style: markerStyle)
+            }
+            if let baselineEnd = item.baselineEndDayOffset {
+                let xEnd = CGFloat(baselineEnd) * pixelsPerDay
+                var endLine = Path()
+                endLine.move(to: CGPoint(x: xEnd, y: y + rowHeight * 0.2))
+                endLine.addLine(to: CGPoint(x: xEnd, y: y + rowHeight * 0.8))
+                context.stroke(endLine, with: .color(.gray.opacity(0.55)), style: markerStyle)
+            }
+
             guard item.hasStart else { continue }
             let xStart = CGFloat(item.startDayOffset) * pixelsPerDay
 

@@ -104,6 +104,7 @@ Interactive timeline visualization with:
 - Color-coded task bars with progress fill
 - Pinch-to-zoom gesture support
 - PDF export — multi-page landscape output
+- Baseline variance markers always visible plus a toggle for the full baseline overlay to compare plan vs actual at a glance
 
 ### Schedule View
 Microsoft Project-style split view with a task list on the left and Gantt timeline on the right. Both panes share collapse/expand state and scroll together.
@@ -117,6 +118,7 @@ The task inspector includes:
 - relationship inspector for predecessors/successors and blockers
 - dependency map
 - local persistent review notes
+- baseline delta badges show finish/start slips (F+3d/S-1d) directly in the task list
 - interactive dependency navigation with clickable predecessor/successor nodes, breadcrumb history, and depth control
 
 ### Milestones
@@ -127,6 +129,8 @@ Project validation screen for suspicious source data and planning issues such as
 
 ### Diagnostics
 Dependency and constraint diagnostics for schedule-structure review, including explicit constraints, date drift, long lag/lead links, dependency-heavy tasks, successor fan-out, blocked-start signals, and critical-chain hubs.
+
+- **Dependency Explorer** — immersive pan/zoom graph of multi-hop predecessors/successors with clickable nodes and synced inspector detail.
 
 ### Resource Risks
 Resource-focused diagnostics for over-allocation, assignment units above max capacity, overload windows, sustained overload periods, and overlapping task hotspots.
@@ -139,6 +143,8 @@ Resource sheet showing all work, material, and cost resources with standard rate
 
 ### Resource Drill-down
 Resizable resource inspector with overview stats, daily load timeline highlighting overload days, assignment list, and clickable links that jump back to the task table for quick analysis.
+
+- Weekly overload calendar shows each day’s allocation and highlights the assignments behind peak loads.
 
 ### Resource Workload
 Calendar-aware weekly workload view per resource. Green bars for normal allocation, red for over-allocation. Uses project calendar working days and exception dates.

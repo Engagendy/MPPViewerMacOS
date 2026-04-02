@@ -33,6 +33,12 @@ enum DateFormatting {
         return f
     }()
 
+    private static let shortWeekdayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "E"
+        return f
+    }()
+
     private static let mediumDateTimeFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateStyle = .medium
@@ -67,5 +73,9 @@ enum DateFormatting {
     static func mediumDateTime(_ string: String?) -> String {
         guard let s = string, let d = parseMPXJDate(s) else { return "" }
         return mediumDateTime(d)
+    }
+
+    static func shortWeekday(_ date: Date) -> String {
+        shortWeekdayFormatter.string(from: date)
     }
 }
