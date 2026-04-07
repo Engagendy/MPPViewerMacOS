@@ -136,8 +136,19 @@ Next steps:
 - Anchor the dependency explorer on a vertical spine with tighter spacing and safe margins so deep chains stay readable.
 - Highlight the inspected node, expose the zoom/reset controls, and document the breadcrumb trail for focused navigation.
 - Surface the dependency explorer as the entry point for the presentation/executive mode refresh and baseline variance alerts.
+### 6. Task Relationship Inspector (Enhanced)
 
-### 6. Resource Allocation Diagnostics
+Purpose:
+- Summarize how a selected task joins the broader network so reviewers can immediately spot blockers, drivers, and isolated risks.
+
+Status: started
+
+Next steps:
+- Show interactive badges that expose predecessor/successor counts, blocking predecessors, and driving successors, letting the reviewer jump into the next task with one tap.
+- Highlight the task relationship section beside the dependency map so the inspector stays focused on the currently selected node.
+- Keep the breadcrumb/history trail and auto-depth toggles in sync with the relationship summary so deeper analyses stay tidy.
+
+### 7. Resource Allocation Diagnostics
 
 Purpose:
 - Upgrade workload from visualization to diagnosis.
@@ -159,10 +170,29 @@ Current implementation:
 - Resource drill-down inspector with per-resource assignment list
 - Daily load timeline with visible overload bars
 - Direct navigation from a resource assignment back to the related task
+- Severity-aware badges highlight which signals are errors versus warnings.
+- Weekly overload snapshots surface the peak days and the assignments driving the bad load.
+
+### 8. Baseline Variance Intelligence
+
+Purpose:
+- Help reviewers see plan vs actual throughout every timeline and inspector.
+
+Status: started
+
+Current implementation:
+- Dashboard baseline alerts, KPI cards, and summary contexts make slipped tasks very visible.
+- Gantt and timeline views now draw baseline overlays, markers, and delta badges beside slipped bars and ribbons.
+- The task table and relationship inspector include inline delta badges so reviewers can read plan variance without leaving the inspector.
+
+Next steps:
+- Surface live alerts (badges and tooltip) when tasks exceed slack/variance thresholds, both in dashboard cards and in the critical path / float inspections.
+- Tie baseline variance into the dependency explorer so chains light up as soon as a predecessor slips.
+- Surface baseline variance context inside the resource drill-down so overloaded assignments can be compared with plan ranges.
 
 ## Larger Features
 
-### 7. Portfolio Mode
+### 9. Portfolio Mode
 
 Purpose:
 - Open multiple projects and compare them together.
@@ -172,7 +202,7 @@ Examples:
 - Milestones across releases
 - Cross-project risk summary
 
-### 8. Snapshot and Review Mode
+### 10. Snapshot and Review Mode
 
 Purpose:
 - Save a point-in-time analytical snapshot of a project.
@@ -182,7 +212,7 @@ Examples:
 - Save notes and comments
 - Reopen previous review sessions
 
-### 9. Collaboration Export
+### 11. Collaboration Export
 
 Purpose:
 - Make findings easy to share outside the app.

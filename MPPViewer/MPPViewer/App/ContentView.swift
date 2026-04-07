@@ -289,9 +289,8 @@ struct ResourceDiagnosticsView: View {
                 )
             } else {
                 Table(items) {
-                    TableColumn("Severity") { item in
-                        Label(item.severity.label, systemImage: item.severity.icon)
-                            .foregroundStyle(item.severity.color)
+                    TableColumn("Alert") { item in
+                        SeverityBadge(severity: item.severity)
                     }
                     .width(min: 90, ideal: 110, max: 130)
 
@@ -1173,6 +1172,22 @@ enum ResourceDiagnostics {
             taskName: task?.displayName,
             message: message
         )
+    }
+}
+
+private struct SeverityBadge: View {
+    let severity: ValidationSeverity
+
+    var body: some View {
+        Label(severity.label, systemImage: severity.icon)
+            .font(.caption2)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(
+                Capsule()
+                    .fill(severity.color.opacity(0.18))
+            )
+            .foregroundStyle(severity.color)
     }
 }
 

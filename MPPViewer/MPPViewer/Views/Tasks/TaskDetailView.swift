@@ -139,6 +139,39 @@ struct TaskDetailView: View {
                                 detailRow("Dependency Insight", value: dependencyInsightText)
                             }
 
+                            HStack(spacing: 10) {
+                                RelationshipBadge(
+                                    icon: "arrow.uturn.backward.circle.fill",
+                                    title: "Predecessors",
+                                    value: "\(predecessorLinks.count)",
+                                    color: .blue,
+                                    action: badgeAction(for: predecessorLinks)
+                                )
+                                RelationshipBadge(
+                                    icon: "arrow.uturn.right.circle.fill",
+                                    title: "Successors",
+                                    value: "\(successorLinks.count)",
+                                    color: .green,
+                                    action: badgeAction(for: successorLinks)
+                                )
+                                RelationshipBadge(
+                                    icon: "shield.exclamationmark.fill",
+                                    title: "Blocking",
+                                    value: blockingPredecessors.isEmpty ? "None" : "\(blockingPredecessors.count)",
+                                    color: .red,
+                                    action: badgeAction(for: blockingPredecessors)
+                                )
+                                RelationshipBadge(
+                                    icon: "bolt.fill",
+                                    title: "Driving",
+                                    value: activeSuccessors.isEmpty ? "None" : "\(activeSuccessors.count)",
+                                    color: .orange,
+                                    action: badgeAction(for: activeSuccessors)
+                                )
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.bottom, 2)
+
                             if !predecessorLinks.isEmpty {
                                 dependencySection("Predecessors", links: predecessorLinks)
                             }
@@ -550,6 +583,13 @@ struct TaskDetailView: View {
         .disabled(link.task == nil)
     }
 
+    private func badgeAction(for links: [DependencyLink]) -> (() -> Void)? {
+        guard let uniqueID = links.first?.task?.uniqueID else { return nil }
+        return {
+            onSelectTask?(uniqueID)
+        }
+    }
+
     private func gatherDependencyLinks(from rootTask: ProjectTask, direction: DependencyDirection, maxDepth: Int) -> [DependencyLink] {
         guard maxDepth > 0 else { return [] }
 
@@ -589,6 +629,46 @@ struct TaskDetailView: View {
         }
 
         return links
+    }
+}
+
+private struct RelationshipBadge: View {
+    let icon: String
+    let title: String
+    let value: String
+    let color: Color
+    var action: (() -> Void)? = nil
+
+    var body: some View {
+        Button {
+            action?()
+        } label: {
+            HStack(alignment: .center, spacing: 6) {
+                Image(systemName: icon)
+                    .font(.caption2)
+                    .foregroundStyle(color)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Text(value)
+                        .font(.callout)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(color)
+                }
+            }
+            .padding(6)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(color.opacity(0.14))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(color.opacity(0.35), lineWidth: 0.5)
+            )
+        }
+        .buttonStyle(.borderless)
+        .disabled(action == nil)
     }
 }
 

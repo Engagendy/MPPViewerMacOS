@@ -218,6 +218,17 @@ struct TimelineView: View {
 
             guard item.hasStart else { continue }
             let xStart = CGFloat(item.startDayOffset) * pixelsPerDay
+            let baselineBadgeAnchorX: CGFloat? = {
+                guard item.baselineDescriptor?.days != 0 else { return nil }
+                if item.isMilestone {
+                    return xStart + 12
+                }
+                if item.hasEnd {
+                    let width = CGFloat(max(1, item.endDayOffset - item.startDayOffset)) * pixelsPerDay
+                    return xStart + width + 6
+                }
+                return xStart + 6
+            }()
 
             if showBaseline, let baselineStart = item.baselineStartDayOffset {
                 let xBase = CGFloat(baselineStart) * pixelsPerDay
@@ -241,16 +252,16 @@ struct TimelineView: View {
 
             if item.isMilestone {
                 drawMilestone(context: context, item: item, x: xStart, y: y)
-                if let descriptor = item.baselineDescriptor, descriptor.days != 0 {
-                    drawTimelineBaselineBadge(context: context, descriptor: descriptor, anchorX: xStart + 12, y: y)
-                }
             } else if item.isSummary {
                 guard item.hasEnd else { continue }
                 let barWidth = max(6, CGFloat(max(1, item.endDayOffset - item.startDayOffset)) * pixelsPerDay)
                 drawBar(context: context, item: item, x: xStart, y: y, width: barWidth, isDark: isDark)
-                if let descriptor = item.baselineDescriptor, descriptor.days != 0 {
-                    drawTimelineBaselineBadge(context: context, descriptor: descriptor, anchorX: xStart + barWidth + 6, y: y)
-                }
+            }
+
+            if let anchorX = baselineBadgeAnchorX,
+               let descriptor = item.baselineDescriptor,
+               descriptor.days != 0 {
+                drawTimelineBaselineBadge(context: context, descriptor: descriptor, anchorX: anchorX, y: y)
             }
         }
 

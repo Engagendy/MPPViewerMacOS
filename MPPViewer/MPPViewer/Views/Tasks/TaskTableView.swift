@@ -19,15 +19,34 @@ struct TaskTableView: View {
     @AppStorage("selectedTaskViewPreset") private var selectedTaskViewPresetRaw = TaskViewPreset.none.rawValue
     @AppStorage("taskInspectorWidth") private var storedInspectorWidth = 360.0
 
+    private var searchedTasks: [ProjectTask] {
+        guard !searchText.isEmpty else { return tasks }
+        return filterTasks(tasks, searchText: searchText.lowercased())
+    }
+
+    private var hasStructuredFilters: Bool {
+        filterCriteria.status != .all ||
+        filterCriteria.resourceID != nil ||
+        filterCriteria.dateRangeStart != nil ||
+        filterCriteria.dateRangeEnd != nil ||
+        filterCriteria.criticalOnly ||
+        filterCriteria.milestoneOnly ||
+        filterCriteria.priorityRange != nil ||
+        !filterCriteria.textSearch.isEmpty ||
+        filterCriteria.baselineSlippedOnly ||
+        filterCriteria.hasDependenciesOnly
+    }
+
+    private var statusFilteredTaskIDs: Set<Int>? {
+        guard hasStructuredFilters else { return nil }
+        return matchingTaskIDs(in: searchedTasks)
+    }
+
     var filteredTasks: [ProjectTask] {
-        var result = tasks
-        if !searchText.isEmpty {
-            result = filterTasks(result, searchText: searchText.lowercased())
+        guard let statusFilteredTaskIDs else { return searchedTasks }
+        return searchedTasks.filter { task in
+            subtreeContainsMatch(task, matchingIDs: statusFilteredTaskIDs)
         }
-        if filterCriteria.isActive {
-            result = applyFilterCriteria(result)
-        }
-        return result
     }
 
     private var selectedTask: ProjectTask? {
@@ -314,9 +333,11 @@ struct TaskTableView: View {
                                 let pct = task.percentComplete ?? 0
                                 ProgressView(value: pct, total: 100)
                                     .frame(width: 50)
+                                    .tint(task.isOverdue ? .red : .accentColor)
                                 Text(task.percentCompleteDisplay)
                                     .monospacedDigit()
                                     .font(.caption)
+                                    .foregroundStyle(task.isOverdue ? .red : .primary)
                             }
                         }
                         .width(min: 80, ideal: 110, max: 140)
@@ -399,7 +420,11 @@ struct TaskTableView: View {
     }
 
     private var visibleTasks: [ProjectTask] {
-        var tasks = flattenTasks(filteredTasks, collapsedIDs: collapsedIDs)
+        let collapsedSet = statusFilteredTaskIDs == nil ? collapsedIDs : []
+        var tasks = flattenTasks(searchedTasks, collapsedIDs: collapsedSet)
+        if let statusFilteredTaskIDs {
+            tasks = tasks.filter { statusFilteredTaskIDs.contains($0.uniqueID) }
+        }
         if filterCriteria.flaggedOnly {
             tasks = tasks.filter { flaggedTaskIDs.contains($0.uniqueID) }
         }
@@ -510,6 +535,33 @@ struct TaskTableView: View {
             }
         }
         return result
+    }
+
+    private func matchingTaskIDs(in tasks: [ProjectTask]) -> Set<Int> {
+        let today = Calendar.current.startOfDay(for: Date())
+        var result = Set<Int>()
+
+        func visit(_ task: ProjectTask) {
+            if filterCriteria.matches(task, assignments: assignments, resources: resources, today: today) {
+                result.insert(task.uniqueID)
+            }
+            for child in task.children {
+                visit(child)
+            }
+        }
+
+        for task in tasks {
+            visit(task)
+        }
+
+        return result
+    }
+
+    private func subtreeContainsMatch(_ task: ProjectTask, matchingIDs: Set<Int>) -> Bool {
+        if matchingIDs.contains(task.uniqueID) {
+            return true
+        }
+        return task.children.contains { subtreeContainsMatch($0, matchingIDs: matchingIDs) }
     }
 
     @ViewBuilder

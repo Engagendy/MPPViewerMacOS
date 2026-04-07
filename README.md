@@ -118,6 +118,7 @@ The task inspector includes:
 - source-data inspection for raw task flags and classification
 - baseline details and variance
 - relationship inspector for predecessors/successors and blockers
+- Relationship badges now surface predecessor, successor, blocking, and driving counts that jump straight to the next task in the chain
 - dependency map
 - local persistent review notes
 - baseline delta badges show finish/start slips (F+3d/S-1d) directly in the task list
@@ -136,6 +137,8 @@ Dependency and constraint diagnostics for schedule-structure review, including e
 
 ### Resource Risks
 Resource-focused diagnostics for over-allocation, assignment units above max capacity, overload windows, sustained overload periods, and overlapping task hotspots.
+
+- Each row now renders a severity alert badge so errors, warnings, and info signals are instantly visible without opening a detail view.
 
 ### Earned Value Analysis
 Full EVM dashboard with CPI, SPI, EAC, VAC indicators, an S-Curve chart plotting PV/EV/AC over time, and a task-level EVM breakdown table.

@@ -42,6 +42,10 @@ struct DashboardView: View {
                     .buttonStyle(.bordered)
                 }
 
+                BaselineAlertView(stats: stats)
+                    .frame(maxWidth: .infinity)
+                    .padding(.bottom, 4)
+
                 // Top KPI Cards
                 LazyVGrid(columns: [
                     GridItem(.flexible(), spacing: 16),
@@ -481,7 +485,7 @@ struct ExecutiveModeView: View {
                 }
 
                 if stats.hasBaselineData {
-                    baselineAlert(stats: stats)
+                    BaselineAlertView(stats: stats)
                 }
 
                 LazyVGrid(columns: [
@@ -805,6 +809,60 @@ struct ExecutiveModeView: View {
             }
             return "- \(milestone.displayName) — \(dateText) — \(status)"
         }
+    }
+}
+
+struct BaselineAlertView: View {
+    let stats: ProjectStats
+
+    private var hasSlip: Bool {
+        stats.baselineSlippedTasks > 0 || stats.baselineSlippedMilestones > 0
+    }
+
+    private var accentColor: Color {
+        hasSlip ? .red : .green
+    }
+
+    private var message: String {
+        if hasSlip {
+            return "Slipped tasks: \(stats.baselineSlippedTasks) · worst slip \(stats.worstFinishVarianceText)"
+        } else {
+            return "Baseline tracked for \(stats.baselineTrackedTasks) tasks · avg variance \(stats.averageFinishVarianceText)"
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: hasSlip ? "exclamationmark.triangle.fill" : "checkmark.seal.fill")
+                .font(.title2)
+                .foregroundStyle(accentColor)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(hasSlip ? "Baseline variance alert" : "Baseline tracking")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Text(hasSlip ? "Review" : "On track")
+                .font(.caption2)
+                .fontWeight(.semibold)
+                .foregroundStyle(accentColor)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(accentColor.opacity(0.2))
+                .clipShape(Capsule())
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(accentColor.opacity(0.08))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(accentColor.opacity(0.35), lineWidth: 1)
+        )
     }
 }
 
