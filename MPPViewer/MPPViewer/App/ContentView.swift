@@ -229,6 +229,8 @@ struct ContentView: View {
             ResourceSheetView(
                 resources: project.resources,
                 assignments: project.assignments,
+                calendars: project.calendars,
+                defaultCalendarID: project.properties.defaultCalendarUniqueId,
                 allTasks: project.tasksByID,
                 navigateToTaskID: $navigateToTaskID,
                 selectedNav: $selectedNav

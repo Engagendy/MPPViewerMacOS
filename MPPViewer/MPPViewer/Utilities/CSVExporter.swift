@@ -24,6 +24,56 @@ enum CSVExporter {
         try? csv.write(to: url, atomically: true, encoding: .utf8)
     }
 
+    @MainActor
+    static func exportOpenIssuesToCSV(
+        project: ProjectModel,
+        reviewAnnotations: [Int: TaskReviewAnnotation],
+        fileName: String
+    ) {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [UTType(filenameExtension: "csv") ?? .commaSeparatedText]
+        panel.nameFieldStringValue = fileName
+        panel.canCreateDirectories = true
+
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        let openIssues = reviewAnnotations.compactMap { uniqueID, annotation -> (ProjectTask, TaskReviewAnnotation)? in
+            guard let task = project.tasksByID[uniqueID], annotation.isUnresolved else { return nil }
+            return (task, annotation)
+        }
+        .sorted { lhs, rhs in
+            if lhs.1.needsFollowUp != rhs.1.needsFollowUp {
+                return lhs.1.needsFollowUp && !rhs.1.needsFollowUp
+            }
+            return lhs.0.displayName < rhs.0.displayName
+        }
+
+        var csv = "ID,WBS,Name,Review Status,Needs Follow-Up,Last Updated,Start,Finish,Critical,Baseline Slip Days,Note\n"
+        let dateFormatter = ISO8601DateFormatter()
+
+        for (task, annotation) in openIssues {
+            let baselineSlip = task.finishVarianceDays ?? task.startVarianceDays
+            let row = [
+                task.id.map(String.init) ?? "",
+                task.wbs ?? "",
+                task.displayName,
+                annotation.status.rawValue,
+                annotation.needsFollowUp ? "Yes" : "No",
+                annotation.updatedAt.map(dateFormatter.string(from:)) ?? "",
+                DateFormatting.shortDate(task.start),
+                DateFormatting.shortDate(task.finish),
+                task.critical == true ? "Yes" : "No",
+                baselineSlip.map(String.init) ?? "",
+                annotation.trimmedNote
+            ]
+            .map { escapeCSV($0) }
+            .joined(separator: ",")
+            csv += row + "\n"
+        }
+
+        try? csv.write(to: url, atomically: true, encoding: .utf8)
+    }
+
     private static func appendRows(
         tasks: [ProjectTask],
         allTasks: [Int: ProjectTask],

@@ -161,6 +161,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Engagendy/homebrew-tap
+          ref: ${{ vars.HOMEBREW_TAP_BRANCH || 'main' }}
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           path: homebrew-tap
 

@@ -222,6 +222,94 @@ Examples:
 - CSV of issues
 - Markdown summary for email or Teams
 
+### 12. Scenario Analysis
+
+Purpose:
+- Let reviewers test planning changes before editing the source file.
+
+Status: started
+
+Examples:
+- “What happens if this task slips 5 days?”
+- “What changes if I add one more engineer?”
+- “Which downstream milestones move if this activity starts late?”
+
+Current implementation:
+- Task inspector now includes a first-pass scenario analysis panel for single-task slips.
+- Reviewers can simulate a delay in days and see projected source dates, downstream task impacts, milestone/critical counts, and project-finish movement.
+- The current simulation uses recorded successor links and calendar-day shifts only, giving a fast dependency-based estimate without editing the source file.
+- Resource inspector now includes a capacity scenario panel that models added team members as extra weekly capacity and shows peak-allocation relief, overloaded-week reduction, and recovered excess hours.
+
+Phases:
+- Phase 1: task slip simulator using dependency propagation and baseline comparison
+- Phase 2: resource capacity what-if overlays for overloaded teams
+- Phase 3: compare scenarios side by side and export impact summaries
+
+### 13. Saved Reporting Dashboards
+
+Purpose:
+- Give each audience a fast path to the views and metrics they care about.
+
+Status: started
+
+Audiences:
+- PM
+- Executive
+- Scheduler
+- Resource manager
+
+Current implementation:
+- Dashboard now supports a persisted audience preset for Project Manager, Executive, Scheduler, and Resource Manager.
+- Each preset swaps in curated KPI cards, explains its review focus, recommends the right exports, and provides one-click navigation to the most relevant analysis views.
+- Each audience preset now also keeps its own saved dashboard configuration, including widget visibility, task-focus filter, and milestone count.
+- The current audience dashboard can now be exported as a shareable markdown snapshot so recurring reviews can carry the preset, layout, KPIs, and visible sections outside the app.
+- Saved audience dashboards can now also be captured as local in-app snapshots, reopened later, reapplied to the live dashboard, exported again, or deleted.
+
+Phases:
+- Phase 1: built-in dashboard presets with curated KPIs and exports
+- Phase 2: saved user dashboards with persisted widget layout and filters
+- Phase 3: shareable dashboard exports for recurring reviews
+
+### 14. Issue Annotation Workflow
+
+Purpose:
+- Turn ad-hoc review notes into a real issue-tracking layer for project reviews.
+
+Status: started
+
+Current implementation:
+- Task inspector now supports local issue annotations with review status, follow-up flag, note body, and update timestamp.
+- Review-pack export now summarizes issue annotations instead of plain note blobs.
+- Dashboard and executive flows can export unresolved items as a focused open-issues report.
+- Task table now shows annotation badges inline and supports filters for annotated work, open issues, and follow-up items.
+- Open issues can now be exported to CSV for spreadsheet-based review and distribution.
+
+Next steps:
+- Add owner, due date, and severity so the review workflow can be triaged.
+
+### 15. Smarter Diffing
+
+Purpose:
+- Show the impact of project changes, not only field-level edits.
+
+Status: started
+
+Examples:
+- Finish-date movement summary
+- Critical-path entry and exit changes
+- Net cost delta and highest-impact cost changes
+- Added or removed dependency chains
+
+Current implementation:
+- Compare view now surfaces impact summary cards for project finish movement, total cost delta, critical-task churn, and the largest task finish slip.
+- Existing table-level field diffing remains available below the summary so reviewers can move from impact to detail without switching modes.
+- Diff rows now expose task-level finish delta, cost delta, and criticality-entry/exit signals as dedicated impact columns.
+
+Phases:
+- Phase 1: impact summary cards above the diff table
+- Phase 2: schedule, cost, and criticality deltas per task
+- Phase 3: change clustering by workstream, resource, or milestone impact
+
 ## Recommended Build Order
 
 1. Expand the task source-data inspector
@@ -230,6 +318,10 @@ Examples:
 4. Add executive summary export
 5. Add dependency diagnostics
 6. Add deeper resource diagnostics
+7. Expand issue annotations into task-table filters and triage
+8. Add smarter diff impact summaries
+9. Add scenario analysis for task slippage
+10. Add saved dashboards by audience
 
 ## Recently Implemented
 
@@ -249,8 +341,10 @@ Examples:
 1. Presentation/executive mode polish (focus messaging, live baseline alerts, review-pack export)
 2. Baseline visuals across the Gantt/timeline plus float/critical-path signaling
 3. Task relationship inspector completion (resource/constraint drill-down, dependency-focus navigation)
-4. Persistent review notes plus exported review packs
-5. Dependency graph explorer polish (bread-crumb trail, focus + zoom reset, scroll/legend support)
+4. Issue annotation workflow completion (task-table badges, triage filters, unresolved CSV export)
+5. Smarter diffing v1 (impact summary cards for finish, cost, and critical-path changes)
+6. Scenario analysis v1 (single-task slip simulation with downstream impact summary)
+7. Saved reporting dashboards v1 (PM, executive, scheduler, resource manager presets)
 
 ## Notes on Deliverables
 

@@ -7,6 +7,7 @@ struct DiffView: View {
     @State private var baselineProject: ProjectModel?
     @State private var baselineFileName: String?
     @State private var diffs: [TaskDiff] = []
+    @State private var diffSummary: ProjectDiffSummary?
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var showFilePicker = false
@@ -85,28 +86,76 @@ struct DiffView: View {
                     description: Text("The two project files are identical.")
                 )
             } else {
-                // Summary bar
-                HStack(spacing: 20) {
-                    HStack(spacing: 4) {
-                        Circle().fill(.green).frame(width: 8, height: 8)
-                        Text("\(addedCount) Added")
+                VStack(spacing: 0) {
+                    if let diffSummary {
+                        LazyVGrid(
+                            columns: [
+                                GridItem(.flexible(), spacing: 12),
+                                GridItem(.flexible(), spacing: 12),
+                                GridItem(.flexible(), spacing: 12),
+                                GridItem(.flexible(), spacing: 12),
+                            ],
+                            spacing: 12
+                        ) {
+                            diffSummaryCard(
+                                title: "Project Finish",
+                                value: finishDeltaValue(diffSummary.projectFinishDeltaDays),
+                                subtitle: finishDeltaSubtitle(diffSummary),
+                                color: finishDeltaColor(diffSummary.projectFinishDeltaDays),
+                                systemImage: "calendar.badge.clock"
+                            )
+
+                            diffSummaryCard(
+                                title: "Cost Delta",
+                                value: formattedCurrencyDelta(diffSummary.totalCostDelta),
+                                subtitle: diffSummary.changedCostTaskCount == 0
+                                    ? "No task cost changes"
+                                    : "\(diffSummary.changedCostTaskCount) task cost changes",
+                                color: costDeltaColor(diffSummary.totalCostDelta),
+                                systemImage: "dollarsign.arrow.trianglehead.counterclockwise.rotate.90"
+                            )
+
+                            diffSummaryCard(
+                                title: "Critical Path",
+                                value: criticalDeltaValue(diffSummary),
+                                subtitle: criticalDeltaSubtitle(diffSummary),
+                                color: criticalDeltaColor(diffSummary),
+                                systemImage: "exclamationmark.triangle"
+                            )
+
+                            diffSummaryCard(
+                                title: "Largest Slip",
+                                value: largestSlipValue(diffSummary),
+                                subtitle: largestSlipSubtitle(diffSummary),
+                                color: diffSummary.largestFinishSlip == nil ? .secondary : .orange,
+                                systemImage: "arrow.turn.down.right"
+                            )
+                        }
+                        .padding(12)
                     }
-                    HStack(spacing: 4) {
-                        Circle().fill(.red).frame(width: 8, height: 8)
-                        Text("\(removedCount) Removed")
+
+                    HStack(spacing: 20) {
+                        HStack(spacing: 4) {
+                            Circle().fill(.green).frame(width: 8, height: 8)
+                            Text("\(addedCount) Added")
+                        }
+                        HStack(spacing: 4) {
+                            Circle().fill(.red).frame(width: 8, height: 8)
+                            Text("\(removedCount) Removed")
+                        }
+                        HStack(spacing: 4) {
+                            Circle().fill(.yellow).frame(width: 8, height: 8)
+                            Text("\(modifiedCount) Modified")
+                        }
+                        Spacer()
+                        Text("\(diffs.count) total changes")
+                            .foregroundStyle(.secondary)
                     }
-                    HStack(spacing: 4) {
-                        Circle().fill(.yellow).frame(width: 8, height: 8)
-                        Text("\(modifiedCount) Modified")
-                    }
-                    Spacer()
-                    Text("\(diffs.count) total changes")
-                        .foregroundStyle(.secondary)
+                    .font(.caption)
+                    .padding(.horizontal)
+                    .padding(.vertical, 6)
+                    .background(Color(nsColor: .controlBackgroundColor))
                 }
-                .font(.caption)
-                .padding(.horizontal)
-                .padding(.vertical, 6)
-                .background(Color(nsColor: .controlBackgroundColor))
 
                 Divider()
 
@@ -135,6 +184,21 @@ struct DiffView: View {
                             .clipShape(Capsule())
                     }
                     .width(min: 80, ideal: 100, max: 120)
+
+                    TableColumn("Finish Delta") { diff in
+                        finishDeltaView(diff.finishDeltaDays)
+                    }
+                    .width(min: 90, ideal: 110, max: 130)
+
+                    TableColumn("Cost Delta") { diff in
+                        costDeltaView(diff.costDelta)
+                    }
+                    .width(min: 110, ideal: 130, max: 150)
+
+                    TableColumn("Criticality") { diff in
+                        criticalityDeltaView(diff.criticalityDelta)
+                    }
+                    .width(min: 90, ideal: 120, max: 140)
 
                     TableColumn("Details") { diff in
                         if diff.changes.isEmpty {
@@ -203,19 +267,169 @@ struct DiffView: View {
 
                 let parser = JSONProjectParser()
                 let model = try parser.parse(jsonData: jsonData)
+                let analysis = ProjectDiffCalculator.analyze(baseline: model, current: project)
 
                 await MainActor.run {
                     baselineProject = model
-                    diffs = ProjectDiffCalculator.diff(baseline: model, current: project)
+                    diffs = analysis.diffs
+                    diffSummary = analysis.summary
                     isLoading = false
                 }
             } catch {
                 try? FileManager.default.removeItem(at: tempURL)
                 await MainActor.run {
                     errorMessage = error.localizedDescription
+                    diffSummary = nil
                     isLoading = false
                 }
             }
         }
+    }
+
+    private func diffSummaryCard(title: String, value: String, subtitle: String, color: Color, systemImage: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(title, systemImage: systemImage)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.title3)
+                .fontWeight(.semibold)
+                .foregroundStyle(color)
+            Text(subtitle)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(color.opacity(0.08))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(color.opacity(0.18), lineWidth: 1)
+        )
+    }
+
+    @ViewBuilder
+    private func finishDeltaView(_ deltaDays: Int?) -> some View {
+        if let deltaDays {
+            Text(deltaDays > 0 ? "+\(deltaDays)d" : "\(deltaDays)d")
+                .font(.caption)
+                .fontWeight(.medium)
+                .foregroundStyle(deltaDays > 0 ? .red : .green)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 2)
+                .background((deltaDays > 0 ? Color.red : Color.green).opacity(0.12))
+                .clipShape(Capsule())
+        } else {
+            Text("-")
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private func costDeltaView(_ delta: Double?) -> some View {
+        if let delta {
+            Text(formattedCurrencyDelta(delta))
+                .font(.caption)
+                .fontWeight(.medium)
+                .foregroundStyle(costDeltaColor(delta))
+        } else {
+            Text("-")
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private func criticalityDeltaView(_ delta: CriticalityDelta) -> some View {
+        switch delta {
+        case .none:
+            Text("-")
+                .foregroundStyle(.secondary)
+        case .entered:
+            diffPill("Entered", color: .red)
+        case .exited:
+            diffPill("Exited", color: .green)
+        }
+    }
+
+    private func diffPill(_ label: String, color: Color) -> some View {
+        Text(label)
+            .font(.caption2)
+            .fontWeight(.medium)
+            .foregroundStyle(color)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 2)
+            .background(color.opacity(0.12))
+            .clipShape(Capsule())
+    }
+
+    private func finishDeltaValue(_ deltaDays: Int?) -> String {
+        guard let deltaDays else { return "No project finish date" }
+        if deltaDays == 0 { return "No finish change" }
+        return deltaDays > 0 ? "+\(deltaDays)d later" : "\(deltaDays)d earlier"
+    }
+
+    private func finishDeltaSubtitle(_ summary: ProjectDiffSummary) -> String {
+        let largestSlip = summary.largestFinishSlip.map { "\($0.taskName) +\($0.deltaDays)d" } ?? "No slipped finish dates"
+        return "\(summary.finishMovedLaterCount) later, \(summary.finishMovedEarlierCount) earlier. Biggest slip: \(largestSlip)"
+    }
+
+    private func finishDeltaColor(_ deltaDays: Int?) -> Color {
+        guard let deltaDays else { return .secondary }
+        if deltaDays > 0 { return .red }
+        if deltaDays < 0 { return .green }
+        return .secondary
+    }
+
+    private func formattedCurrencyDelta(_ value: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        let amount = formatter.string(from: NSNumber(value: abs(value))) ?? String(format: "%.2f", abs(value))
+        if value == 0 { return "No cost change" }
+        return value > 0 ? "+\(amount)" : "-\(amount)"
+    }
+
+    private func costDeltaColor(_ value: Double) -> Color {
+        if value > 0 { return .red }
+        if value < 0 { return .green }
+        return .secondary
+    }
+
+    private func criticalDeltaValue(_ summary: ProjectDiffSummary) -> String {
+        if summary.criticalAddedCount == 0 && summary.criticalRemovedCount == 0 {
+            return "No critical churn"
+        }
+        return "+\(summary.criticalAddedCount) / -\(summary.criticalRemovedCount)"
+    }
+
+    private func criticalDeltaSubtitle(_ summary: ProjectDiffSummary) -> String {
+        let entered = summary.enteredCriticalTasks.prefix(2).joined(separator: ", ")
+        let exited = summary.exitedCriticalTasks.prefix(2).joined(separator: ", ")
+
+        if !entered.isEmpty {
+            return "Now \(summary.currentCriticalCount) critical. Entered: \(entered)"
+        }
+        if !exited.isEmpty {
+            return "Now \(summary.currentCriticalCount) critical. Exited: \(exited)"
+        }
+        return "Current critical tasks: \(summary.currentCriticalCount)"
+    }
+
+    private func criticalDeltaColor(_ summary: ProjectDiffSummary) -> Color {
+        if summary.criticalAddedCount > 0 { return .red }
+        if summary.criticalRemovedCount > 0 { return .green }
+        return .secondary
+    }
+
+    private func largestSlipValue(_ summary: ProjectDiffSummary) -> String {
+        guard let largestFinishSlip = summary.largestFinishSlip else { return "No slipped tasks" }
+        return "+\(largestFinishSlip.deltaDays)d"
+    }
+
+    private func largestSlipSubtitle(_ summary: ProjectDiffSummary) -> String {
+        summary.largestFinishSlip?.taskName ?? "No finish movement to summarize"
     }
 }

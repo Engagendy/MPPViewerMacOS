@@ -10,6 +10,7 @@ struct TaskDetailView: View {
     var onSelectBreadcrumb: ((Int) -> Void)? = nil
     @AppStorage(ReviewNotesStore.key) private var taskReviewNotesData: Data = Data()
     @State private var dependencyDepth: Int = 1
+    @State private var scenarioSlipDays: Int = 5
 
     var body: some View {
         ScrollView {
@@ -213,6 +214,61 @@ struct TaskDetailView: View {
                     }
                 }
 
+                if task.startDate != nil || task.finishDate != nil {
+                    GroupBox("Scenario Analysis") {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Estimate downstream impact if this task slips. This first-pass simulation uses recorded successor links and calendar-day shifts only.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+
+                            HStack(spacing: 12) {
+                                Text("Slip")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Stepper(value: $scenarioSlipDays, in: 1...30) {
+                                    Text("\(scenarioSlipDays) day\(scenarioSlipDays == 1 ? "" : "s")")
+                                        .font(.caption)
+                                        .fontWeight(.medium)
+                                }
+                                .frame(width: 180, alignment: .leading)
+                                Spacer()
+                            }
+
+                            if let scenarioResult {
+                                detailGrid {
+                                    detailRow("Projected Start", value: scenarioResult.projectedSourceStart.map(DateFormatting.mediumDateTime))
+                                    detailRow("Projected Finish", value: scenarioResult.projectedSourceFinish.map(DateFormatting.mediumDateTime))
+                                    detailRow("Impacted Tasks", value: "\(scenarioResult.impactedTasks.count)")
+                                    detailRow("Critical Impacts", value: scenarioResult.criticalImpactCount == 0 ? "None" : "\(scenarioResult.criticalImpactCount)")
+                                    detailRow("Milestone Impacts", value: scenarioResult.milestoneImpactCount == 0 ? "None" : "\(scenarioResult.milestoneImpactCount)")
+                                    detailRow("Project Finish Impact", value: scenarioProjectFinishText(scenarioResult.projectFinishDeltaDays))
+                                }
+
+                                if scenarioResult.impactedTasks.isEmpty {
+                                    Text("No downstream task dates move from a \(scenarioSlipDays)-day slip based on the currently recorded successor links.")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                } else {
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        Text("Most Affected Tasks")
+                                            .font(.caption)
+                                            .fontWeight(.semibold)
+
+                                        ForEach(scenarioResult.impactedTasks.prefix(6)) { impact in
+                                            scenarioImpactRow(impact)
+                                        }
+                                    }
+                                }
+                            } else {
+                                Text("Scenario analysis needs recorded task dates to simulate a slip.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .padding(2)
+                    }
+                }
+
                 // Assigned Resources
                 let taskAssignments = assignments.filter { $0.taskUniqueID == task.uniqueID }
                 if !taskAssignments.isEmpty {
@@ -252,11 +308,25 @@ struct TaskDetailView: View {
                     }
                 }
 
-                GroupBox("Review Notes") {
+                GroupBox("Issue Annotation") {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Local notes saved on this Mac for review and reporting.")
+                        Text("Local review status, notes, and follow-up flags saved on this Mac for reporting.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                        HStack(alignment: .center, spacing: 12) {
+                            Picker("Review Status", selection: reviewStatusBinding) {
+                                ForEach(ReviewStatus.allCases) { status in
+                                    Text(status.rawValue).tag(status)
+                                }
+                            }
+                            .pickerStyle(.menu)
+
+                            Toggle("Needs Follow-Up", isOn: reviewFollowUpBinding)
+                                .toggleStyle(.checkbox)
+
+                            Spacer()
+                        }
+                        .font(.caption)
                         TextEditor(text: reviewNoteBinding)
                             .font(.caption)
                             .frame(minHeight: 120)
@@ -265,11 +335,16 @@ struct TaskDetailView: View {
                                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                                     .fill(Color(nsColor: .textBackgroundColor))
                             )
+                        if let updatedAt = reviewAnnotation.updatedAt, reviewAnnotation.hasContent {
+                            Text("Last updated \(annotationDateFormatter.string(from: updatedAt))")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
                         HStack {
                             Spacer()
-                            if !reviewNoteBinding.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                Button("Clear Review Note") {
-                                    reviewNoteBinding.wrappedValue = ""
+                            if reviewAnnotation.hasContent {
+                                Button("Clear Annotation") {
+                                    clearReviewAnnotation()
                                 }
                                 .buttonStyle(.borderless)
                                 .foregroundStyle(.red)
@@ -333,6 +408,12 @@ struct TaskDetailView: View {
                 if (task.percentComplete ?? 0) >= 100 {
                     badge("Completed", color: .green)
                 }
+                if reviewAnnotation.hasContent {
+                    badge(reviewAnnotation.status.rawValue, color: reviewStatusColor(reviewAnnotation.status))
+                }
+                if reviewAnnotation.needsFollowUp {
+                    badge("Needs Follow-Up", color: .orange)
+                }
             }
         }
     }
@@ -349,6 +430,14 @@ struct TaskDetailView: View {
     }
 
     // MARK: - Helpers
+
+    private var reviewAnnotation: TaskReviewAnnotation {
+        reviewAnnotations[task.uniqueID] ?? TaskReviewAnnotation()
+    }
+
+    private var scenarioResult: ScenarioSimulationResult? {
+        ScenarioAnalysis.simulateSlip(for: task, slipDays: scenarioSlipDays, allTasks: allTasks)
+    }
 
     private var taskTypeLabel: String {
         if task.milestone == true { return "Milestone" }
@@ -451,23 +540,137 @@ struct TaskDetailView: View {
     private var reviewNoteBinding: Binding<String> {
         Binding(
             get: {
-                reviewNotes[task.uniqueID] ?? ""
+                reviewAnnotation.note
             },
             set: { newValue in
-                var updated = reviewNotes
-                let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
-                if trimmed.isEmpty {
-                    updated.removeValue(forKey: task.uniqueID)
-                } else {
-                    updated[task.uniqueID] = newValue
+                mutateReviewAnnotation { annotation in
+                    annotation.note = newValue
                 }
-                taskReviewNotesData = (try? JSONEncoder().encode(updated)) ?? Data()
             }
         )
     }
 
-    private var reviewNotes: [Int: String] {
-        ReviewNotesStore.decode(taskReviewNotesData)
+    private var reviewStatusBinding: Binding<ReviewStatus> {
+        Binding(
+            get: {
+                reviewAnnotation.status
+            },
+            set: { newValue in
+                mutateReviewAnnotation { annotation in
+                    annotation.status = newValue
+                }
+            }
+        )
+    }
+
+    private var reviewFollowUpBinding: Binding<Bool> {
+        Binding(
+            get: {
+                reviewAnnotation.needsFollowUp
+            },
+            set: { newValue in
+                mutateReviewAnnotation { annotation in
+                    annotation.needsFollowUp = newValue
+                }
+            }
+        )
+    }
+
+    private var reviewAnnotations: [Int: TaskReviewAnnotation] {
+        ReviewNotesStore.decodeAnnotations(taskReviewNotesData)
+    }
+
+    private func mutateReviewAnnotation(_ edit: (inout TaskReviewAnnotation) -> Void) {
+        var updated = reviewAnnotations
+        var annotation = updated[task.uniqueID] ?? TaskReviewAnnotation()
+        edit(&annotation)
+        annotation.updatedAt = annotation.hasContent ? Date() : nil
+        if annotation.hasContent {
+            updated[task.uniqueID] = annotation
+        } else {
+            updated.removeValue(forKey: task.uniqueID)
+        }
+        taskReviewNotesData = ReviewNotesStore.encodeAnnotations(updated)
+    }
+
+    private func clearReviewAnnotation() {
+        var updated = reviewAnnotations
+        updated.removeValue(forKey: task.uniqueID)
+        taskReviewNotesData = ReviewNotesStore.encodeAnnotations(updated)
+    }
+
+    private func reviewStatusColor(_ status: ReviewStatus) -> Color {
+        switch status {
+        case .notReviewed:
+            return .secondary
+        case .inReview:
+            return .blue
+        case .waiting:
+            return .orange
+        case .resolved:
+            return .green
+        }
+    }
+
+    private var annotationDateFormatter: DateFormatter {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter
+    }
+
+    private func scenarioProjectFinishText(_ deltaDays: Int?) -> String {
+        guard let deltaDays else { return "No project finish change" }
+        return deltaDays > 0 ? "+\(deltaDays) days later" : "\(deltaDays) days earlier"
+    }
+
+    @ViewBuilder
+    private func scenarioImpactRow(_ impact: ScenarioTaskImpact) -> some View {
+        Button {
+            onSelectTask?(impact.id)
+        } label: {
+            HStack(alignment: .center, spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(impact.taskName)
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .lineLimit(1)
+                    Text(scenarioImpactSubtitle(impact))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer()
+                if let finishDelta = impact.finishDeltaDays {
+                    Text(finishDelta > 0 ? "+\(finishDelta)d" : "\(finishDelta)d")
+                        .font(.caption2)
+                        .fontWeight(.medium)
+                        .foregroundStyle(finishDelta > 0 ? .red : .green)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background((finishDelta > 0 ? Color.red : Color.green).opacity(0.12))
+                        .clipShape(Capsule())
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .background(Color(nsColor: .controlBackgroundColor).opacity(0.45))
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func scenarioImpactSubtitle(_ impact: ScenarioTaskImpact) -> String {
+        let finishText = impact.projectedFinish.map(DateFormatting.shortDate) ?? "No finish"
+        var tags: [String] = ["Finish \(finishText)"]
+        if impact.isCritical {
+            tags.append("Critical")
+        }
+        if impact.isMilestone {
+            tags.append("Milestone")
+        }
+        return tags.joined(separator: " · ")
     }
 
     private var breadcrumbBar: some View {

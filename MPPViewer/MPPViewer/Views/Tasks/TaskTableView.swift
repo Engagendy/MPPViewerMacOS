@@ -18,6 +18,7 @@ struct TaskTableView: View {
     @State private var dependencyBreadcrumbs: [Int] = []
     @AppStorage("selectedTaskViewPreset") private var selectedTaskViewPresetRaw = TaskViewPreset.none.rawValue
     @AppStorage("taskInspectorWidth") private var storedInspectorWidth = 360.0
+    @AppStorage(ReviewNotesStore.key) private var taskReviewNotesData: Data = Data()
 
     private var searchedTasks: [ProjectTask] {
         guard !searchText.isEmpty else { return tasks }
@@ -33,8 +34,12 @@ struct TaskTableView: View {
         filterCriteria.milestoneOnly ||
         filterCriteria.priorityRange != nil ||
         !filterCriteria.textSearch.isEmpty ||
+        filterCriteria.flaggedOnly ||
         filterCriteria.baselineSlippedOnly ||
-        filterCriteria.hasDependenciesOnly
+        filterCriteria.hasDependenciesOnly ||
+        filterCriteria.annotatedOnly ||
+        filterCriteria.unresolvedOnly ||
+        filterCriteria.followUpOnly
     }
 
     private var statusFilteredTaskIDs: Set<Int>? {
@@ -52,6 +57,10 @@ struct TaskTableView: View {
     private var selectedTask: ProjectTask? {
         guard let id = selectedTaskID else { return nil }
         return allTasks[id]
+    }
+
+    private var reviewAnnotations: [Int: TaskReviewAnnotation] {
+        ReviewNotesStore.decodeAnnotations(taskReviewNotesData)
     }
 
     private var availableCustomFieldKeys: [String] {
@@ -291,7 +300,10 @@ struct TaskTableView: View {
                                         .foregroundStyle(task.critical == true ? .red : .primary)
                                         .lineLimit(1)
                                 }
-                                baselineDeltaBadge(for: task)
+                                HStack(spacing: 6) {
+                                    baselineDeltaBadge(for: task)
+                                    reviewAnnotationBadges(for: task)
+                                }
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.vertical, 1)
@@ -425,9 +437,6 @@ struct TaskTableView: View {
         if let statusFilteredTaskIDs {
             tasks = tasks.filter { statusFilteredTaskIDs.contains($0.uniqueID) }
         }
-        if filterCriteria.flaggedOnly {
-            tasks = tasks.filter { flaggedTaskIDs.contains($0.uniqueID) }
-        }
         return tasks
     }
 
@@ -522,12 +531,26 @@ struct TaskTableView: View {
         let today = Calendar.current.startOfDay(for: Date())
         var result: [ProjectTask] = []
         for task in tasks {
-            if filterCriteria.matches(task, assignments: assignments, resources: resources, today: today) {
+            if filterCriteria.matches(
+                task,
+                assignments: assignments,
+                resources: resources,
+                flaggedTaskIDs: flaggedTaskIDs,
+                annotations: reviewAnnotations,
+                today: today
+            ) {
                 result.append(task)
             }
             // Also check children
             for child in task.children {
-                if filterCriteria.matches(child, assignments: assignments, resources: resources, today: today) {
+                if filterCriteria.matches(
+                    child,
+                    assignments: assignments,
+                    resources: resources,
+                    flaggedTaskIDs: flaggedTaskIDs,
+                    annotations: reviewAnnotations,
+                    today: today
+                ) {
                     if !result.contains(where: { $0.uniqueID == task.uniqueID }) {
                         result.append(task)
                     }
@@ -542,7 +565,14 @@ struct TaskTableView: View {
         var result = Set<Int>()
 
         func visit(_ task: ProjectTask) {
-            if filterCriteria.matches(task, assignments: assignments, resources: resources, today: today) {
+            if filterCriteria.matches(
+                task,
+                assignments: assignments,
+                resources: resources,
+                flaggedTaskIDs: flaggedTaskIDs,
+                annotations: reviewAnnotations,
+                today: today
+            ) {
                 result.insert(task.uniqueID)
             }
             for child in task.children {
@@ -580,6 +610,46 @@ struct TaskTableView: View {
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
                         .stroke(descriptor.color.opacity(0.7), lineWidth: 0.8)
                 )
+        }
+    }
+
+    @ViewBuilder
+    private func reviewAnnotationBadges(for task: ProjectTask) -> some View {
+        if let annotation = reviewAnnotations[task.uniqueID], annotation.hasContent {
+            Text(annotation.status.rawValue)
+                .font(.caption2)
+                .foregroundStyle(reviewStatusColor(annotation.status))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(
+                    Capsule()
+                        .fill(reviewStatusColor(annotation.status).opacity(0.14))
+                )
+
+            if annotation.needsFollowUp {
+                Text("Follow-Up")
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(
+                        Capsule()
+                            .fill(Color.orange.opacity(0.14))
+                    )
+            }
+        }
+    }
+
+    private func reviewStatusColor(_ status: ReviewStatus) -> Color {
+        switch status {
+        case .notReviewed:
+            return .secondary
+        case .inReview:
+            return .blue
+        case .waiting:
+            return .orange
+        case .resolved:
+            return .green
         }
     }
 

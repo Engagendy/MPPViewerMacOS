@@ -10,7 +10,7 @@ struct FilterBarView: View {
     var body: some View {
         VStack(spacing: 6) {
             HStack(spacing: 12) {
-                TextField("Search task, WBS, ID, resource, custom fields", text: $criteria.textSearch)
+                TextField("Search task, WBS, ID, resource, review notes, custom fields", text: $criteria.textSearch)
                     .textFieldStyle(.roundedBorder)
                     .frame(minWidth: 240, maxWidth: 320)
 
@@ -130,6 +130,26 @@ struct FilterBarView: View {
                         .buttonStyle(.borderless)
                         .font(.caption)
                     }
+
+                    Divider().frame(height: 16)
+
+                    Toggle("Annotated", isOn: $criteria.annotatedOnly)
+                        .toggleStyle(.button)
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .tint(criteria.annotatedOnly ? .blue : nil)
+
+                    Toggle("Open Issues", isOn: $criteria.unresolvedOnly)
+                        .toggleStyle(.button)
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .tint(criteria.unresolvedOnly ? .orange : nil)
+
+                    Toggle("Follow-Up", isOn: $criteria.followUpOnly)
+                        .toggleStyle(.button)
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .tint(criteria.followUpOnly ? .red : nil)
 
                     Spacer()
                 }

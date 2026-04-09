@@ -32,6 +32,7 @@ enum TaskViewPreset: String, CaseIterable, Identifiable {
     case upcomingMilestones = "Upcoming Milestones"
     case inProgress = "In Progress"
     case flaggedReview = "Flagged Review"
+    case openIssues = "Open Issues"
     case completed = "Completed"
 
     var id: String { rawValue }
@@ -51,11 +52,14 @@ struct TaskFilterCriteria {
     var flaggedOnly: Bool = false
     var baselineSlippedOnly: Bool = false
     var hasDependenciesOnly: Bool = false
+    var annotatedOnly: Bool = false
+    var unresolvedOnly: Bool = false
+    var followUpOnly: Bool = false
 
     var isActive: Bool {
         status != .all || resourceID != nil || dateRangeStart != nil || dateRangeEnd != nil ||
         criticalOnly || milestoneOnly || priorityRange != nil || !textSearch.isEmpty || flaggedOnly ||
-        baselineSlippedOnly || hasDependenciesOnly
+        baselineSlippedOnly || hasDependenciesOnly || annotatedOnly || unresolvedOnly || followUpOnly
     }
 
     mutating func clear() {
@@ -70,9 +74,21 @@ struct TaskFilterCriteria {
         flaggedOnly = false
         baselineSlippedOnly = false
         hasDependenciesOnly = false
+        annotatedOnly = false
+        unresolvedOnly = false
+        followUpOnly = false
     }
 
-    func matches(_ task: ProjectTask, assignments: [ResourceAssignment], resources: [ProjectResource], today: Date = Date()) -> Bool {
+    func matches(
+        _ task: ProjectTask,
+        assignments: [ResourceAssignment],
+        resources: [ProjectResource],
+        flaggedTaskIDs: Set<Int> = [],
+        annotations: [Int: TaskReviewAnnotation] = [:],
+        today: Date = Date()
+    ) -> Bool {
+        let annotation = annotations[task.uniqueID]
+
         // Status filter
         switch status {
         case .all:
@@ -120,6 +136,10 @@ struct TaskFilterCriteria {
             guard range.contains(p) else { return false }
         }
 
+        if flaggedOnly {
+            guard flaggedTaskIDs.contains(task.uniqueID) else { return false }
+        }
+
         if baselineSlippedOnly {
             guard (task.finishVarianceDays ?? task.startVarianceDays ?? 0) > 0 else { return false }
         }
@@ -130,6 +150,18 @@ struct TaskFilterCriteria {
             guard predecessorCount + successorCount > 0 else { return false }
         }
 
+        if annotatedOnly {
+            guard annotation?.hasContent == true else { return false }
+        }
+
+        if unresolvedOnly {
+            guard annotation?.isUnresolved == true else { return false }
+        }
+
+        if followUpOnly {
+            guard annotation?.needsFollowUp == true else { return false }
+        }
+
         // Text search
         if !textSearch.isEmpty {
             let search = textSearch.lowercased()
@@ -138,6 +170,7 @@ struct TaskFilterCriteria {
             let idMatch = task.id.map(String.init)?.contains(search) == true
             let notesMatch = task.notes?.lowercased().contains(search) == true
             let customFieldMatch = task.customFields?.values.contains(where: { $0.displayString.lowercased().contains(search) }) == true
+            let annotationMatch = annotation?.note.lowercased().contains(search) == true
             let taskAssignments = assignments.filter { $0.taskUniqueID == task.uniqueID }
             let resourceMatch = taskAssignments.contains { assignment in
                 guard let resourceID = assignment.resourceUniqueID else { return false }
@@ -148,8 +181,11 @@ struct TaskFilterCriteria {
                 (search == "milestone" && task.isDisplayMilestone) ||
                 (search == "summary" && task.summary == true) ||
                 (search == "overdue" && task.isOverdue) ||
-                (search == "baseline slip" && (task.finishVarianceDays ?? task.startVarianceDays ?? 0) > 0)
-            guard nameMatch || wbsMatch || idMatch || notesMatch || customFieldMatch || resourceMatch || keywordMatch else { return false }
+                (search == "baseline slip" && (task.finishVarianceDays ?? task.startVarianceDays ?? 0) > 0) ||
+                (search == "open issue" && annotation?.isUnresolved == true) ||
+                (search == "follow up" && annotation?.needsFollowUp == true) ||
+                (search == "reviewed" && annotation?.hasContent == true)
+            guard nameMatch || wbsMatch || idMatch || notesMatch || customFieldMatch || annotationMatch || resourceMatch || keywordMatch else { return false }
         }
 
         return true
@@ -170,6 +206,8 @@ struct TaskFilterCriteria {
             status = .inProgress
         case .flaggedReview:
             flaggedOnly = true
+        case .openIssues:
+            unresolvedOnly = true
         case .completed:
             status = .complete
         }

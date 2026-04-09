@@ -3,6 +3,8 @@ import SwiftUI
 struct ResourceSheetView: View {
     let resources: [ProjectResource]
     let assignments: [ResourceAssignment]
+    let calendars: [ProjectCalendar]
+    let defaultCalendarID: Int?
     let allTasks: [Int: ProjectTask]
     @Binding var navigateToTaskID: Int?
     @Binding var selectedNav: NavigationItem?
@@ -85,6 +87,8 @@ struct ResourceSheetView: View {
                         ResourceInspectorView(
                             resource: resource,
                             assignments: resourceAssignments(for: resource),
+                            calendars: calendars,
+                            defaultCalendarID: defaultCalendarID,
                             allTasks: allTasks,
                             navigateToTask: { uniqueID in
                                 selectedNav = .tasks
@@ -185,11 +189,14 @@ private struct ResourceRow: Identifiable {
 private struct ResourceInspectorView: View {
     let resource: ProjectResource
     let assignments: [ResourceAssignment]
+    let calendars: [ProjectCalendar]
+    let defaultCalendarID: Int?
     let allTasks: [Int: ProjectTask]
     let navigateToTask: (Int) -> Void
 
     @State private var cachedLoadBuckets: [ResourceLoadBucket] = []
     @State private var cachedWeeklyWeeks: [ResourceWeek] = []
+    @State private var scenarioAddedTeamMembers: Int = 1
 
     private var assignmentRows: [ResourceAssignmentRow] {
         assignments.compactMap { assignment in
@@ -197,6 +204,29 @@ private struct ResourceInspectorView: View {
             return ResourceAssignmentRow(assignment: assignment, task: task)
         }
         .sorted { ($0.startDate ?? .distantFuture) < ($1.startDate ?? .distantFuture) }
+    }
+
+    private var capacityScenarioResult: ResourceCapacityScenarioResult? {
+        ResourceCapacityScenarioAnalysis.simulate(
+            resource: resource,
+            assignments: assignments,
+            tasks: Array(allTasks.values),
+            calendars: calendars,
+            defaultCalendarID: defaultCalendarID,
+            addedTeamMembers: scenarioAddedTeamMembers
+        )
+    }
+
+    private var capacityScenarioWeeks: [ResourceCapacityScenarioWeek] {
+        guard let capacityScenarioResult else { return [] }
+        return capacityScenarioResult.weeks
+            .filter { $0.baselineOverloadHours > 0 || $0.simulatedOverloadHours > 0 }
+            .sorted { lhs, rhs in
+                if lhs.recoveredOverloadHours == rhs.recoveredOverloadHours {
+                    return lhs.weekStart < rhs.weekStart
+                }
+                return lhs.recoveredOverloadHours > rhs.recoveredOverloadHours
+            }
     }
 
     private func refreshLoadData() {
@@ -308,6 +338,64 @@ private struct ResourceInspectorView: View {
                         infoRow("Overload Days", "\(cachedLoadBuckets.filter { $0.units > (resource.maxUnits ?? 100) }.count)")
                     }
                     .padding(4)
+                }
+
+                if let capacityScenarioResult {
+                    GroupBox("Capacity Scenario") {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Model added weekly capacity for this resource. This reduces overload pressure, but it does not reschedule tasks or change dates.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+
+                            HStack {
+                                Text("Added Team Members")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                Stepper(value: $scenarioAddedTeamMembers, in: 1...3) {
+                                    Text("\(scenarioAddedTeamMembers)")
+                                        .font(.caption)
+                                        .monospacedDigit()
+                                }
+                                .labelsHidden()
+                                Text("\(scenarioAddedTeamMembers)")
+                                    .font(.caption)
+                                    .monospacedDigit()
+                                    .frame(width: 24, alignment: .trailing)
+                            }
+
+                            VStack(alignment: .leading, spacing: 6) {
+                                infoRow("Capacity", "\(Int(capacityScenarioResult.baselineMaxUnits))% -> \(Int(capacityScenarioResult.simulatedMaxUnits))%")
+                                infoRow("Peak Allocation", "\(Int(capacityScenarioResult.baselinePeakAllocation.rounded()))% -> \(Int(capacityScenarioResult.simulatedPeakAllocation.rounded()))%")
+                                infoRow("Overloaded Weeks", "\(capacityScenarioResult.baselineOverloadedWeekCount) -> \(capacityScenarioResult.simulatedOverloadedWeekCount)")
+                                infoRow("Excess Hours", "\(formatHours(capacityScenarioResult.recoveredOverloadHours + capacityScenarioResult.remainingOverloadHours)) -> \(formatHours(capacityScenarioResult.remainingOverloadHours))")
+                            }
+
+                            Text(capacityScenarioSummary(capacityScenarioResult))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+
+                            if capacityScenarioWeeks.isEmpty {
+                                Text("Current weekly workload is already within capacity for this resource.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("Most Improved Weeks")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+
+                                    ForEach(capacityScenarioWeeks.prefix(4)) { week in
+                                        capacityScenarioWeekRow(week)
+                                        if week.id != capacityScenarioWeeks.prefix(4).last?.id {
+                                            Divider()
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        .padding(4)
+                    }
                 }
 
                 if !cachedLoadBuckets.isEmpty {
@@ -502,6 +590,49 @@ private struct ResourceInspectorView: View {
             }
             .font(.caption)
         }
+    }
+
+    private func formatHours(_ hours: Double) -> String {
+        let rounded = (hours * 10).rounded() / 10
+        if rounded.rounded(.towardZero) == rounded {
+            return "\(Int(rounded))h"
+        }
+        return String(format: "%.1fh", rounded)
+    }
+
+    private func capacityScenarioSummary(_ result: ResourceCapacityScenarioResult) -> String {
+        if result.baselineOverloadedWeekCount == 0 {
+            return "This resource is already within weekly capacity. Adding people only creates extra headroom."
+        }
+
+        if result.simulatedOverloadedWeekCount == 0 {
+            return "Adding \(result.addedTeamMembers) team member\(result.addedTeamMembers == 1 ? "" : "s") would absorb all currently overloaded weeks for this resource."
+        }
+
+        return "Adding \(result.addedTeamMembers) team member\(result.addedTeamMembers == 1 ? "" : "s") resolves \(result.resolvedWeekCount) overloaded week\(result.resolvedWeekCount == 1 ? "" : "s"), but \(result.simulatedOverloadedWeekCount) still remain."
+    }
+
+    private func capacityScenarioWeekRow(_ week: ResourceCapacityScenarioWeek) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .top) {
+                Text("Week of \(DateFormatting.shortDate(week.weekStart))")
+                    .foregroundStyle(.primary)
+                Spacer()
+                Text("\(Int(week.baselineAllocationPercent.rounded()))% -> \(Int(week.simulatedAllocationPercent.rounded()))%")
+                    .font(.caption)
+                    .monospacedDigit()
+                    .foregroundStyle(week.simulatedOverloadHours > 0 ? .red : .green)
+            }
+            Text("Load \(formatHours(week.totalHours)) against \(formatHours(week.baselineCapacityHours)) baseline capacity and \(formatHours(week.simulatedCapacityHours)) scenario capacity.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            if week.recoveredOverloadHours > 0 {
+                Text("Recovered \(formatHours(week.recoveredOverloadHours)) of weekly overload.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .font(.caption)
     }
 }
 
