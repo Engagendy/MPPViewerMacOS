@@ -78,4 +78,12 @@ enum DateFormatting {
     static func shortWeekday(_ date: Date) -> String {
         shortWeekdayFormatter.string(from: date)
     }
+
+    static func mpxjDateTime(_ date: Date) -> String {
+        mpxjFormatter.string(from: date)
+    }
+
+    static func simpleDate(_ date: Date) -> String {
+        simpleDateFormatter.string(from: date)
+    }
 }

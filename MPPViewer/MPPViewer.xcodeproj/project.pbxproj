@@ -37,12 +37,13 @@
 		A10000010000000000000080 /* TaskFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000080 /* TaskFilter.swift */; };
 		A10000010000000000000081 /* EVMCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000081 /* EVMCalculator.swift */; };
 		A10000010000000000000082 /* WorkloadCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000082 /* WorkloadCalculator.swift */; };
-		A10000010000000000000083 /* FilterBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000083 /* FilterBarView.swift */; };
-		A10000010000000000000084 /* EarnedValueView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000084 /* EarnedValueView.swift */; };
-		A10000010000000000000085 /* WorkloadView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000085 /* WorkloadView.swift */; };
-		A10000010000000000000090 /* CSVExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000090 /* CSVExporter.swift */; };
-		A10000010000000000000091 /* AnyCodable.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000091 /* AnyCodable.swift */; };
-		A10000010000000000000092 /* PrintManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000092 /* PrintManager.swift */; };
+			A10000010000000000000083 /* FilterBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000083 /* FilterBarView.swift */; };
+			A10000010000000000000084 /* EarnedValueView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000084 /* EarnedValueView.swift */; };
+			A10000010000000000000085 /* WorkloadView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000085 /* WorkloadView.swift */; };
+			A10000010000000000000090 /* CSVExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000090 /* CSVExporter.swift */; };
+			A10000010000000000000134 /* CSVImportMappingViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000134 /* CSVImportMappingViews.swift */; };
+			A10000010000000000000091 /* AnyCodable.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000091 /* AnyCodable.swift */; };
+			A10000010000000000000092 /* PrintManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000092 /* PrintManager.swift */; };
 		A10000010000000000000110 /* BaselineVariance.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000110 /* BaselineVariance.swift */; };
 		A10000010000000000000120 /* ReviewNotesStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000120 /* ReviewNotesStore.swift */; };
 		A10000010000000000000121 /* ScenarioAnalysis.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000121 /* ScenarioAnalysis.swift */; };
@@ -51,6 +52,10 @@
 		A10000010000000000000094 /* TimelineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000094 /* TimelineView.swift */; };
 		A10000010000000000000095 /* DiffView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000095 /* DiffView.swift */; };
 		A10000010000000000000100 /* DependencyGraphExplorerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000100 /* DependencyGraphExplorerView.swift */; };
+		A10000010000000000000130 /* NativeProjectPlan.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000130 /* NativeProjectPlan.swift */; };
+		A10000010000000000000131 /* PlanEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000131 /* PlanEditorView.swift */; };
+		A10000010000000000000132 /* NativeResourcesEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000132 /* NativeResourcesEditorView.swift */; };
+		A10000010000000000000133 /* NativeCalendarEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000133 /* NativeCalendarEditorView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -110,12 +115,13 @@
 		A20000010000000000000080 /* TaskFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskFilter.swift; sourceTree = "<group>"; };
 		A20000010000000000000081 /* EVMCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EVMCalculator.swift; sourceTree = "<group>"; };
 		A20000010000000000000082 /* WorkloadCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkloadCalculator.swift; sourceTree = "<group>"; };
-		A20000010000000000000083 /* FilterBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilterBarView.swift; sourceTree = "<group>"; };
-		A20000010000000000000084 /* EarnedValueView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EarnedValueView.swift; sourceTree = "<group>"; };
-		A20000010000000000000085 /* WorkloadView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkloadView.swift; sourceTree = "<group>"; };
-		A20000010000000000000090 /* CSVExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CSVExporter.swift; sourceTree = "<group>"; };
-		A20000010000000000000091 /* AnyCodable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnyCodable.swift; sourceTree = "<group>"; };
-		A20000010000000000000092 /* PrintManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrintManager.swift; sourceTree = "<group>"; };
+			A20000010000000000000083 /* FilterBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilterBarView.swift; sourceTree = "<group>"; };
+			A20000010000000000000084 /* EarnedValueView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EarnedValueView.swift; sourceTree = "<group>"; };
+			A20000010000000000000085 /* WorkloadView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkloadView.swift; sourceTree = "<group>"; };
+			A20000010000000000000090 /* CSVExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CSVExporter.swift; sourceTree = "<group>"; };
+			A20000010000000000000134 /* CSVImportMappingViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CSVImportMappingViews.swift; sourceTree = "<group>"; };
+			A20000010000000000000091 /* AnyCodable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnyCodable.swift; sourceTree = "<group>"; };
+			A20000010000000000000092 /* PrintManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrintManager.swift; sourceTree = "<group>"; };
 		A20000010000000000000110 /* BaselineVariance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BaselineVariance.swift; sourceTree = "<group>"; };
 		A20000010000000000000120 /* ReviewNotesStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewNotesStore.swift; sourceTree = "<group>"; };
 		A20000010000000000000121 /* ScenarioAnalysis.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScenarioAnalysis.swift; sourceTree = "<group>"; };
@@ -124,6 +130,10 @@
 		A20000010000000000000094 /* TimelineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineView.swift; sourceTree = "<group>"; };
 		A20000010000000000000095 /* DiffView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiffView.swift; sourceTree = "<group>"; };
 		A20000010000000000000100 /* DependencyGraphExplorerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DependencyGraphExplorerView.swift; sourceTree = "<group>"; };
+		A20000010000000000000130 /* NativeProjectPlan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeProjectPlan.swift; sourceTree = "<group>"; };
+		A20000010000000000000131 /* PlanEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanEditorView.swift; sourceTree = "<group>"; };
+		A20000010000000000000132 /* NativeResourcesEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeResourcesEditorView.swift; sourceTree = "<group>"; };
+		A20000010000000000000133 /* NativeCalendarEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeCalendarEditorView.swift; sourceTree = "<group>"; };
 		A30000010000000000000001 /* MPPViewer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MPPViewer.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -197,6 +207,7 @@
 			isa = PBXGroup;
 			children = (
 				A20000010000000000000004 /* ProjectModel.swift */,
+				A20000010000000000000130 /* NativeProjectPlan.swift */,
 				A20000010000000000000005 /* ProjectStore.swift */,
 				A20000010000000000000080 /* TaskFilter.swift */,
 				A20000010000000000000091 /* AnyCodable.swift */,
@@ -225,6 +236,7 @@
 				A50000010000000000000007 /* Sidebar */,
 				A50000010000000000000008 /* Summary */,
 				A50000010000000000000009 /* Tasks */,
+				A50000010000000000000092 /* Planner */,
 				A50000010000000000000011 /* Gantt */,
 				A50000010000000000000012 /* Resources */,
 				A50000010000000000000013 /* Calendar */,
@@ -296,6 +308,7 @@
 			isa = PBXGroup;
 			children = (
 				A20000010000000000000015 /* ResourceSheetView.swift */,
+				A20000010000000000000132 /* NativeResourcesEditorView.swift */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -304,6 +317,7 @@
 			isa = PBXGroup;
 			children = (
 				A20000010000000000000016 /* CalendarView.swift */,
+				A20000010000000000000133 /* NativeCalendarEditorView.swift */,
 			);
 			path = Calendar;
 			sourceTree = "<group>";
@@ -332,14 +346,15 @@
 			path = Dashboard;
 			sourceTree = "<group>";
 		};
-		A50000010000000000000080 /* Components */ = {
-			isa = PBXGroup;
-			children = (
-				A20000010000000000000083 /* FilterBarView.swift */,
-			);
-			path = Components;
-			sourceTree = "<group>";
-		};
+			A50000010000000000000080 /* Components */ = {
+				isa = PBXGroup;
+				children = (
+					A20000010000000000000083 /* FilterBarView.swift */,
+					A20000010000000000000134 /* CSVImportMappingViews.swift */,
+				);
+				path = Components;
+				sourceTree = "<group>";
+			};
 		A50000010000000000000081 /* EarnedValue */ = {
 			isa = PBXGroup;
 			children = (
@@ -370,6 +385,14 @@
 				A20000010000000000000095 /* DiffView.swift */,
 			);
 			path = Diff;
+			sourceTree = "<group>";
+		};
+		A50000010000000000000092 /* Planner */ = {
+			isa = PBXGroup;
+			children = (
+				A20000010000000000000131 /* PlanEditorView.swift */,
+			);
+			path = Planner;
 			sourceTree = "<group>";
 		};
 		A50000010000000000000099 /* Products */ = {
@@ -522,6 +545,7 @@
 				A10000010000000000000081 /* EVMCalculator.swift in Sources */,
 				A10000010000000000000082 /* WorkloadCalculator.swift in Sources */,
 				A10000010000000000000083 /* FilterBarView.swift in Sources */,
+				A10000010000000000000134 /* CSVImportMappingViews.swift in Sources */,
 				A10000010000000000000084 /* EarnedValueView.swift in Sources */,
 				A10000010000000000000085 /* WorkloadView.swift in Sources */,
 				A10000010000000000000090 /* CSVExporter.swift in Sources */,
@@ -534,6 +558,10 @@
 				A10000010000000000000093 /* ProjectDiff.swift in Sources */,
 				A10000010000000000000094 /* TimelineView.swift in Sources */,
 				A10000010000000000000095 /* DiffView.swift in Sources */,
+				A10000010000000000000130 /* NativeProjectPlan.swift in Sources */,
+				A10000010000000000000131 /* PlanEditorView.swift in Sources */,
+				A10000010000000000000132 /* NativeResourcesEditorView.swift in Sources */,
+				A10000010000000000000133 /* NativeCalendarEditorView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

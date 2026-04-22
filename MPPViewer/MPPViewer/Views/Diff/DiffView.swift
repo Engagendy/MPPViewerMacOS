@@ -216,7 +216,7 @@ struct DiffView: View {
         }
         .fileImporter(
             isPresented: $showFilePicker,
-            allowedContentTypes: [UTType(filenameExtension: "mpp") ?? .data],
+            allowedContentTypes: [.mpp, .mppplan],
             allowsMultipleSelection: false
         ) { result in
             switch result {
@@ -244,7 +244,7 @@ struct DiffView: View {
         // Copy to temp so the converter can access it after the security scope ends
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
-            .appendingPathExtension("mpp")
+            .appendingPathExtension(url.pathExtension.isEmpty ? "mpp" : url.pathExtension)
         do {
             try FileManager.default.copyItem(at: url, to: tempURL)
         } catch {
@@ -261,12 +261,19 @@ struct DiffView: View {
 
         Task {
             do {
-                let converter = MPPConverterService()
-                let jsonData = try await converter.convert(mppFileURL: tempURL)
+                let model: ProjectModel
+                if url.pathExtension.lowercased() == "mppplan" {
+                    let data = try Data(contentsOf: tempURL)
+                    let nativePlan = try NativeProjectPlan.decode(from: data)
+                    model = nativePlan.asProjectModel()
+                } else {
+                    let converter = MPPConverterService()
+                    let jsonData = try await converter.convert(mppFileURL: tempURL)
+                    let parser = JSONProjectParser()
+                    model = try parser.parse(jsonData: jsonData)
+                }
                 try? FileManager.default.removeItem(at: tempURL)
 
-                let parser = JSONProjectParser()
-                let model = try parser.parse(jsonData: jsonData)
                 let analysis = ProjectDiffCalculator.analyze(baseline: model, current: project)
 
                 await MainActor.run {

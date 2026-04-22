@@ -4,6 +4,8 @@ struct TimelineView: View {
     let project: ProjectModel
 
     @State private var pixelsPerDay: CGFloat = 10
+    @State private var timelineViewportWidth: CGFloat = 0
+    @State private var shouldAutoFitTimeline = true
     @State private var preparedData: TimelinePreparedData?
     @State private var showBaseline: Bool = false
     @Environment(\.colorScheme) var colorScheme
@@ -47,7 +49,30 @@ struct TimelineView: View {
 
                     Divider().frame(height: 16)
 
-                    GanttZoomControls(pixelsPerDay: $pixelsPerDay, totalDays: data.totalDays)
+                    GanttZoomControls(
+                        pixelsPerDay: pixelsPerDay,
+                        totalDays: data.totalDays,
+                        onFitAll: {
+                            shouldAutoFitTimeline = true
+                            applyAutoFitIfNeeded(totalDays: data.totalDays)
+                        },
+                        onShowWeek: {
+                            shouldAutoFitTimeline = false
+                            pixelsPerDay = 40
+                        },
+                        onShowMonth: {
+                            shouldAutoFitTimeline = false
+                            pixelsPerDay = 10
+                        },
+                        onZoomOut: {
+                            shouldAutoFitTimeline = false
+                            pixelsPerDay = max(2, pixelsPerDay / 1.5)
+                        },
+                        onZoomIn: {
+                            shouldAutoFitTimeline = false
+                            pixelsPerDay = min(100, pixelsPerDay * 1.5)
+                        }
+                    )
                 }
                 .padding(.horizontal)
                 .padding(.vertical, 8)
@@ -62,18 +87,35 @@ struct TimelineView: View {
                     let timelineWidth = CGFloat(data.totalDays) * pixelsPerDay
                     let contentHeight = CGFloat(data.items.count) * rowHeight
 
-                    ScrollView([.horizontal, .vertical]) {
-                        VStack(alignment: .leading, spacing: 0) {
-                            GanttHeaderView(
-                                dateRange: (data.startDate, data.endDate),
-                                pixelsPerDay: pixelsPerDay,
-                                totalWidth: timelineWidth
-                            )
+                    GeometryReader { geometry in
+                        let viewportWidth = max(geometry.size.width, 1)
 
-                            Canvas { context, size in
-                                drawTimeline(context: context, size: size, data: data)
+                        ScrollView([.horizontal, .vertical]) {
+                            VStack(alignment: .leading, spacing: 0) {
+                                GanttHeaderView(
+                                    dateRange: (data.startDate, data.endDate),
+                                    pixelsPerDay: pixelsPerDay,
+                                    totalWidth: timelineWidth
+                                )
+
+                                Canvas { context, size in
+                                    drawTimeline(context: context, size: size, data: data)
+                                }
+                                .frame(width: timelineWidth, height: contentHeight)
                             }
-                            .frame(width: timelineWidth, height: contentHeight)
+                            .frame(minHeight: geometry.size.height, alignment: .topLeading)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        .onAppear {
+                            timelineViewportWidth = viewportWidth
+                            applyAutoFitIfNeeded(totalDays: data.totalDays)
+                        }
+                        .onChange(of: viewportWidth) { _, newWidth in
+                            timelineViewportWidth = newWidth
+                            applyAutoFitIfNeeded(totalDays: data.totalDays)
+                        }
+                        .onChange(of: data.totalDays) { _, newTotalDays in
+                            applyAutoFitIfNeeded(totalDays: newTotalDays)
                         }
                     }
                 }
@@ -87,10 +129,30 @@ struct TimelineView: View {
         }
     }
 
+    private func applyAutoFitIfNeeded(totalDays: Int) {
+        guard shouldAutoFitTimeline, timelineViewportWidth > 0 else { return }
+        pixelsPerDay = fittedPixelsPerDay(for: timelineViewportWidth, totalDays: totalDays)
+    }
+
+    private func fittedPixelsPerDay(for viewportWidth: CGFloat, totalDays: Int) -> CGFloat {
+        max(2, min(100, viewportWidth / CGFloat(max(totalDays, 1))))
+    }
+
     // MARK: - Pre-compute all data once
 
     private func prepareData() -> TimelinePreparedData {
-        let tasks = project.tasks.filter { $0.summary == true || $0.milestone == true }
+        let timelineTasks: [ProjectTask] = {
+            let emphasized = project.tasks.filter { $0.summary == true || $0.isDisplayMilestone }
+            if !emphasized.isEmpty {
+                return emphasized
+            }
+            // Native plans and smaller schedules may not have summary tasks yet.
+            // Fall back to showing all top-level tasks so the timeline remains useful.
+            if !project.rootTasks.isEmpty {
+                return project.rootTasks
+            }
+            return project.tasks
+        }()
         let range = GanttDateHelpers.dateRange(for: project.tasks)
         let totalDays = GanttDateHelpers.totalDays(for: range)
         let calendar = Calendar.current
@@ -121,7 +183,7 @@ struct TimelineView: View {
         var currentTopLevelID: Int? = nil
         var laneIndex = 0
 
-        for task in tasks {
+        for task in timelineTasks {
             let topID = topAncestorID(task)
             if topID != currentTopLevelID {
                 currentTopLevelID = topID
@@ -167,8 +229,8 @@ struct TimelineView: View {
             startDate: range.start,
             endDate: range.end,
             totalDays: totalDays,
-            summaryCount: tasks.filter { $0.summary == true }.count,
-            milestoneCount: tasks.filter { $0.isDisplayMilestone }.count
+            summaryCount: timelineTasks.filter { $0.summary == true }.count,
+            milestoneCount: timelineTasks.filter { $0.isDisplayMilestone }.count
         )
     }
 

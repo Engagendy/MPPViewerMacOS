@@ -207,10 +207,38 @@ Examples:
 Purpose:
 - Save a point-in-time analytical snapshot of a project.
 
+Status: started
+
 Examples:
 - Save flagged tasks
 - Save notes and comments
 - Reopen previous review sessions
+
+Current implementation:
+- Audience dashboards can now be saved as local snapshots and reopened later inside the dashboard.
+- Snapshot apply now restores the saved dashboard preset and layout plus the captured flagged-task set and issue annotations.
+- Snapshot exports include the saved review-state counts so review runs can be audited outside the app.
+- Saved snapshots can now also be compared against another review run to show flag churn, issue churn, follow-up changes, and layout differences over time.
+- Snapshot comparisons can now be exported as markdown delta reports for sharing what changed between review sessions.
+- The dashboard now also shows recent snapshot trends for open issues, follow-up load, flagged tasks, and annotation volume across the latest review window.
+- Trend cards now drive the comparison panel directly so reviewers can jump from a trend spike into the matching snapshot pair and focused churn list.
+- Snapshots can now be pinned and given custom labels so important review runs stay visible and readable beyond their timestamp.
+- Snapshots now also carry a reusable review cadence tag such as Weekly PM, Executive, Baseline Check, or Ad Hoc, and the snapshot list can be filtered by that cadence.
+- Snapshot templates now let reviewers create one-click labeled review runs such as Weekly PM Review, Executive Gate Review, and Baseline Health Check with the right preset, cadence, and pinning.
+- Review templates can now also be applied directly to the live dashboard so teams can reset into a known PM, Executive, Scheduler, or risk-review layout before exporting or saving a run.
+- Users can now save the current dashboard as a custom review template with its own name, cadence, pin state, preset, and widget layout, then reuse it later for live apply or labeled review runs.
+- Custom review templates can now be edited in place, including rename, cadence and pin changes, plus overwrite from the current live dashboard without recreating the template.
+- Custom review templates now also carry preferred export actions, so applying a template surfaces the right pack/report buttons for that review mode and the template itself can be edited to change those export preferences.
+- Custom review templates now track their last saved run and show the next review due based on cadence, turning pinned review modes into lightweight scheduling cues instead of static presets.
+- The dashboard now includes a review queue that ranks scheduled templates by first-run needed, overdue, and due-soon status, with one-click apply and save-run actions.
+- Review queue items can now be snoozed or dismissed per reminder cycle, so scheduled templates behave more like a manageable worklist and reset automatically after the next saved run.
+- Review queue actions now leave a small reminder history on each template and support early restore, so hidden reminders are explainable and reversible instead of disappearing without context.
+- Suppressed reminders now stay visible in their own queue section with the hide reason and direct restore/save-run actions, so snoozed or dismissed reviews never become invisible state.
+- Review template cards and the active template panel now show recent reminder activity, so snooze, dismiss, restore, and completed-review behavior is visible without opening the queue.
+- The review queue now surfaces friction cards for often-snoozed, overdue, and hidden-due templates, so teams can spot review-process bottlenecks instead of only seeing the next reminder.
+- Those friction cards now act as queue drill-downs with a focused template list and clear action, so reviewers can jump directly from process signal to the templates causing it.
+- Focused queue views now support batch `Snooze All`, `Restore All`, and `Save All` actions, so reviewers can clear an entire friction slice without handling each template one by one.
+- Batch queue actions now show compact confirmation feedback like restored, snoozed, or saved counts, so focused triage feels transactional instead of silently mutating state.
 
 ### 11. Collaboration Export
 
@@ -264,6 +292,7 @@ Current implementation:
 - Each audience preset now also keeps its own saved dashboard configuration, including widget visibility, task-focus filter, and milestone count.
 - The current audience dashboard can now be exported as a shareable markdown snapshot so recurring reviews can carry the preset, layout, KPIs, and visible sections outside the app.
 - Saved audience dashboards can now also be captured as local in-app snapshots, reopened later, reapplied to the live dashboard, exported again, or deleted.
+- Those saved snapshots now capture review-state context too, including flagged tasks and issue annotations, so a reopened review session restores more than just layout.
 
 Phases:
 - Phase 1: built-in dashboard presets with curated KPIs and exports

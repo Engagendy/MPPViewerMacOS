@@ -37,8 +37,16 @@ struct EarnedValueView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 // KPI Cards
-                Text("Earned Value Analysis")
-                    .font(.headline)
+                HStack(alignment: .center) {
+                    Text("Earned Value Analysis")
+                        .font(.headline)
+                    evmInfoButton(
+                        title: "Earned Value Analysis",
+                        message: "Review earned value performance, forecast metrics, planned versus earned progress, and task-level financial control indicators."
+                    )
+                    Spacer()
+                    evmTermsButton
+                }
 
                 if metrics.bac == 0 {
                     ContentUnavailableView(
@@ -70,33 +78,37 @@ struct EarnedValueView: View {
                 value: String(format: "%.2f", metrics.cpi),
                 subtitle: "Cost Performance Index",
                 icon: "dollarsign.circle.fill",
-                isHealthy: metrics.cpi >= 1.0
+                isHealthy: metrics.cpi >= 1.0,
+                termCode: "CPI"
             )
             evmKPICard(
                 title: "SPI",
                 value: String(format: "%.2f", metrics.spi),
                 subtitle: "Schedule Performance Index",
                 icon: "clock.fill",
-                isHealthy: metrics.spi >= 1.0
+                isHealthy: metrics.spi >= 1.0,
+                termCode: "SPI"
             )
             evmKPICard(
                 title: "EAC",
                 value: formatCurrency(metrics.eac),
                 subtitle: "Estimate at Completion",
                 icon: "chart.line.uptrend.xyaxis",
-                isHealthy: metrics.eac <= metrics.bac
+                isHealthy: metrics.eac <= metrics.bac,
+                termCode: "EAC"
             )
             evmKPICard(
                 title: "VAC",
                 value: formatCurrency(metrics.vac),
                 subtitle: "Variance at Completion",
                 icon: "plusminus.circle.fill",
-                isHealthy: metrics.vac >= 0
+                isHealthy: metrics.vac >= 0,
+                termCode: "VAC"
             )
         }
     }
 
-    private func evmKPICard(title: String, value: String, subtitle: String, icon: String, isHealthy: Bool) -> some View {
+    private func evmKPICard(title: String, value: String, subtitle: String, icon: String, isHealthy: Bool, termCode: String) -> some View {
         KPICard(
             title: title,
             value: value,
@@ -104,12 +116,16 @@ struct EarnedValueView: View {
             icon: icon,
             color: isHealthy ? .green : .red
         )
+        .overlay(alignment: .topTrailing) {
+            metricInfoButton(code: termCode)
+                .padding(10)
+        }
     }
 
     // MARK: - S-Curve Chart
 
     private func sCurveChart(metrics: EVMMetrics) -> some View {
-        GroupBox("S-Curve") {
+        GroupBox {
             VStack(alignment: .leading, spacing: 8) {
                 let data = buildSCurveData(metrics: metrics)
 
@@ -137,6 +153,14 @@ struct EarnedValueView: View {
                     .frame(height: 250)
                     .padding(4)
                 }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Text("S-Curve")
+                evmInfoButton(
+                    title: "S-Curve",
+                    message: "Shows planned value, earned value, and actual cost over time so you can compare plan, progress, and spend visually."
+                )
             }
         }
     }
@@ -198,7 +222,7 @@ struct EarnedValueView: View {
     // MARK: - Task EVM Table
 
     private func taskTable() -> some View {
-        GroupBox("Task-Level EVM") {
+        GroupBox {
             if taskMetrics.isEmpty {
                 Text("No tasks with cost data.")
                     .foregroundStyle(.secondary)
@@ -265,7 +289,59 @@ struct EarnedValueView: View {
                 }
                 .frame(minHeight: 200)
             }
+        } label: {
+            HStack(spacing: 6) {
+                Text("Task-Level EVM")
+                evmInfoButton(
+                    title: "Task-Level EVM",
+                    message: "Shows earned value metrics per non-summary task so you can find which tasks are driving cost and schedule variance."
+                )
+            }
         }
+    }
+
+    private var evmTermsButton: some View {
+        Image(systemName: "info.circle")
+            .foregroundStyle(.secondary)
+            .font(.title3)
+            .contentShape(Rectangle())
+            .popoverTipButton(
+                title: "EVM Terms",
+                message: "Open the earned value glossary only when needed.",
+                terms: relevantTerms
+            )
+    }
+
+    private var relevantTerms: [AppFinanceTerm] {
+        AppHelpCatalog.financeTerms.filter {
+            ["BAC", "PV", "EV", "AC", "CPI", "SPI", "EAC", "VAC", "CV", "SV", "BCWS", "BCWP", "ACWP"].contains($0.shortCode)
+        }
+    }
+
+    @ViewBuilder
+    private func metricInfoButton(code: String) -> some View {
+        if let term = AppHelpCatalog.financeTerms.first(where: { $0.shortCode == code }) {
+            Image(systemName: "info.circle")
+                .foregroundStyle(.secondary)
+                .font(.caption)
+                .contentShape(Rectangle())
+                .popoverTipButton(
+                    title: "\(term.shortCode) · \(term.fullName)",
+                    message: term.meaning,
+                    terms: [term]
+                )
+        }
+    }
+
+    private func evmInfoButton(title: String, message: String) -> some View {
+        Image(systemName: "info.circle")
+            .foregroundStyle(.secondary)
+            .contentShape(Rectangle())
+            .popoverTipButton(
+                title: title,
+                message: message,
+                terms: []
+            )
     }
 
     private func formatCurrency(_ value: Double) -> String {
@@ -273,6 +349,46 @@ struct EarnedValueView: View {
         formatter.numberStyle = .currency
         formatter.maximumFractionDigits = 0
         return formatter.string(from: NSNumber(value: value)) ?? "$\(Int(value))"
+    }
+}
+
+private struct EVMInfoPopoverModifier: ViewModifier {
+    let title: String
+    let message: String
+    let terms: [AppFinanceTerm]
+    @State private var isPresented = false
+
+    func body(content: Content) -> some View {
+        Button {
+            isPresented = true
+        } label: {
+            content
+        }
+        .buttonStyle(.plain)
+        .popover(isPresented: $isPresented, arrowEdge: .bottom) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text(title)
+                        .font(.headline)
+                    Text(message)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    if !terms.isEmpty {
+                        Divider()
+                        FinancialTermsLegendView(terms: terms)
+                    }
+                }
+                .padding(16)
+                .frame(width: 360, alignment: .topLeading)
+            }
+        }
+    }
+}
+
+private extension View {
+    func popoverTipButton(title: String, message: String, terms: [AppFinanceTerm]) -> some View {
+        modifier(EVMInfoPopoverModifier(title: title, message: message, terms: terms))
     }
 }
 

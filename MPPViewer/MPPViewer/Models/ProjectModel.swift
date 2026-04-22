@@ -254,6 +254,99 @@ final class ProjectTask: Codable, Identifiable {
 
     private static let customFieldPattern = try! NSRegularExpression(pattern: "^(text|number|cost|flag|date|start|finish|duration|outline_code|enterprise_custom_field)\\d+$")
 
+    init(
+        uniqueID: Int,
+        id: Int? = nil,
+        name: String? = nil,
+        wbs: String? = nil,
+        outlineLevel: Int? = nil,
+        outlineNumber: String? = nil,
+        start: String? = nil,
+        finish: String? = nil,
+        actualStart: String? = nil,
+        actualFinish: String? = nil,
+        duration: Int? = nil,
+        actualDuration: Int? = nil,
+        remainingDuration: Int? = nil,
+        percentComplete: Double? = nil,
+        percentWorkComplete: Double? = nil,
+        milestone: Bool? = nil,
+        summary: Bool? = nil,
+        critical: Bool? = nil,
+        cost: Double? = nil,
+        work: Int? = nil,
+        notes: String? = nil,
+        priority: Int? = nil,
+        parentTaskUniqueID: Int? = nil,
+        constraintType: String? = nil,
+        constraintDate: String? = nil,
+        totalSlack: Int? = nil,
+        freeSlack: Int? = nil,
+        predecessors: [TaskRelation]? = nil,
+        successors: [TaskRelation]? = nil,
+        active: Bool? = nil,
+        guid: String? = nil,
+        type: String? = nil,
+        baselineStart: String? = nil,
+        baselineFinish: String? = nil,
+        baselineDuration: Int? = nil,
+        baselineCost: Double? = nil,
+        baselineWork: Int? = nil,
+        actualCost: Double? = nil,
+        bcws: Double? = nil,
+        bcwp: Double? = nil,
+        acwp: Double? = nil,
+        cv: Double? = nil,
+        sv: Double? = nil,
+        customFields: [String: AnyCodable]? = nil
+    ) {
+        self.uniqueID = uniqueID
+        self.id = id
+        self.name = name
+        self.wbs = wbs
+        self.outlineLevel = outlineLevel
+        self.outlineNumber = outlineNumber
+        self.start = start
+        self.finish = finish
+        self.actualStart = actualStart
+        self.actualFinish = actualFinish
+        self.duration = duration
+        self.actualDuration = actualDuration
+        self.remainingDuration = remainingDuration
+        self.percentComplete = percentComplete
+        self.percentWorkComplete = percentWorkComplete
+        self.milestone = milestone
+        self.summary = summary
+        self.critical = critical
+        self.cost = cost
+        self.work = work
+        self.notes = notes
+        self.priority = priority
+        self.parentTaskUniqueID = parentTaskUniqueID
+        self.constraintType = constraintType
+        self.constraintDate = constraintDate
+        self.totalSlack = totalSlack
+        self.freeSlack = freeSlack
+        self.predecessors = predecessors
+        self.successors = successors
+        self.active = active
+        self.guid = guid
+        self.type = type
+        self.baselineStart = baselineStart
+        self.baselineFinish = baselineFinish
+        self.baselineDuration = baselineDuration
+        self.baselineCost = baselineCost
+        self.baselineWork = baselineWork
+        self.actualCost = actualCost
+        self.bcws = bcws
+        self.bcwp = bcwp
+        self.acwp = acwp
+        self.cv = cv
+        self.sv = sv
+        self.customFields = customFields
+        self.children = []
+    }
+
     required init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
 
@@ -387,11 +480,51 @@ struct ProjectResource: Codable, Identifiable {
         case active
         case guid
     }
+
+    init(
+        uniqueID: Int?,
+        id: Int?,
+        name: String?,
+        type: String?,
+        maxUnits: Double?,
+        standardRate: Double? = nil,
+        overtimeRate: Double? = nil,
+        costPerUse: Double? = nil,
+        emailAddress: String?,
+        group: String?,
+        initials: String?,
+        notes: String?,
+        calendarUniqueID: Int?,
+        accrueAt: String?,
+        active: Bool?,
+        guid: String?
+    ) {
+        self.uniqueID = uniqueID
+        self.id = id
+        self.name = name
+        self.type = type
+        self.maxUnits = maxUnits
+        self._standardRate = FlexibleDouble(value: standardRate)
+        self._overtimeRate = FlexibleDouble(value: overtimeRate)
+        self._costPerUse = FlexibleDouble(value: costPerUse)
+        self.emailAddress = emailAddress
+        self.group = group
+        self.initials = initials
+        self.notes = notes
+        self.calendarUniqueID = calendarUniqueID
+        self.accrueAt = accrueAt
+        self.active = active
+        self.guid = guid
+    }
 }
 
 /// Decodes a value that may be a JSON number or a string like "10.0/h".
 struct FlexibleDouble: Codable {
     let value: Double?
+
+    init(value: Double?) {
+        self.value = value
+    }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
@@ -443,6 +576,32 @@ struct ResourceAssignment: Codable, Identifiable {
         case cost
         case guid
     }
+
+    init(
+        uniqueID: Int?,
+        taskUniqueID: Int?,
+        resourceUniqueID: Int?,
+        assignmentUnits: Double?,
+        work: Int?,
+        actualWork: Int?,
+        remainingWork: Int?,
+        start: String?,
+        finish: String?,
+        cost: Double?,
+        guid: String?
+    ) {
+        self.uniqueID = uniqueID
+        self.taskUniqueID = taskUniqueID
+        self.resourceUniqueID = resourceUniqueID
+        self.assignmentUnits = assignmentUnits
+        self.work = work
+        self.actualWork = actualWork
+        self.remainingWork = remainingWork
+        self.start = start
+        self.finish = finish
+        self.cost = cost
+        self.guid = guid
+    }
 }
 
 // MARK: - Calendar (matches MPXJ day-based structure)
@@ -474,6 +633,36 @@ struct ProjectCalendar: Codable, Identifiable {
         case personal
         case sunday, monday, tuesday, wednesday, thursday, friday, saturday
         case exceptions
+    }
+
+    init(
+        uniqueID: Int?,
+        name: String?,
+        parentUniqueID: Int?,
+        type: String?,
+        personal: Bool?,
+        sunday: CalendarDayInfo?,
+        monday: CalendarDayInfo?,
+        tuesday: CalendarDayInfo?,
+        wednesday: CalendarDayInfo?,
+        thursday: CalendarDayInfo?,
+        friday: CalendarDayInfo?,
+        saturday: CalendarDayInfo?,
+        exceptions: [CalendarException]?
+    ) {
+        self.uniqueID = uniqueID
+        self.name = name
+        self.parentUniqueID = parentUniqueID
+        self.type = type
+        self.personal = personal
+        self.sunday = sunday
+        self.monday = monday
+        self.tuesday = tuesday
+        self.wednesday = wednesday
+        self.thursday = thursday
+        self.friday = friday
+        self.saturday = saturday
+        self.exceptions = exceptions
     }
 
     /// Returns whether a given weekday (1=Sunday, 7=Saturday) is a working day.
@@ -536,6 +725,11 @@ struct CalendarDayInfo: Codable {
     let type: String?    // "working", "non_working", "default"
     let hours: [CalendarHours]?
 
+    init(type: String?, hours: [CalendarHours]?) {
+        self.type = type
+        self.hours = hours
+    }
+
     var isWorking: Bool {
         type?.lowercased() == "working"
     }
@@ -548,6 +742,11 @@ struct CalendarDayInfo: Codable {
 struct CalendarHours: Codable {
     let from: String?
     let to: String?
+
+    init(from: String?, to: String?) {
+        self.from = from
+        self.to = to
+    }
 }
 
 struct CalendarException: Codable, Identifiable {
@@ -557,6 +756,13 @@ struct CalendarException: Codable, Identifiable {
     let from: String?
     let to: String?
     let type: String?  // "non_working", "working"
+
+    init(name: String?, from: String?, to: String?, type: String?) {
+        self.name = name
+        self.from = from
+        self.to = to
+        self.type = type
+    }
 
     var isWorking: Bool {
         type == "working"

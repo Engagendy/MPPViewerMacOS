@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SidebarView: View {
     @Binding var selection: NavigationItem?
+    var showsPlanner = false
 
     var body: some View {
         List(selection: $selection) {
@@ -12,6 +13,10 @@ struct SidebarView: View {
             }
 
             Section("Planning") {
+                if showsPlanner {
+                    sidebarRow(.planner)
+                    sidebarRow(.statusCenter)
+                }
                 sidebarRow(.tasks)
                 sidebarRow(.milestones)
                 sidebarRow(.gantt)
@@ -30,6 +35,10 @@ struct SidebarView: View {
                 sidebarRow(.earnedValue)
                 sidebarRow(.workload)
                 sidebarRow(.diff)
+            }
+
+            Section("Help") {
+                sidebarRow(.helpCenter)
             }
         }
         .listStyle(.sidebar)

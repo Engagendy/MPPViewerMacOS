@@ -10,7 +10,14 @@ final class ProjectStore: ObservableObject {
     private let converter = MPPConverterService()
     private let parser = JSONProjectParser()
 
-    func loadFromDocument(_ document: MPPDocument) async {
+    func loadFromDocument(_ document: PlanningDocument) async {
+        guard let importedMPPData = document.importedMPPData else {
+            project = nil
+            error = nil
+            isLoading = false
+            return
+        }
+
         isLoading = true
         error = nil
 
@@ -19,7 +26,7 @@ final class ProjectStore: ObservableObject {
             let tempInput = FileManager.default.temporaryDirectory
                 .appendingPathComponent(UUID().uuidString)
                 .appendingPathExtension("mpp")
-            try document.fileData.write(to: tempInput)
+            try importedMPPData.write(to: tempInput)
             defer { try? FileManager.default.removeItem(at: tempInput) }
 
             let jsonData = try await converter.convert(mppFileURL: tempInput)
@@ -30,6 +37,12 @@ final class ProjectStore: ObservableObject {
         }
 
         isLoading = false
+    }
+
+    func reset() {
+        project = nil
+        isLoading = false
+        error = nil
     }
 
     func loadProject(from url: URL) async throws -> ProjectModel {

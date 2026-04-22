@@ -3,23 +3,50 @@ import UniformTypeIdentifiers
 
 extension UTType {
     static let mpp = UTType(importedAs: "com.microsoft.project", conformingTo: .data)
+    static let mppplan = UTType(exportedAs: "com.mppviewer.plan", conformingTo: .json)
 }
 
-struct MPPDocument: FileDocument {
-    static var readableContentTypes: [UTType] { [.mpp] }
+struct PlanningDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.mppplan, .mpp] }
+    static var writableContentTypes: [UTType] { [.mppplan] }
 
+    var nativePlan: NativeProjectPlan?
+    let importedMPPData: Data?
     let fileURL: URL?
-    let fileData: Data
+
+    init() {
+        nativePlan = .empty()
+        importedMPPData = nil
+        fileURL = nil
+    }
 
     init(configuration: ReadConfiguration) throws {
         guard let data = configuration.file.regularFileContents else {
             throw CocoaError(.fileReadCorruptFile)
         }
-        self.fileData = data
         self.fileURL = nil
+
+        if configuration.contentType == .mppplan {
+            nativePlan = try NativeProjectPlan.decode(from: data)
+            importedMPPData = nil
+        } else {
+            nativePlan = nil
+            importedMPPData = data
+        }
+    }
+
+    var isEditablePlan: Bool {
+        nativePlan != nil
+    }
+
+    var projectModel: ProjectModel? {
+        nativePlan?.asProjectModel()
     }
 
     func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
-        throw CocoaError(.fileWriteNoPermission)
+        guard let nativePlan else {
+            throw CocoaError(.fileWriteNoPermission)
+        }
+        return .init(regularFileWithContents: try nativePlan.encodedData())
     }
 }

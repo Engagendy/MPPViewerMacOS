@@ -5,6 +5,8 @@ struct ScheduleView: View {
     let searchText: String
 
     @State private var pixelsPerDay: CGFloat = 8
+    @State private var timelineViewportWidth: CGFloat = 0
+    @State private var shouldAutoFitTimeline = true
     @State private var collapsedIDs: Set<Int> = []
     private let rowHeight: CGFloat = 24
 
@@ -61,7 +63,30 @@ struct ScheduleView: View {
 
                     Divider().frame(height: 16)
 
-                    GanttZoomControls(pixelsPerDay: $pixelsPerDay, totalDays: totalDays)
+                    GanttZoomControls(
+                        pixelsPerDay: pixelsPerDay,
+                        totalDays: totalDays,
+                        onFitAll: {
+                            shouldAutoFitTimeline = true
+                            applyAutoFitIfNeeded()
+                        },
+                        onShowWeek: {
+                            shouldAutoFitTimeline = false
+                            pixelsPerDay = 40
+                        },
+                        onShowMonth: {
+                            shouldAutoFitTimeline = false
+                            pixelsPerDay = 10
+                        },
+                        onZoomOut: {
+                            shouldAutoFitTimeline = false
+                            pixelsPerDay = max(2, pixelsPerDay / 1.5)
+                        },
+                        onZoomIn: {
+                            shouldAutoFitTimeline = false
+                            pixelsPerDay = min(100, pixelsPerDay * 1.5)
+                        }
+                    )
                 }
             }
             .padding(.horizontal)
@@ -88,39 +113,43 @@ struct ScheduleView: View {
     // MARK: - Left Pane: Task List
 
     private var taskListPane: some View {
-        VStack(spacing: 0) {
-            // Column headers
-            HStack(spacing: 0) {
-                Text("ID")
-                    .frame(width: 40, alignment: .leading)
-                Text("Name")
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                Text("Duration")
-                    .frame(width: 70, alignment: .trailing)
-                Text("Start")
-                    .frame(width: 80, alignment: .trailing)
-                Text("Finish")
-                    .frame(width: 80, alignment: .trailing)
-                Text("% Done")
-                    .frame(width: 50, alignment: .trailing)
-            }
-            .font(.caption2)
-            .fontWeight(.semibold)
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 8)
-            .frame(height: 28)
-            .background(Color(nsColor: .controlBackgroundColor))
+        GeometryReader { geometry in
+            VStack(spacing: 0) {
+                // Column headers
+                HStack(spacing: 0) {
+                    Text("ID")
+                        .frame(width: 40, alignment: .leading)
+                    Text("Name")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text("Duration")
+                        .frame(width: 70, alignment: .trailing)
+                    Text("Start")
+                        .frame(width: 80, alignment: .trailing)
+                    Text("Finish")
+                        .frame(width: 80, alignment: .trailing)
+                    Text("% Done")
+                        .frame(width: 50, alignment: .trailing)
+                }
+                .font(.caption2)
+                .fontWeight(.semibold)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 8)
+                .frame(height: 28)
+                .background(Color(nsColor: .controlBackgroundColor))
 
-            Divider()
+                Divider()
 
-            // Task rows - shared ScrollView via GeometryReader for sync
-            ScrollView(.vertical) {
-                LazyVStack(spacing: 0) {
-                    ForEach(Array(visibleTasks.enumerated()), id: \.element.uniqueID) { index, task in
-                        scheduleTaskRow(task: task, index: index)
+                // Task rows - shared ScrollView via GeometryReader for sync
+                ScrollView(.vertical) {
+                    LazyVStack(spacing: 0) {
+                        ForEach(Array(visibleTasks.enumerated()), id: \.element.uniqueID) { index, task in
+                            scheduleTaskRow(task: task, index: index)
+                        }
                     }
+                    .frame(minHeight: max(0, geometry.size.height - 29), alignment: .top)
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
     }
 
@@ -195,23 +224,41 @@ struct ScheduleView: View {
     // MARK: - Right Pane: Gantt
 
     private var ganttPane: some View {
-        ScrollView([.horizontal, .vertical]) {
-            VStack(alignment: .leading, spacing: 0) {
-                GanttHeaderView(
-                    dateRange: dateRange,
-                    pixelsPerDay: pixelsPerDay,
-                    totalWidth: timelineWidth
-                )
+        GeometryReader { geometry in
+            let viewportWidth = max(geometry.size.width, 1)
 
-                GanttCanvasView(
-                    tasks: visibleTasks,
-                    allTasks: project.tasksByID,
-                    startDate: dateRange.start,
-                    totalDays: totalDays,
-                    pixelsPerDay: pixelsPerDay,
-                    rowHeight: rowHeight
-                )
-                .frame(width: timelineWidth, height: CGFloat(visibleTasks.count) * rowHeight)
+            ScrollView([.horizontal, .vertical]) {
+                VStack(alignment: .leading, spacing: 0) {
+                    GanttHeaderView(
+                        dateRange: dateRange,
+                        pixelsPerDay: pixelsPerDay,
+                        totalWidth: timelineWidth
+                    )
+
+                    GanttCanvasView(
+                        tasks: visibleTasks,
+                        allTasks: project.tasksByID,
+                        rowIndexByTaskID: Dictionary(uniqueKeysWithValues: visibleTasks.enumerated().map { ($1.uniqueID, $0) }),
+                        startDate: dateRange.start,
+                        totalDays: totalDays,
+                        pixelsPerDay: pixelsPerDay,
+                        rowHeight: rowHeight
+                    )
+                    .frame(width: timelineWidth, height: CGFloat(visibleTasks.count) * rowHeight)
+                }
+                .frame(minHeight: geometry.size.height, alignment: .topLeading)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .onAppear {
+                timelineViewportWidth = viewportWidth
+                applyAutoFitIfNeeded()
+            }
+            .onChange(of: viewportWidth) { _, newWidth in
+                timelineViewportWidth = newWidth
+                applyAutoFitIfNeeded()
+            }
+            .onChange(of: totalDays) { _, _ in
+                applyAutoFitIfNeeded()
             }
         }
     }
@@ -238,6 +285,15 @@ struct ScheduleView: View {
             }
         }
         return result
+    }
+
+    private func applyAutoFitIfNeeded() {
+        guard shouldAutoFitTimeline, timelineViewportWidth > 0 else { return }
+        pixelsPerDay = fittedPixelsPerDay(for: timelineViewportWidth)
+    }
+
+    private func fittedPixelsPerDay(for viewportWidth: CGFloat) -> CGFloat {
+        max(2, min(100, viewportWidth / CGFloat(max(totalDays, 1))))
     }
 
     private func filterTasks(_ tasks: [ProjectTask], searchText: String) -> [ProjectTask] {

@@ -9,6 +9,22 @@
 		<dict>
 			<key>CFBundleTypeExtensions</key>
 			<array>
+				<string>mppplan</string>
+			</array>
+			<key>CFBundleTypeName</key>
+			<string>MPP Viewer Plan</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.mppviewer.plan</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeExtensions</key>
+			<array>
 				<string>mpp</string>
 			</array>
 			<key>CFBundleTypeName</key>
@@ -48,6 +64,28 @@
 				</array>
 				<key>public.mime-type</key>
 				<string>application/vnd.ms-project</string>
+			</dict>
+		</dict>
+	</array>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.json</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>MPP Viewer Plan</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.mppviewer.plan</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>mppplan</string>
+				</array>
+				<key>public.mime-type</key>
+				<string>application/vnd.mppviewer.plan+json</string>
 			</dict>
 		</dict>
 	</array>

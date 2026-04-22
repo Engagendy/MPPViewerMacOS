@@ -46,15 +46,39 @@ enum DashboardAudiencePreset: String, CaseIterable, Identifiable, Codable {
     }
 
     var recommendedExports: [String] {
+        defaultTemplateExports.map(\.rawValue)
+    }
+
+    var defaultTemplateExports: [DashboardTemplateExport] {
         switch self {
         case .projectManager:
-            return ["Review Pack", "Open Issues", "Issues CSV"]
+            return [.reviewPack, .openIssues, .issuesCSV]
         case .executive:
-            return ["Executive Summary", "Review Pack"]
+            return [.executiveSummary, .reviewPack]
         case .scheduler:
-            return ["Executive Summary", "Open Issues"]
+            return [.executiveSummary, .openIssues]
         case .resourceManager:
-            return ["Issues CSV", "Open Issues"]
+            return [.issuesCSV, .openIssues]
+        }
+    }
+}
+
+enum DashboardTemplateExport: String, CaseIterable, Codable, Identifiable {
+    case audienceDashboard = "Audience Dashboard"
+    case reviewPack = "Review Pack"
+    case openIssues = "Open Issues"
+    case issuesCSV = "Issues CSV"
+    case executiveSummary = "Executive Summary"
+
+    var id: String { rawValue }
+
+    var icon: String {
+        switch self {
+        case .audienceDashboard: return "square.and.arrow.up.on.square"
+        case .reviewPack: return "doc.richtext"
+        case .openIssues: return "exclamationmark.bubble"
+        case .issuesCSV: return "tablecells"
+        case .executiveSummary: return "doc.text"
         }
     }
 }
@@ -68,6 +92,20 @@ private struct DashboardAudienceMetric: Identifiable {
     let progress: Double?
 
     var id: String { title }
+}
+
+private struct DashboardProjectAnalysis {
+    let validationIssues: [ProjectValidationIssue]
+    let diagnosticItems: [ProjectDiagnosticItem]
+    let resourceIssues: [ResourceDiagnosticItem]
+
+    static func build(project: ProjectModel) -> DashboardProjectAnalysis {
+        DashboardProjectAnalysis(
+            validationIssues: ProjectValidator.validate(project: project),
+            diagnosticItems: ProjectDiagnostics.analyze(project: project),
+            resourceIssues: ResourceDiagnostics.analyze(project: project)
+        )
+    }
 }
 
 private enum DashboardWidget: String, CaseIterable, Codable, Identifiable {
@@ -132,20 +170,342 @@ private struct DashboardSnapshot: Codable, Identifiable {
     let projectTitle: String
     let preset: DashboardAudiencePreset
     let configuration: DashboardAudienceConfiguration
+    var cadence: SnapshotCadence
+    var customTitle: String?
+    var isPinned: Bool
+    let sourceReviewTemplateID: UUID?
     let headline: String
     let markdown: String
+    let flaggedTaskIDs: [Int]
+    let reviewAnnotations: [Int: TaskReviewAnnotation]
+
+    var displayTitle: String {
+        let trimmed = customTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? preset.rawValue : trimmed
+    }
+
+    var flaggedTaskCount: Int { flaggedTaskIDs.count }
+    var annotatedTaskCount: Int { reviewAnnotations.count }
+    var unresolvedIssueCount: Int { reviewAnnotations.values.filter(\.isUnresolved).count }
+    var followUpIssueCount: Int { reviewAnnotations.values.filter(\.needsFollowUp).count }
+
+    init(
+        id: UUID,
+        createdAt: Date,
+        projectTitle: String,
+        preset: DashboardAudiencePreset,
+        configuration: DashboardAudienceConfiguration,
+        cadence: SnapshotCadence = .adHoc,
+        customTitle: String? = nil,
+        isPinned: Bool = false,
+        sourceReviewTemplateID: UUID? = nil,
+        headline: String,
+        markdown: String,
+        flaggedTaskIDs: [Int],
+        reviewAnnotations: [Int: TaskReviewAnnotation]
+    ) {
+        self.id = id
+        self.createdAt = createdAt
+        self.projectTitle = projectTitle
+        self.preset = preset
+        self.configuration = configuration
+        self.cadence = cadence
+        self.customTitle = customTitle
+        self.isPinned = isPinned
+        self.sourceReviewTemplateID = sourceReviewTemplateID
+        self.headline = headline
+        self.markdown = markdown
+        self.flaggedTaskIDs = flaggedTaskIDs.sorted()
+        self.reviewAnnotations = reviewAnnotations
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        projectTitle = try container.decode(String.self, forKey: .projectTitle)
+        preset = try container.decode(DashboardAudiencePreset.self, forKey: .preset)
+        configuration = try container.decode(DashboardAudienceConfiguration.self, forKey: .configuration)
+        cadence = try container.decodeIfPresent(SnapshotCadence.self, forKey: .cadence) ?? .adHoc
+        customTitle = try container.decodeIfPresent(String.self, forKey: .customTitle)
+        isPinned = try container.decodeIfPresent(Bool.self, forKey: .isPinned) ?? false
+        sourceReviewTemplateID = try container.decodeIfPresent(UUID.self, forKey: .sourceReviewTemplateID)
+        headline = try container.decode(String.self, forKey: .headline)
+        markdown = try container.decode(String.self, forKey: .markdown)
+        flaggedTaskIDs = (try container.decodeIfPresent([Int].self, forKey: .flaggedTaskIDs) ?? []).sorted()
+        reviewAnnotations = try container.decodeIfPresent([Int: TaskReviewAnnotation].self, forKey: .reviewAnnotations) ?? [:]
+    }
+}
+
+private struct DashboardSnapshotComparison {
+    let selected: DashboardSnapshot
+    let baseline: DashboardSnapshot
+    let addedFlaggedTasks: [String]
+    let clearedFlaggedTasks: [String]
+    let addedAnnotatedTasks: [String]
+    let clearedAnnotatedTasks: [String]
+    let newOpenIssues: [String]
+    let resolvedIssues: [String]
+    let addedFollowUpTasks: [String]
+    let clearedFollowUpTasks: [String]
+    let flaggedDelta: Int
+    let annotatedDelta: Int
+    let unresolvedDelta: Int
+    let followUpDelta: Int
+    let presetChanged: Bool
+    let taskScopeChanged: Bool
+    let milestoneLimitChanged: Bool
+    let widgetChangeCount: Int
+
+    var hasReviewChanges: Bool {
+        flaggedDelta != 0 ||
+        annotatedDelta != 0 ||
+        unresolvedDelta != 0 ||
+        followUpDelta != 0 ||
+        !addedFlaggedTasks.isEmpty ||
+        !clearedFlaggedTasks.isEmpty ||
+        !addedAnnotatedTasks.isEmpty ||
+        !clearedAnnotatedTasks.isEmpty ||
+        !newOpenIssues.isEmpty ||
+        !resolvedIssues.isEmpty ||
+        !addedFollowUpTasks.isEmpty ||
+        !clearedFollowUpTasks.isEmpty
+    }
+
+    var hasLayoutChanges: Bool {
+        presetChanged || taskScopeChanged || milestoneLimitChanged || widgetChangeCount > 0
+    }
+}
+
+private enum SnapshotTrendFocus: String {
+    case openIssues = "Open Issues"
+    case followUp = "Follow-Up"
+    case flagged = "Flagged Tasks"
+    case annotations = "Annotated Tasks"
+}
+
+private enum SnapshotCadence: String, CaseIterable, Codable, Identifiable {
+    case weeklyPM = "Weekly PM"
+    case executive = "Executive"
+    case baselineCheck = "Baseline Check"
+    case adHoc = "Ad Hoc"
+
+    var id: String { rawValue }
+
+    var color: Color {
+        switch self {
+        case .weeklyPM: return .blue
+        case .executive: return .indigo
+        case .baselineCheck: return .orange
+        case .adHoc: return .secondary
+        }
+    }
+
+    var reviewIntervalDays: Int? {
+        switch self {
+        case .weeklyPM: return 7
+        case .executive: return 14
+        case .baselineCheck: return 14
+        case .adHoc: return nil
+        }
+    }
+}
+
+private enum SnapshotCadenceFilter: String, CaseIterable, Identifiable {
+    case all = "All"
+    case weeklyPM = "Weekly PM"
+    case executive = "Executive"
+    case baselineCheck = "Baseline Check"
+    case adHoc = "Ad Hoc"
+
+    var id: String { rawValue }
+
+    var cadence: SnapshotCadence? {
+        switch self {
+        case .all: return nil
+        case .weeklyPM: return .weeklyPM
+        case .executive: return .executive
+        case .baselineCheck: return .baselineCheck
+        case .adHoc: return .adHoc
+        }
+    }
+}
+
+private enum SnapshotTemplate: String, CaseIterable, Identifiable {
+    case weeklyPMReview = "Weekly PM Review"
+    case executiveGateReview = "Executive Gate Review"
+    case baselineHealthCheck = "Baseline Health Check"
+    case adHocRiskReview = "Ad Hoc Risk Review"
+
+    var id: String { rawValue }
+
+    var preset: DashboardAudiencePreset {
+        switch self {
+        case .weeklyPMReview: return .projectManager
+        case .executiveGateReview: return .executive
+        case .baselineHealthCheck: return .scheduler
+        case .adHocRiskReview: return .resourceManager
+        }
+    }
+
+    var cadence: SnapshotCadence {
+        switch self {
+        case .weeklyPMReview: return .weeklyPM
+        case .executiveGateReview: return .executive
+        case .baselineHealthCheck: return .baselineCheck
+        case .adHocRiskReview: return .adHoc
+        }
+    }
+
+    var isPinned: Bool {
+        switch self {
+        case .adHocRiskReview: return false
+        default: return true
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .weeklyPMReview: return "calendar.badge.clock"
+        case .executiveGateReview: return "display"
+        case .baselineHealthCheck: return "flag.pattern.checkered.2.crossed"
+        case .adHocRiskReview: return "exclamationmark.triangle"
+        }
+    }
+
+    var summary: String {
+        switch self {
+        case .weeklyPMReview:
+            return "Daily delivery review with milestone and issue visibility."
+        case .executiveGateReview:
+            return "Condensed leadership view for schedule exposure and summary exports."
+        case .baselineHealthCheck:
+            return "Variance-focused review for finish movement and baseline drift."
+        case .adHocRiskReview:
+            return "Resource-led risk triage for overload and follow-up pressure."
+        }
+    }
+}
+
+private struct DashboardReviewTemplate: Codable, Identifiable {
+    let id: UUID
+    let createdAt: Date
+    var title: String
+    let preset: DashboardAudiencePreset
+    let configuration: DashboardAudienceConfiguration
+    var cadence: SnapshotCadence
+    var isPinned: Bool
+    var preferredExports: [DashboardTemplateExport]
+    var reminderSnoozedUntil: Date?
+    var dismissedReminderKey: String?
+    var reminderEvents: [ReviewReminderEvent]
+
+    var summary: String {
+        "\(preset.rawValue) · \(configuration.taskScope.rawValue) · \(configuration.visibleWidgets.count) widgets"
+    }
+
+    init(
+        id: UUID,
+        createdAt: Date,
+        title: String,
+        preset: DashboardAudiencePreset,
+        configuration: DashboardAudienceConfiguration,
+        cadence: SnapshotCadence,
+        isPinned: Bool,
+        preferredExports: [DashboardTemplateExport],
+        reminderSnoozedUntil: Date? = nil,
+        dismissedReminderKey: String? = nil,
+        reminderEvents: [ReviewReminderEvent] = []
+    ) {
+        self.id = id
+        self.createdAt = createdAt
+        self.title = title
+        self.preset = preset
+        self.configuration = configuration
+        self.cadence = cadence
+        self.isPinned = isPinned
+        self.preferredExports = preferredExports
+        self.reminderSnoozedUntil = reminderSnoozedUntil
+        self.dismissedReminderKey = dismissedReminderKey
+        self.reminderEvents = reminderEvents
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        title = try container.decode(String.self, forKey: .title)
+        preset = try container.decode(DashboardAudiencePreset.self, forKey: .preset)
+        configuration = try container.decode(DashboardAudienceConfiguration.self, forKey: .configuration)
+        cadence = try container.decode(SnapshotCadence.self, forKey: .cadence)
+        isPinned = try container.decode(Bool.self, forKey: .isPinned)
+        preferredExports = try container.decodeIfPresent([DashboardTemplateExport].self, forKey: .preferredExports) ?? preset.defaultTemplateExports
+        reminderSnoozedUntil = try container.decodeIfPresent(Date.self, forKey: .reminderSnoozedUntil)
+        dismissedReminderKey = try container.decodeIfPresent(String.self, forKey: .dismissedReminderKey)
+        reminderEvents = try container.decodeIfPresent([ReviewReminderEvent].self, forKey: .reminderEvents) ?? []
+    }
+}
+
+private struct ReviewQueueEntry: Identifiable {
+    let template: DashboardReviewTemplate
+    let lastRun: DashboardSnapshot?
+    let dueDate: Date?
+    let daysUntilDue: Int?
+
+    var id: UUID { template.id }
+}
+
+private struct ReviewReminderEvent: Codable, Identifiable {
+    enum Action: String, Codable {
+        case snoozed = "Snoozed"
+        case dismissed = "Dismissed"
+        case restored = "Restored"
+        case completed = "Completed"
+    }
+
+    let id: UUID
+    let action: Action
+    let createdAt: Date
+    let detail: String
+    let reminderKey: String?
+}
+
+private enum ReviewQueueFocus: String, Equatable {
+    case oftenSnoozed = "Often Snoozed"
+    case overdue = "Overdue Reviews"
+    case hiddenDue = "Hidden While Due"
+}
+
+private struct ReviewQueueActionFeedback: Identifiable {
+    let id = UUID()
+    let message: String
+    let color: Color
+    let icon: String
 }
 
 struct DashboardView: View {
     let project: ProjectModel
 
     @State private var stats: ProjectStats?
+    @State private var projectAnalysis: DashboardProjectAnalysis?
+    @AppStorage("flaggedTaskIDs") private var flaggedTaskIDsData: Data = Data()
     @AppStorage(ReviewNotesStore.key) private var taskReviewNotesData: Data = Data()
     @AppStorage("dashboardAudiencePreset") private var audiencePresetRawValue = DashboardAudiencePreset.projectManager.rawValue
     @AppStorage("dashboardAudienceConfigurations") private var audienceConfigurationData: Data = Data()
     @AppStorage("dashboardSnapshots") private var snapshotData: Data = Data()
+    @AppStorage("dashboardReviewTemplates") private var reviewTemplateData: Data = Data()
     @State private var isCustomizationExpanded = false
     @State private var selectedSnapshotID: UUID?
+    @State private var comparisonSnapshotID: UUID?
+    @State private var selectedTrendFocus: SnapshotTrendFocus?
+    @State private var cadenceFilter: SnapshotCadenceFilter = .all
+    @State private var appliedReviewTemplateID: UUID?
+    @State private var selectedReviewQueueFocus: ReviewQueueFocus?
+    @State private var reviewQueueActionFeedback: ReviewQueueActionFeedback?
+    @State private var customTemplateTitle = ""
+    @State private var customTemplateCadence: SnapshotCadence = .weeklyPM
+    @State private var customTemplatePinned = true
+    @State private var customTemplatePreferredExports: Set<DashboardTemplateExport> = Set(DashboardAudiencePreset.projectManager.defaultTemplateExports)
 
     private var audiencePreset: DashboardAudiencePreset {
         get { DashboardAudiencePreset(rawValue: audiencePresetRawValue) ?? .projectManager }
@@ -157,12 +517,53 @@ struct DashboardView: View {
     }
 
     private var snapshots: [DashboardSnapshot] {
-        decodeSnapshots()
+        decodeSnapshots().sorted { lhs, rhs in
+            if lhs.isPinned != rhs.isPinned {
+                return lhs.isPinned && !rhs.isPinned
+            }
+            return lhs.createdAt > rhs.createdAt
+        }
+    }
+
+    private var reviewTemplates: [DashboardReviewTemplate] {
+        decodeReviewTemplates().sorted { lhs, rhs in
+            if lhs.isPinned != rhs.isPinned {
+                return lhs.isPinned && !rhs.isPinned
+            }
+            return lhs.createdAt > rhs.createdAt
+        }
+    }
+
+    private var appliedReviewTemplate: DashboardReviewTemplate? {
+        guard let appliedReviewTemplateID else { return nil }
+        return reviewTemplates.first(where: { $0.id == appliedReviewTemplateID })
+    }
+
+    private var filteredSnapshots: [DashboardSnapshot] {
+        guard let cadence = cadenceFilter.cadence else { return snapshots }
+        return snapshots.filter { $0.cadence == cadence }
     }
 
     private var selectedSnapshot: DashboardSnapshot? {
-        guard let selectedSnapshotID else { return snapshots.first }
-        return snapshots.first(where: { $0.id == selectedSnapshotID }) ?? snapshots.first
+        guard let selectedSnapshotID else { return filteredSnapshots.first ?? snapshots.first }
+        return filteredSnapshots.first(where: { $0.id == selectedSnapshotID }) ?? filteredSnapshots.first ?? snapshots.first
+    }
+
+    private var comparisonSnapshot: DashboardSnapshot? {
+        guard let selectedSnapshot else { return nil }
+
+        if let comparisonSnapshotID,
+           comparisonSnapshotID != selectedSnapshot.id,
+           let match = snapshots.first(where: { $0.id == comparisonSnapshotID }) {
+            return match
+        }
+
+        return comparisonSnapshotOptions(for: selectedSnapshot.id).first
+    }
+
+    private var snapshotComparison: DashboardSnapshotComparison? {
+        guard let selectedSnapshot, let comparisonSnapshot else { return nil }
+        return buildSnapshotComparison(selected: selectedSnapshot, baseline: comparisonSnapshot)
     }
 
     var body: some View {
@@ -176,8 +577,21 @@ struct DashboardView: View {
         .task {
             let computed = ProjectStats(project: project)
             stats = computed
+            projectAnalysis = DashboardProjectAnalysis.build(project: project)
             if selectedSnapshotID == nil {
                 selectedSnapshotID = snapshots.first?.id
+            }
+            if comparisonSnapshotID == nil {
+                comparisonSnapshotID = defaultComparisonSnapshotID(for: selectedSnapshotID)
+            }
+        }
+        .onChange(of: cadenceFilter) { _, _ in
+            guard let selectedSnapshotID,
+                  filteredSnapshots.contains(where: { $0.id == selectedSnapshotID }) else {
+                selectedSnapshotID = filteredSnapshots.first?.id ?? snapshots.first?.id
+                comparisonSnapshotID = defaultComparisonSnapshotID(for: selectedSnapshotID)
+                selectedTrendFocus = nil
+                return
             }
         }
     }
@@ -192,6 +606,31 @@ struct DashboardView: View {
                         saveAudienceSnapshot(stats: stats)
                     } label: {
                         Label("Save Snapshot", systemImage: "tray.and.arrow.down")
+                    }
+                    .buttonStyle(.bordered)
+
+                    Menu {
+                        ForEach(SnapshotTemplate.allCases) { template in
+                            Button {
+                                saveSnapshotTemplate(template, stats: stats)
+                            } label: {
+                                Label(template.rawValue, systemImage: template.icon)
+                            }
+                        }
+
+                        if !reviewTemplates.isEmpty {
+                            Divider()
+
+                            ForEach(reviewTemplates) { template in
+                                Button {
+                                    saveReviewTemplateSnapshot(template, stats: stats)
+                                } label: {
+                                    Label(template.title, systemImage: template.preset.icon)
+                                }
+                            }
+                        }
+                    } label: {
+                        Label("Snapshot Template", systemImage: "square.stack.3d.up")
                     }
                     .buttonStyle(.bordered)
 
@@ -494,6 +933,8 @@ struct DashboardView: View {
                         ForEach(DashboardAudiencePreset.allCases) { preset in
                             Button {
                                 audiencePreset = preset
+                                appliedReviewTemplateID = nil
+                                customTemplatePreferredExports = Set(preset.defaultTemplateExports)
                             } label: {
                                 Label(preset.rawValue, systemImage: preset.icon)
                             }
@@ -537,6 +978,42 @@ struct DashboardView: View {
                         }
                     }
                 }
+
+                if let appliedReviewTemplate,
+                   appliedReviewTemplate.preset == audiencePreset {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Template Exports")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        HStack(spacing: 8) {
+                            ForEach(appliedReviewTemplate.preferredExports) { export in
+                                Button {
+                                    performTemplateExport(export, stats: stats)
+                                } label: {
+                                    Label(export.rawValue, systemImage: export.icon)
+                                }
+                                .buttonStyle(.bordered)
+                            }
+                        }
+
+                        if let lastRun = latestSnapshot(for: appliedReviewTemplate) {
+                            Text("Last review run \(lastRun.createdAt.formatted(date: .abbreviated, time: .omitted))")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        if let dueLabel = templateDueLabel(for: appliedReviewTemplate) {
+                            baselinePill(dueLabel.text, color: dueLabel.color)
+                                .font(.caption2)
+                        }
+
+                        reminderActivityStrip(for: appliedReviewTemplate, limit: 4)
+                    }
+                }
+
+                reviewQueueSection(stats: stats)
+
+                reviewTemplatesSection(stats: stats)
 
                 DisclosureGroup("Customize Layout", isExpanded: $isCustomizationExpanded) {
                     VStack(alignment: .leading, spacing: 12) {
@@ -588,22 +1065,608 @@ struct DashboardView: View {
         }
     }
 
+    private func reviewTemplatesSection(stats: ProjectStats) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Review Templates")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text("Apply a known dashboard mode or save it as a labeled run.")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .top, spacing: 12) {
+                    ForEach(SnapshotTemplate.allCases) { template in
+                        snapshotTemplateCard(template, stats: stats)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Save Current Layout as Template")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                HStack(alignment: .center, spacing: 12) {
+                    TextField("Template Name", text: $customTemplateTitle)
+                        .textFieldStyle(.roundedBorder)
+
+                    Picker("Cadence", selection: $customTemplateCadence) {
+                        ForEach(SnapshotCadence.allCases) { cadence in
+                            Text(cadence.rawValue).tag(cadence)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .frame(width: 150)
+
+                    Toggle("Pin", isOn: $customTemplatePinned)
+                        .toggleStyle(.checkbox)
+
+                    Button("Save Current Template") {
+                        saveCurrentReviewTemplate()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(customTemplateTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+
+                templateExportSelection(
+                    selectedExports: customTemplatePreferredExports,
+                    toggle: toggleCustomTemplateExport
+                )
+            }
+
+            if !reviewTemplates.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("My Templates")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(alignment: .top, spacing: 12) {
+                            ForEach(reviewTemplates) { template in
+                                customReviewTemplateCard(template, stats: stats)
+                            }
+                        }
+                        .padding(.vertical, 2)
+                    }
+                }
+            }
+        }
+    }
+
+    private func reviewQueueSection(stats: ProjectStats) -> some View {
+        let queueEntries = activeReviewQueueEntries
+        let suppressedEntries = suppressedReviewQueueEntries
+        let snoozedEntries = frequentlySnoozedQueueEntries
+        let overdueEntries = overdueReviewQueueEntries
+        let focusedEntries = selectedReviewQueueFocus.flatMap(reviewQueueEntries(for:)) ?? []
+        let focusedSuppressedEntries = focusedEntries.filter { entry in
+            suppressedEntries.contains(where: { $0.id == entry.id })
+        }
+        let focusedActiveEntries = focusedEntries.filter { entry in
+            !suppressedEntries.contains(where: { $0.id == entry.id })
+        }
+
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Review Queue")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                if !queueEntries.isEmpty {
+                    Text("\(queueEntries.count) active reminders")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+
+            if queueEntries.isEmpty && suppressedEntries.isEmpty {
+                Text("No due review reminders right now.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else if queueEntries.isEmpty {
+                Text("No active reminders right now.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(queueEntries.prefix(4)) { entry in
+                    reviewQueueEntryRow(entry, stats: stats, isSuppressed: false)
+                }
+            }
+
+            if !snoozedEntries.isEmpty || !overdueEntries.isEmpty || !suppressedEntries.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Review Friction")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    HStack(alignment: .top, spacing: 10) {
+                        if !snoozedEntries.isEmpty {
+                            reviewFrictionCard(
+                                title: "Often Snoozed",
+                                accent: .orange,
+                                summary: "\(snoozedEntries.count) templates were snoozed multiple times.",
+                                isSelected: selectedReviewQueueFocus == .oftenSnoozed,
+                                items: snoozedEntries.prefix(2).map { entry in
+                                    "\(entry.template.title) · \(reminderEventCount(for: entry.template, action: .snoozed)) snoozes"
+                                },
+                                action: {
+                                    toggleReviewQueueFocus(.oftenSnoozed)
+                                }
+                            )
+                        }
+
+                        if !overdueEntries.isEmpty {
+                            reviewFrictionCard(
+                                title: "Overdue Reviews",
+                                accent: .red,
+                                summary: "\(overdueEntries.count) templates are past due.",
+                                isSelected: selectedReviewQueueFocus == .overdue,
+                                items: overdueEntries.prefix(2).map { entry in
+                                    "\(entry.template.title) · \(overdueSummary(for: entry))"
+                                },
+                                action: {
+                                    toggleReviewQueueFocus(.overdue)
+                                }
+                            )
+                        }
+
+                        if !suppressedEntries.isEmpty {
+                            reviewFrictionCard(
+                                title: "Hidden While Due",
+                                accent: .secondary,
+                                summary: "\(suppressedEntries.count) due reminders are currently hidden.",
+                                isSelected: selectedReviewQueueFocus == .hiddenDue,
+                                items: suppressedEntries.prefix(2).map { entry in
+                                    "\(entry.template.title) · \(suppressionSummary(for: entry) ?? "Suppressed")"
+                                },
+                                action: {
+                                    toggleReviewQueueFocus(.hiddenDue)
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
+            if let selectedReviewQueueFocus, !focusedEntries.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("\(selectedReviewQueueFocus.rawValue) Focus")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Text("\(focusedEntries.count) templates")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                        if !focusedSuppressedEntries.isEmpty {
+                            Button("Restore All") {
+                                restoreReminders(for: focusedSuppressedEntries)
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                        if !focusedActiveEntries.isEmpty {
+                            Menu("Snooze All") {
+                                Button("1 day") {
+                                    snoozeReminders(for: focusedActiveEntries, days: 1)
+                                }
+                                Button("3 days") {
+                                    snoozeReminders(for: focusedActiveEntries, days: 3)
+                                }
+                                Button("7 days") {
+                                    snoozeReminders(for: focusedActiveEntries, days: 7)
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                        Button("Save All") {
+                            saveReviewTemplateSnapshots(for: focusedEntries, stats: stats)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(reviewQueueFocusAccent(for: selectedReviewQueueFocus))
+                        Button("Clear") {
+                            self.selectedReviewQueueFocus = nil
+                            reviewQueueActionFeedback = nil
+                        }
+                        .buttonStyle(.bordered)
+                    }
+
+                    if let reviewQueueActionFeedback {
+                        reviewQueueFeedbackBanner(reviewQueueActionFeedback)
+                    }
+
+                    ForEach(focusedEntries.prefix(4)) { entry in
+                        reviewQueueEntryRow(entry, stats: stats, isSuppressed: suppressedEntries.contains(where: { $0.id == entry.id }))
+                    }
+                }
+            }
+
+            if !suppressedEntries.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Suppressed Reminders")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Text("\(suppressedEntries.count) hidden")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+
+                    ForEach(suppressedEntries.prefix(3)) { entry in
+                        reviewQueueEntryRow(entry, stats: stats, isSuppressed: true)
+                    }
+                }
+            }
+        }
+    }
+
+    private func snapshotTemplateCard(_ template: SnapshotTemplate, stats: ProjectStats) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top) {
+                Label(template.rawValue, systemImage: template.icon)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                Spacer()
+                if template.isPinned {
+                    Image(systemName: "pin.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                }
+            }
+
+            Text(template.summary)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+
+            HStack(spacing: 6) {
+                baselinePill(template.preset.rawValue, color: dashboardTint(for: template.preset))
+                baselinePill(template.cadence.rawValue, color: template.cadence.color)
+            }
+            .font(.caption2)
+
+            HStack(spacing: 8) {
+                Button("Apply") {
+                    applySnapshotTemplate(template)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(dashboardTint(for: template.preset))
+
+                Button("Save Run") {
+                    saveSnapshotTemplate(template, stats: stats)
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+        .padding(12)
+        .frame(width: 270, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(dashboardTint(for: template.preset).opacity(0.10))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(dashboardTint(for: template.preset).opacity(0.18), lineWidth: 1)
+        )
+    }
+
+    private func reviewQueueEntryRow(
+        _ entry: ReviewQueueEntry,
+        stats: ProjectStats,
+        isSuppressed: Bool
+    ) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(entry.template.title)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                Text(entry.template.summary)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    baselinePill(entry.template.cadence.rawValue, color: entry.template.cadence.color)
+                    if let schedule = reviewQueueLabel(for: entry) {
+                        baselinePill(schedule.text, color: schedule.color)
+                    }
+                }
+                .font(.caption2)
+                if let lastRun = entry.lastRun {
+                    Text("Last run \(lastRun.createdAt.formatted(date: .abbreviated, time: .omitted))")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+                if isSuppressed, let suppression = suppressionSummary(for: entry) {
+                    Text(suppression)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+                if let latestEvent = entry.template.reminderEvents.first {
+                    Text("\(latestEvent.action.rawValue) \(latestEvent.createdAt.formatted(date: .abbreviated, time: .shortened))")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+
+            Spacer()
+
+            HStack(spacing: 8) {
+                if isSuppressed {
+                    Button("Restore") {
+                        restoreReminder(for: entry.template.id)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(dashboardTint(for: entry.template.preset))
+                } else {
+                    Menu("Snooze") {
+                        Button("1 day") {
+                            snoozeReminder(for: entry.template.id, days: 1)
+                        }
+                        Button("3 days") {
+                            snoozeReminder(for: entry.template.id, days: 3)
+                        }
+                        Button("7 days") {
+                            snoozeReminder(for: entry.template.id, days: 7)
+                        }
+                    }
+                    .buttonStyle(.bordered)
+
+                    Button("Dismiss") {
+                        dismissReminder(for: entry)
+                    }
+                    .buttonStyle(.bordered)
+                }
+
+                Button("Apply") {
+                    applyReviewTemplate(entry.template)
+                }
+                .buttonStyle(.bordered)
+
+                if isSuppressed {
+                    Button("Save Run") {
+                        saveReviewTemplateSnapshot(entry.template, stats: stats)
+                    }
+                    .buttonStyle(.bordered)
+                } else {
+                    Button("Save Run") {
+                        saveReviewTemplateSnapshot(entry.template, stats: stats)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(dashboardTint(for: entry.template.preset))
+                }
+            }
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(isSuppressed ? Color.secondary.opacity(0.06) : dashboardTint(for: entry.template.preset).opacity(0.08))
+        )
+    }
+
+    private func reviewFrictionCard(
+        title: String,
+        accent: Color,
+        summary: String,
+        isSelected: Bool,
+        items: [String],
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(title)
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(accent)
+
+                Text(summary)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+
+                ForEach(items, id: \.self) { item in
+                    Text(item)
+                        .font(.caption2)
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                }
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(accent.opacity(isSelected ? 0.16 : 0.08))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(accent.opacity(isSelected ? 0.35 : 0.15), lineWidth: isSelected ? 2 : 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func reviewQueueFeedbackBanner(_ feedback: ReviewQueueActionFeedback) -> some View {
+        Label(feedback.message, systemImage: feedback.icon)
+            .font(.caption)
+            .fontWeight(.medium)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(feedback.color.opacity(0.12))
+            )
+            .foregroundStyle(feedback.color)
+    }
+
+    private func customReviewTemplateCard(_ template: DashboardReviewTemplate, stats: ProjectStats) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top) {
+                Label(template.title, systemImage: template.preset.icon)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                Spacer()
+                if template.isPinned {
+                    Image(systemName: "pin.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                }
+            }
+
+            Text(template.summary)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+
+            HStack(spacing: 6) {
+                baselinePill(template.preset.rawValue, color: dashboardTint(for: template.preset))
+                baselinePill(template.cadence.rawValue, color: template.cadence.color)
+            }
+            .font(.caption2)
+
+            if let lastRun = latestSnapshot(for: template) {
+                Text("Last run \(lastRun.createdAt.formatted(date: .abbreviated, time: .omitted))")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            } else if template.cadence != .adHoc {
+                Text("No review run saved yet")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+            if let dueLabel = templateDueLabel(for: template) {
+                baselinePill(dueLabel.text, color: dueLabel.color)
+                    .font(.caption2)
+            }
+
+            reminderActivityStrip(for: template, limit: 3)
+
+            templateExportSelection(
+                selectedExports: Set(template.preferredExports),
+                toggle: { export in
+                    toggleReviewTemplateExport(template.id, export: export)
+                }
+            )
+
+            TextField("Template Name", text: reviewTemplateTitleBinding(for: template))
+                .textFieldStyle(.roundedBorder)
+
+            HStack(spacing: 10) {
+                Picker("Cadence", selection: reviewTemplateCadenceBinding(for: template)) {
+                    ForEach(SnapshotCadence.allCases) { cadence in
+                        Text(cadence.rawValue).tag(cadence)
+                    }
+                }
+                .pickerStyle(.menu)
+
+                Toggle("Pin", isOn: reviewTemplatePinnedBinding(for: template))
+                    .toggleStyle(.checkbox)
+            }
+
+            HStack(spacing: 8) {
+                Button("Apply") {
+                    applyReviewTemplate(template)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(dashboardTint(for: template.preset))
+
+                Button("Save Run") {
+                    saveReviewTemplateSnapshot(template, stats: stats)
+                }
+                .buttonStyle(.bordered)
+
+                Button("Overwrite") {
+                    overwriteReviewTemplate(template.id)
+                }
+                .buttonStyle(.bordered)
+
+                Button(role: .destructive) {
+                    deleteReviewTemplate(template.id)
+                } label: {
+                    Image(systemName: "trash")
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+        .padding(12)
+        .frame(width: 290, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(dashboardTint(for: template.preset).opacity(0.10))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(dashboardTint(for: template.preset).opacity(0.18), lineWidth: 1)
+        )
+    }
+
+    private func templateExportSelection(
+        selectedExports: Set<DashboardTemplateExport>,
+        toggle: @escaping (DashboardTemplateExport) -> Void
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Preferred Exports")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], alignment: .leading, spacing: 6) {
+                ForEach(DashboardTemplateExport.allCases) { export in
+                    Button {
+                        toggle(export)
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: selectedExports.contains(export) ? "checkmark.circle.fill" : "circle")
+                            Text(export.rawValue)
+                                .lineLimit(1)
+                        }
+                        .font(.caption)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.bordered)
+                }
+            }
+        }
+    }
+
     private var snapshotSection: some View {
         GroupBox("Saved Snapshots") {
             HStack(alignment: .top, spacing: 16) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("\(snapshots.count) saved review snapshots")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("\(filteredSnapshots.count) saved review snapshots")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Picker("Cadence", selection: $cadenceFilter) {
+                            ForEach(SnapshotCadenceFilter.allCases) { filter in
+                                Text(filter.rawValue).tag(filter)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                    }
 
-                    ForEach(snapshots.prefix(6)) { snapshot in
+                    ForEach(filteredSnapshots.prefix(6)) { snapshot in
                         Button {
                             selectedSnapshotID = snapshot.id
+                            comparisonSnapshotID = defaultComparisonSnapshotID(for: snapshot.id)
+                            selectedTrendFocus = nil
                         } label: {
                             HStack(alignment: .top) {
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(snapshot.preset.rawValue)
-                                        .fontWeight(.medium)
+                                    HStack(spacing: 6) {
+                                        Text(snapshot.displayTitle)
+                                            .fontWeight(.medium)
+                                        if snapshot.isPinned {
+                                            Image(systemName: "pin.fill")
+                                            .font(.caption2)
+                                            .foregroundStyle(.orange)
+                                        }
+                                    }
+                                    baselinePill(snapshot.cadence.rawValue, color: snapshot.cadence.color)
+                                        .font(.caption2)
                                     Text(snapshot.createdAt.formatted(date: .abbreviated, time: .shortened))
                                         .font(.caption2)
                                         .foregroundStyle(.secondary)
@@ -611,6 +1674,9 @@ struct DashboardView: View {
                                         .font(.caption2)
                                         .foregroundStyle(.secondary)
                                         .lineLimit(2)
+                                    Text(snapshotReviewSummary(snapshot))
+                                        .font(.caption2)
+                                        .foregroundStyle(.tertiary)
                                 }
                                 Spacer()
                             }
@@ -639,6 +1705,11 @@ struct DashboardView: View {
                                     .foregroundStyle(.secondary)
                             }
                             Spacer()
+                            Button(selectedSnapshot.isPinned ? "Unpin" : "Pin") {
+                                togglePinnedSnapshot(selectedSnapshot.id)
+                            }
+                            .buttonStyle(.bordered)
+
                             Button("Apply Snapshot") {
                                 applySnapshot(selectedSnapshot)
                             }
@@ -657,9 +1728,35 @@ struct DashboardView: View {
                             .buttonStyle(.bordered)
                         }
 
+                        TextField("Snapshot Label", text: snapshotTitleBinding(for: selectedSnapshot))
+                            .textFieldStyle(.roundedBorder)
+
+                        Picker("Review Cadence", selection: snapshotCadenceBinding(for: selectedSnapshot)) {
+                            ForEach(SnapshotCadence.allCases) { cadence in
+                                Text(cadence.rawValue).tag(cadence)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+
                         Text(selectedSnapshot.headline)
                             .font(.caption)
                             .foregroundStyle(.secondary)
+
+                        HStack(spacing: 8) {
+                            baselinePill("\(selectedSnapshot.flaggedTaskCount) flagged", color: selectedSnapshot.flaggedTaskCount > 0 ? .orange : .secondary)
+                            baselinePill("\(selectedSnapshot.annotatedTaskCount) annotated", color: selectedSnapshot.annotatedTaskCount > 0 ? .blue : .secondary)
+                            baselinePill("\(selectedSnapshot.unresolvedIssueCount) unresolved", color: selectedSnapshot.unresolvedIssueCount > 0 ? .red : .green)
+                            baselinePill("\(selectedSnapshot.followUpIssueCount) follow-up", color: selectedSnapshot.followUpIssueCount > 0 ? .orange : .green)
+                        }
+                        .font(.caption2)
+
+                        if snapshots.count > 1 {
+                            snapshotTrendSection(for: selectedSnapshot)
+                        }
+
+                        if snapshots.count > 1 {
+                            snapshotComparisonSection(for: selectedSnapshot)
+                        }
 
                         ScrollView {
                             Text(selectedSnapshot.markdown)
@@ -678,6 +1775,247 @@ struct DashboardView: View {
         }
     }
 
+    private func snapshotTrendSection(for snapshot: DashboardSnapshot) -> some View {
+        let history = snapshotHistoryWindow(for: snapshot.id)
+
+        return VStack(alignment: .leading, spacing: 10) {
+            Text("Recent Review Trends")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            HStack(alignment: .top, spacing: 10) {
+                snapshotTrendCard(
+                    title: "Open Issues",
+                    values: history.map(\.unresolvedIssueCount),
+                    accent: .red,
+                    isSelected: selectedTrendFocus == .openIssues
+                ) {
+                    focusTrend(.openIssues, using: history)
+                }
+                snapshotTrendCard(
+                    title: "Follow-Up Load",
+                    values: history.map(\.followUpIssueCount),
+                    accent: .orange,
+                    isSelected: selectedTrendFocus == .followUp
+                ) {
+                    focusTrend(.followUp, using: history)
+                }
+                snapshotTrendCard(
+                    title: "Flagged Tasks",
+                    values: history.map(\.flaggedTaskCount),
+                    accent: .orange,
+                    isSelected: selectedTrendFocus == .flagged
+                ) {
+                    focusTrend(.flagged, using: history)
+                }
+                snapshotTrendCard(
+                    title: "Annotated Tasks",
+                    values: history.map(\.annotatedTaskCount),
+                    accent: .blue,
+                    isSelected: selectedTrendFocus == .annotations
+                ) {
+                    focusTrend(.annotations, using: history)
+                }
+            }
+
+            Text("Window: \(history.count) snapshots from \(history.first?.createdAt.formatted(date: .abbreviated, time: .omitted) ?? "") to \(history.last?.createdAt.formatted(date: .abbreviated, time: .omitted) ?? "")")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .padding(10)
+        .background(Color.secondary.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private func snapshotTrendCard(
+        title: String,
+        values: [Int],
+        accent: Color,
+        isSelected: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        let current = values.last ?? 0
+        let baseline = values.first ?? current
+        let delta = current - baseline
+
+        return Button(action: action) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(title)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("\(current)")
+                    .font(.title3)
+                    .fontWeight(.bold)
+                    .foregroundStyle(delta > 0 ? accent : delta < 0 ? .green : .primary)
+                baselinePill(trendDeltaLabel(delta), color: delta > 0 ? accent : delta < 0 ? .green : .secondary)
+                Text(values.map(String.init).joined(separator: " • "))
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(10)
+            .background(accent.opacity(isSelected ? 0.18 : 0.08))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(isSelected ? accent.opacity(0.6) : .clear, lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private func snapshotComparisonSection(for snapshot: DashboardSnapshot) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center, spacing: 12) {
+                Text("Compare Against")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Picker("Compare Against", selection: comparisonSnapshotBinding(for: snapshot)) {
+                    ForEach(comparisonSnapshotOptions(for: snapshot.id)) { candidate in
+                        Text(snapshotLabel(candidate)).tag(Optional(candidate.id))
+                    }
+                }
+                .pickerStyle(.menu)
+
+                Spacer()
+
+                if let comparisonSnapshot {
+                    Text("Baseline: \(comparisonSnapshot.createdAt.formatted(date: .abbreviated, time: .shortened))")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+
+                if let comparison = snapshotComparison {
+                    Button("Export Delta") {
+                        exportSnapshotComparison(comparison)
+                    }
+                    .buttonStyle(.bordered)
+                }
+            }
+
+                if let comparison = snapshotComparison {
+                    HStack(spacing: 8) {
+                        snapshotDeltaPill("Flagged", delta: comparison.flaggedDelta, accent: .orange)
+                        snapshotDeltaPill("Annotated", delta: comparison.annotatedDelta, accent: .blue)
+                        snapshotDeltaPill("Open", delta: comparison.unresolvedDelta, accent: .red)
+                    snapshotDeltaPill("Follow-Up", delta: comparison.followUpDelta, accent: .orange)
+                }
+                .font(.caption2)
+
+                if comparison.hasLayoutChanges {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Layout Changes")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text(snapshotLayoutSummary(comparison))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                if let selectedTrendFocus {
+                    snapshotFocusedChangeSection(comparison: comparison, focus: selectedTrendFocus)
+                }
+
+                if comparison.hasReviewChanges {
+                    snapshotChangeList("New Flagged Tasks", items: comparison.addedFlaggedTasks, color: .orange)
+                    snapshotChangeList("Cleared Flags", items: comparison.clearedFlaggedTasks, color: .secondary)
+                    snapshotChangeList("New Annotations", items: comparison.addedAnnotatedTasks, color: .blue)
+                    snapshotChangeList("Cleared Annotations", items: comparison.clearedAnnotatedTasks, color: .secondary)
+                    snapshotChangeList("New Open Issues", items: comparison.newOpenIssues, color: .red)
+                    snapshotChangeList("Resolved Issues", items: comparison.resolvedIssues, color: .green)
+                    snapshotChangeList("Added Follow-Up", items: comparison.addedFollowUpTasks, color: .orange)
+                    snapshotChangeList("Cleared Follow-Up", items: comparison.clearedFollowUpTasks, color: .green)
+                } else {
+                    Text("No review-state changes between these snapshots.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding(10)
+        .background(Color.secondary.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    @ViewBuilder
+    private func snapshotChangeList(_ title: String, items: [String], color: Color) -> some View {
+        if !items.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.caption)
+                    .foregroundStyle(color)
+                ForEach(Array(items.prefix(4)), id: \.self) { item in
+                    Text("• \(item)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                if items.count > 4 {
+                    Text("• ... \(items.count - 4) more")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    private func snapshotFocusedChangeSection(comparison: DashboardSnapshotComparison, focus: SnapshotTrendFocus) -> some View {
+        let details = focusedTrendDetails(for: comparison, focus: focus)
+
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("\(focus.rawValue) Focus")
+                    .font(.caption)
+                    .foregroundStyle(details.color)
+                Spacer()
+                if !details.deltaText.isEmpty {
+                    Text(details.deltaText)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if details.primary.isEmpty && details.secondary.isEmpty {
+                Text("No focused churn in this comparison.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            } else {
+                if !details.primary.isEmpty {
+                    snapshotFocusedItems(details.primaryTitle, items: details.primary)
+                }
+                if !details.secondary.isEmpty {
+                    snapshotFocusedItems(details.secondaryTitle, items: details.secondary)
+                }
+            }
+        }
+        .padding(10)
+        .background(details.color.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private func snapshotFocusedItems(_ title: String, items: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            ForEach(Array(items.prefix(5)), id: \.self) { item in
+                Text("• \(item)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            if items.count > 5 {
+                Text("• ... \(items.count - 5) more")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
     private func statusLegend(_ label: String, count: Int, color: Color) -> some View {
         HStack(spacing: 4) {
             Circle().fill(color).frame(width: 8, height: 8)
@@ -688,7 +2026,11 @@ struct DashboardView: View {
     }
 
     private func audienceMetrics(stats: ProjectStats) -> [DashboardAudienceMetric] {
-        switch audiencePreset {
+        audienceMetrics(stats: stats, preset: audiencePreset)
+    }
+
+    private func audienceMetrics(stats: ProjectStats, preset: DashboardAudiencePreset) -> [DashboardAudienceMetric] {
+        switch preset {
         case .projectManager:
             return [
                 DashboardAudienceMetric(
@@ -833,7 +2175,11 @@ struct DashboardView: View {
     }
 
     private func audienceDetail(stats: ProjectStats) -> String {
-        switch audiencePreset {
+        audienceDetail(stats: stats, preset: audiencePreset)
+    }
+
+    private func audienceDetail(stats: ProjectStats, preset: DashboardAudiencePreset) -> String {
+        switch preset {
         case .projectManager:
             return "Focus on \(stats.criticalIncompleteTasks) incomplete critical tasks, \(stats.upcomingMilestones.count) upcoming milestones, and \(unresolvedIssueCount) unresolved review items before the next check-in."
         case .executive:
@@ -846,7 +2192,11 @@ struct DashboardView: View {
     }
 
     private var taskStatusTitle: String {
-        switch currentAudienceConfiguration.taskScope {
+        taskStatusTitle(for: currentAudienceConfiguration)
+    }
+
+    private func taskStatusTitle(for configuration: DashboardAudienceConfiguration) -> String {
+        switch configuration.taskScope {
         case .allWork:
             return "Task Status"
         case .criticalOnly:
@@ -860,6 +2210,11 @@ struct DashboardView: View {
         ReviewNotesStore.decodeAnnotations(taskReviewNotesData)
     }
 
+    private var flaggedTaskIDs: Set<Int> {
+        guard !flaggedTaskIDsData.isEmpty else { return [] }
+        return (try? JSONDecoder().decode(Set<Int>.self, from: flaggedTaskIDsData)) ?? []
+    }
+
     private var unresolvedIssueCount: Int {
         reviewAnnotations.values.filter(\.isUnresolved).count
     }
@@ -868,16 +2223,206 @@ struct DashboardView: View {
         reviewAnnotations.values.filter(\.needsFollowUp).count
     }
 
+    private func snapshotLabel(_ snapshot: DashboardSnapshot) -> String {
+        "\(snapshot.displayTitle) · \(snapshot.createdAt.formatted(date: .abbreviated, time: .shortened))"
+    }
+
+    private func comparisonSnapshotOptions(for selectedID: UUID) -> [DashboardSnapshot] {
+        snapshots.filter { $0.id != selectedID }
+    }
+
+    private func defaultComparisonSnapshotID(for selectedID: UUID?) -> UUID? {
+        guard let selectedID,
+              let selectedIndex = snapshots.firstIndex(where: { $0.id == selectedID }) else {
+            return snapshots.dropFirst().first?.id
+        }
+
+        if snapshots.indices.contains(selectedIndex + 1) {
+            return snapshots[selectedIndex + 1].id
+        }
+        if selectedIndex > 0 {
+            return snapshots[selectedIndex - 1].id
+        }
+        return nil
+    }
+
+    private func comparisonSnapshotBinding(for selectedSnapshot: DashboardSnapshot) -> Binding<UUID?> {
+        Binding(
+            get: {
+                if let comparisonSnapshotID,
+                   comparisonSnapshotID != selectedSnapshot.id,
+                   comparisonSnapshotOptions(for: selectedSnapshot.id).contains(where: { $0.id == comparisonSnapshotID }) {
+                    return comparisonSnapshotID
+                }
+                return comparisonSnapshotOptions(for: selectedSnapshot.id).first?.id
+            },
+            set: { newValue in
+                comparisonSnapshotID = newValue
+            }
+        )
+    }
+
+    private func snapshotHistoryWindow(for selectedID: UUID, limit: Int = 5) -> [DashboardSnapshot] {
+        guard let selectedIndex = snapshots.firstIndex(where: { $0.id == selectedID }) else { return [] }
+        let olderWindow = Array(snapshots[selectedIndex...].prefix(limit))
+        return olderWindow.reversed()
+    }
+
+    private func focusTrend(_ focus: SnapshotTrendFocus, using history: [DashboardSnapshot]) {
+        selectedTrendFocus = focus
+        if let baseline = history.first, let current = history.last, baseline.id != current.id {
+            comparisonSnapshotID = baseline.id
+        }
+    }
+
+    private func buildSnapshotComparison(selected: DashboardSnapshot, baseline: DashboardSnapshot) -> DashboardSnapshotComparison {
+        let selectedFlagged = Set(selected.flaggedTaskIDs)
+        let baselineFlagged = Set(baseline.flaggedTaskIDs)
+        let selectedAnnotated = Set(selected.reviewAnnotations.keys)
+        let baselineAnnotated = Set(baseline.reviewAnnotations.keys)
+        let selectedOpenIssues = Set(selected.reviewAnnotations.filter { $0.value.isUnresolved }.map(\.key))
+        let baselineOpenIssues = Set(baseline.reviewAnnotations.filter { $0.value.isUnresolved }.map(\.key))
+        let selectedFollowUp = Set(selected.reviewAnnotations.filter { $0.value.needsFollowUp }.map(\.key))
+        let baselineFollowUp = Set(baseline.reviewAnnotations.filter { $0.value.needsFollowUp }.map(\.key))
+
+        return DashboardSnapshotComparison(
+            selected: selected,
+            baseline: baseline,
+            addedFlaggedTasks: taskNames(for: selectedFlagged.subtracting(baselineFlagged)),
+            clearedFlaggedTasks: taskNames(for: baselineFlagged.subtracting(selectedFlagged)),
+            addedAnnotatedTasks: taskNames(for: selectedAnnotated.subtracting(baselineAnnotated)),
+            clearedAnnotatedTasks: taskNames(for: baselineAnnotated.subtracting(selectedAnnotated)),
+            newOpenIssues: taskNames(for: selectedOpenIssues.subtracting(baselineOpenIssues)),
+            resolvedIssues: taskNames(for: baselineOpenIssues.subtracting(selectedOpenIssues)),
+            addedFollowUpTasks: taskNames(for: selectedFollowUp.subtracting(baselineFollowUp)),
+            clearedFollowUpTasks: taskNames(for: baselineFollowUp.subtracting(selectedFollowUp)),
+            flaggedDelta: selected.flaggedTaskCount - baseline.flaggedTaskCount,
+            annotatedDelta: selected.annotatedTaskCount - baseline.annotatedTaskCount,
+            unresolvedDelta: selected.unresolvedIssueCount - baseline.unresolvedIssueCount,
+            followUpDelta: selected.followUpIssueCount - baseline.followUpIssueCount,
+            presetChanged: selected.preset != baseline.preset,
+            taskScopeChanged: selected.configuration.taskScope != baseline.configuration.taskScope,
+            milestoneLimitChanged: selected.configuration.milestoneLimit != baseline.configuration.milestoneLimit,
+            widgetChangeCount: Set(selected.configuration.visibleWidgets).symmetricDifference(Set(baseline.configuration.visibleWidgets)).count
+        )
+    }
+
+    private func taskNames(for ids: Set<Int>) -> [String] {
+        ids.compactMap { project.tasksByID[$0]?.displayName }.sorted()
+    }
+
+    private struct FocusedTrendDetails {
+        let color: Color
+        let deltaText: String
+        let primaryTitle: String
+        let primary: [String]
+        let secondaryTitle: String
+        let secondary: [String]
+    }
+
+    private func focusedTrendDetails(for comparison: DashboardSnapshotComparison, focus: SnapshotTrendFocus) -> FocusedTrendDetails {
+        switch focus {
+        case .openIssues:
+            return FocusedTrendDetails(
+                color: .red,
+                deltaText: "Open \(signedDeltaText(comparison.unresolvedDelta))",
+                primaryTitle: "New Open Issues",
+                primary: comparison.newOpenIssues,
+                secondaryTitle: "Resolved Issues",
+                secondary: comparison.resolvedIssues
+            )
+        case .followUp:
+            return FocusedTrendDetails(
+                color: .orange,
+                deltaText: "Follow-Up \(signedDeltaText(comparison.followUpDelta))",
+                primaryTitle: "Added Follow-Up",
+                primary: comparison.addedFollowUpTasks,
+                secondaryTitle: "Cleared Follow-Up",
+                secondary: comparison.clearedFollowUpTasks
+            )
+        case .flagged:
+            return FocusedTrendDetails(
+                color: .orange,
+                deltaText: "Flags \(signedDeltaText(comparison.flaggedDelta))",
+                primaryTitle: "New Flagged Tasks",
+                primary: comparison.addedFlaggedTasks,
+                secondaryTitle: "Cleared Flags",
+                secondary: comparison.clearedFlaggedTasks
+            )
+        case .annotations:
+            return FocusedTrendDetails(
+                color: .blue,
+                deltaText: "Annotations \(signedDeltaText(comparison.annotatedDelta))",
+                primaryTitle: "New Annotations",
+                primary: comparison.addedAnnotatedTasks,
+                secondaryTitle: "Cleared Annotations",
+                secondary: comparison.clearedAnnotatedTasks
+            )
+        }
+    }
+
+    private func trendDeltaLabel(_ delta: Int) -> String {
+        if delta > 0 {
+            return "+\(delta) vs oldest"
+        }
+        if delta < 0 {
+            return "\(delta) vs oldest"
+        }
+        return "No change"
+    }
+
+    private func snapshotTitleBinding(for snapshot: DashboardSnapshot) -> Binding<String> {
+        Binding(
+            get: { snapshot.customTitle ?? "" },
+            set: { newValue in
+                updateSnapshot(snapshot.id) { storedSnapshot in
+                    let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                    storedSnapshot.customTitle = trimmed.isEmpty ? nil : trimmed
+                }
+            }
+        )
+    }
+
+    private func snapshotCadenceBinding(for snapshot: DashboardSnapshot) -> Binding<SnapshotCadence> {
+        Binding(
+            get: { snapshot.cadence },
+            set: { newValue in
+                updateSnapshot(snapshot.id) { storedSnapshot in
+                    storedSnapshot.cadence = newValue
+                }
+            }
+        )
+    }
+
+    private func togglePinnedSnapshot(_ id: UUID) {
+        updateSnapshot(id) { snapshot in
+            snapshot.isPinned.toggle()
+        }
+    }
+
+    private func defaultSnapshotCadence(for preset: DashboardAudiencePreset) -> SnapshotCadence {
+        switch preset {
+        case .projectManager:
+            return .weeklyPM
+        case .executive:
+            return .executive
+        case .scheduler:
+            return .baselineCheck
+        case .resourceManager:
+            return .adHoc
+        }
+    }
+
     private var workResourceCount: Int {
         project.resources.filter { $0.type == "work" || $0.type == nil }.count
     }
 
     private var resourceRiskCount: Int {
-        ResourceDiagnostics.analyze(project: project).count
+        projectAnalysis?.resourceIssues.count ?? 0
     }
 
     private var resourceErrorCount: Int {
-        ResourceDiagnostics.analyze(project: project).filter { $0.severity == .error }.count
+        projectAnalysis?.resourceIssues.filter { $0.severity == .error }.count ?? 0
     }
 
     private func dashboardTint(for preset: DashboardAudiencePreset) -> Color {
@@ -890,10 +2435,14 @@ struct DashboardView: View {
     }
 
     private var filteredWorkTasks: [ProjectTask] {
+        filteredWorkTasks(for: currentAudienceConfiguration.taskScope)
+    }
+
+    private func filteredWorkTasks(for scope: DashboardTaskScope) -> [ProjectTask] {
         let today = Calendar.current.startOfDay(for: Date())
         let workTasks = project.tasks.filter { $0.summary != true && $0.milestone != true }
 
-        switch currentAudienceConfiguration.taskScope {
+        switch scope {
         case .allWork:
             return workTasks
         case .criticalOnly:
@@ -910,8 +2459,16 @@ struct DashboardView: View {
         filteredWorkTasks.count
     }
 
+    private func filteredTaskTotal(for configuration: DashboardAudienceConfiguration) -> Int {
+        filteredWorkTasks(for: configuration.taskScope).count
+    }
+
     private var filteredCompletedTasks: Int {
         filteredWorkTasks.filter { ($0.percentComplete ?? 0) >= 100 }.count
+    }
+
+    private func filteredCompletedTasks(for configuration: DashboardAudienceConfiguration) -> Int {
+        filteredWorkTasks(for: configuration.taskScope).filter { ($0.percentComplete ?? 0) >= 100 }.count
     }
 
     private var filteredInProgressTasks: Int {
@@ -921,9 +2478,24 @@ struct DashboardView: View {
         }.count
     }
 
+    private func filteredInProgressTasks(for configuration: DashboardAudienceConfiguration) -> Int {
+        filteredWorkTasks(for: configuration.taskScope).filter {
+            let pct = $0.percentComplete ?? 0
+            return pct > 0 && pct < 100
+        }.count
+    }
+
     private var filteredOverdueTasks: Int {
         let today = Calendar.current.startOfDay(for: Date())
         return filteredWorkTasks.filter {
+            ($0.percentComplete ?? 0) < 100 &&
+            ($0.finishDate?.compare(today) == .orderedAscending)
+        }.count
+    }
+
+    private func filteredOverdueTasks(for configuration: DashboardAudienceConfiguration) -> Int {
+        let today = Calendar.current.startOfDay(for: Date())
+        return filteredWorkTasks(for: configuration.taskScope).filter {
             ($0.percentComplete ?? 0) < 100 &&
             ($0.finishDate?.compare(today) == .orderedAscending)
         }.count
@@ -940,8 +2512,24 @@ struct DashboardView: View {
         }.count
     }
 
+    private func filteredNotStartedTasks(for configuration: DashboardAudienceConfiguration) -> Int {
+        let scopedTasks = filteredWorkTasks(for: configuration.taskScope)
+        let overdueIDs = Set(scopedTasks.filter {
+            ($0.percentComplete ?? 0) < 100 &&
+            ($0.finishDate?.compare(Calendar.current.startOfDay(for: Date())) == .orderedAscending)
+        }.map(\.uniqueID))
+
+        return scopedTasks.filter {
+            ($0.percentComplete ?? 0) == 0 && !overdueIDs.contains($0.uniqueID)
+        }.count
+    }
+
     private func displayedMilestones(_ stats: ProjectStats) -> [ProjectTask] {
         Array(stats.upcomingMilestones.prefix(currentAudienceConfiguration.milestoneLimit))
+    }
+
+    private func displayedMilestones(_ stats: ProjectStats, configuration: DashboardAudienceConfiguration) -> [ProjectTask] {
+        Array(stats.upcomingMilestones.prefix(configuration.milestoneLimit))
     }
 
     private var taskScopeBinding: Binding<DashboardTaskScope> {
@@ -1000,6 +2588,269 @@ struct DashboardView: View {
         audienceConfigurationData = (try? JSONEncoder().encode(configurations)) ?? Data()
     }
 
+    private func decodeReviewTemplates() -> [DashboardReviewTemplate] {
+        guard !reviewTemplateData.isEmpty else { return [] }
+        return (try? JSONDecoder().decode([DashboardReviewTemplate].self, from: reviewTemplateData)) ?? []
+    }
+
+    private func persistReviewTemplates(_ templates: [DashboardReviewTemplate]) {
+        reviewTemplateData = (try? JSONEncoder().encode(templates)) ?? Data()
+    }
+
+    private func updateReviewTemplate(_ id: UUID, update: (inout DashboardReviewTemplate) -> Void) {
+        var storedTemplates = decodeReviewTemplates()
+        guard let index = storedTemplates.firstIndex(where: { $0.id == id }) else { return }
+        update(&storedTemplates[index])
+        persistReviewTemplates(storedTemplates)
+    }
+
+    private func orderedTemplateExports(from exports: Set<DashboardTemplateExport>) -> [DashboardTemplateExport] {
+        DashboardTemplateExport.allCases.filter { exports.contains($0) }
+    }
+
+    private func appendReminderEvent(
+        _ event: ReviewReminderEvent,
+        to template: inout DashboardReviewTemplate
+    ) {
+        template.reminderEvents.insert(event, at: 0)
+        template.reminderEvents = Array(template.reminderEvents.prefix(10))
+    }
+
+    private func latestSnapshot(for template: DashboardReviewTemplate) -> DashboardSnapshot? {
+        snapshots.first(where: { $0.sourceReviewTemplateID == template.id })
+    }
+
+    private var reviewQueueEntries: [ReviewQueueEntry] {
+        reviewTemplates
+            .filter { $0.cadence.reviewIntervalDays != nil }
+            .map { template in
+                let lastRun = latestSnapshot(for: template)
+                let dueDate = lastRun.flatMap { nextReviewDate(for: template, from: $0.createdAt) }
+                let daysUntilDue = dueDate.map { daysUntilStartOfDay($0) }
+                return ReviewQueueEntry(
+                    template: template,
+                    lastRun: lastRun,
+                    dueDate: dueDate,
+                    daysUntilDue: daysUntilDue
+                )
+            }
+            .sorted(by: compareReviewQueueEntries)
+    }
+
+    private var activeReviewQueueEntries: [ReviewQueueEntry] {
+        reviewQueueEntries.filter(isQueueAttentionNeeded)
+    }
+
+    private var suppressedReviewQueueEntries: [ReviewQueueEntry] {
+        reviewQueueEntries.filter(isSuppressedQueueAttention)
+    }
+
+    private var frequentlySnoozedQueueEntries: [ReviewQueueEntry] {
+        reviewQueueEntries
+            .filter { reminderEventCount(for: $0.template, action: .snoozed) >= 2 }
+            .sorted {
+                let lhsCount = reminderEventCount(for: $0.template, action: .snoozed)
+                let rhsCount = reminderEventCount(for: $1.template, action: .snoozed)
+                if lhsCount != rhsCount {
+                    return lhsCount > rhsCount
+                }
+                return compareReviewQueueEntries(lhs: $0, rhs: $1)
+            }
+    }
+
+    private var overdueReviewQueueEntries: [ReviewQueueEntry] {
+        reviewQueueEntries
+            .filter { ($0.daysUntilDue ?? 1) < 0 }
+            .sorted {
+                let lhsDays = $0.daysUntilDue ?? 0
+                let rhsDays = $1.daysUntilDue ?? 0
+                if lhsDays != rhsDays {
+                    return lhsDays < rhsDays
+                }
+                return compareReviewQueueEntries(lhs: $0, rhs: $1)
+            }
+    }
+
+    private func reviewQueueEntries(for focus: ReviewQueueFocus) -> [ReviewQueueEntry] {
+        switch focus {
+        case .oftenSnoozed:
+            return frequentlySnoozedQueueEntries
+        case .overdue:
+            return overdueReviewQueueEntries
+        case .hiddenDue:
+            return suppressedReviewQueueEntries
+        }
+    }
+
+    private func toggleReviewQueueFocus(_ focus: ReviewQueueFocus) {
+        if selectedReviewQueueFocus == focus {
+            selectedReviewQueueFocus = nil
+        } else {
+            selectedReviewQueueFocus = focus
+        }
+        reviewQueueActionFeedback = nil
+    }
+
+    private func reviewQueueFocusAccent(for focus: ReviewQueueFocus?) -> Color {
+        switch focus {
+        case .oftenSnoozed:
+            return .orange
+        case .overdue:
+            return .red
+        case .hiddenDue:
+            return .secondary
+        case nil:
+            return .accentColor
+        }
+    }
+
+    private func setReviewQueueActionFeedback(message: String, color: Color, icon: String) {
+        reviewQueueActionFeedback = ReviewQueueActionFeedback(
+            message: message,
+            color: color,
+            icon: icon
+        )
+    }
+
+    private func compareReviewQueueEntries(lhs: ReviewQueueEntry, rhs: ReviewQueueEntry) -> Bool {
+        let lhsRank = reviewQueueRank(for: lhs)
+        let rhsRank = reviewQueueRank(for: rhs)
+        if lhsRank != rhsRank {
+            return lhsRank < rhsRank
+        }
+
+        switch (lhs.daysUntilDue, rhs.daysUntilDue) {
+        case let (left?, right?) where left != right:
+            return left < right
+        case (nil, .some):
+            return false
+        case (.some, nil):
+            return true
+        default:
+            return lhs.template.createdAt > rhs.template.createdAt
+        }
+    }
+
+    private func reviewQueueRank(for entry: ReviewQueueEntry) -> Int {
+        if entry.lastRun == nil { return 0 }
+        guard let daysUntilDue = entry.daysUntilDue else { return 3 }
+        if daysUntilDue < 0 { return 0 }
+        if daysUntilDue == 0 { return 1 }
+        return 2
+    }
+
+    private func reviewQueueLabel(for entry: ReviewQueueEntry) -> (text: String, color: Color)? {
+        if entry.lastRun == nil {
+            return ("Needs first run", .orange)
+        }
+        guard let dueDate = entry.dueDate,
+              let daysUntilDue = entry.daysUntilDue else {
+            return nil
+        }
+
+        if daysUntilDue < 0 {
+            return ("Overdue by \(-daysUntilDue)d", .red)
+        }
+        if daysUntilDue == 0 {
+            return ("Due today", .orange)
+        }
+        if daysUntilDue <= 7 {
+            return ("Due \(dueDate.formatted(date: .abbreviated, time: .omitted))", .green)
+        }
+        return ("Later \(dueDate.formatted(date: .abbreviated, time: .omitted))", .secondary)
+    }
+
+    private func isQueueAttentionNeeded(for entry: ReviewQueueEntry) -> Bool {
+        guard let reminderKey = reminderKey(for: entry) else { return false }
+        guard !isReminderSuppressed(for: entry.template, reminderKey: reminderKey) else { return false }
+        return needsQueueAttentionWithoutSuppression(for: entry)
+    }
+
+    private func isSuppressedQueueAttention(for entry: ReviewQueueEntry) -> Bool {
+        guard let reminderKey = reminderKey(for: entry) else { return false }
+        guard isReminderSuppressed(for: entry.template, reminderKey: reminderKey) else { return false }
+        return needsQueueAttentionWithoutSuppression(for: entry)
+    }
+
+    private func needsQueueAttentionWithoutSuppression(for entry: ReviewQueueEntry) -> Bool {
+        guard entry.lastRun != nil else { return true }
+        guard let daysUntilDue = entry.daysUntilDue else { return false }
+        return daysUntilDue <= 7
+    }
+
+    private func isReminderSuppressed(for template: DashboardReviewTemplate, reminderKey: String?) -> Bool {
+        if let reminderKey, template.dismissedReminderKey == reminderKey {
+            return true
+        }
+        if let snoozedUntil = template.reminderSnoozedUntil,
+           Date() < snoozedUntil {
+            return true
+        }
+        return false
+    }
+
+    private func suppressionSummary(for entry: ReviewQueueEntry) -> String? {
+        if let snoozedUntil = entry.template.reminderSnoozedUntil,
+           Date() < snoozedUntil {
+            return "Snoozed until \(snoozedUntil.formatted(date: .abbreviated, time: .omitted))"
+        }
+        if let reminderKey = reminderKey(for: entry),
+           entry.template.dismissedReminderKey == reminderKey {
+            return "Dismissed for the current review cycle"
+        }
+        return nil
+    }
+
+    private func reminderEventCount(
+        for template: DashboardReviewTemplate,
+        action: ReviewReminderEvent.Action
+    ) -> Int {
+        template.reminderEvents.filter { $0.action == action }.count
+    }
+
+    private func overdueSummary(for entry: ReviewQueueEntry) -> String {
+        guard let daysUntilDue = entry.daysUntilDue, daysUntilDue < 0 else {
+            return "Needs attention"
+        }
+        return "\(-daysUntilDue)d overdue"
+    }
+
+    private func nextReviewDate(for template: DashboardReviewTemplate, from lastRun: Date) -> Date? {
+        guard let intervalDays = template.cadence.reviewIntervalDays else { return nil }
+        return Calendar.current.date(byAdding: .day, value: intervalDays, to: lastRun)
+    }
+
+    private func daysUntilStartOfDay(_ date: Date) -> Int {
+        let today = Calendar.current.startOfDay(for: Date())
+        let dueDay = Calendar.current.startOfDay(for: date)
+        return Calendar.current.dateComponents([.day], from: today, to: dueDay).day ?? 0
+    }
+
+    private func reminderKey(for entry: ReviewQueueEntry) -> String? {
+        if entry.lastRun == nil {
+            return "first-run"
+        }
+        guard let dueDate = entry.dueDate else { return nil }
+        return "due:\(Calendar.current.startOfDay(for: dueDate).formatted(date: .numeric, time: .omitted))"
+    }
+
+    private func templateDueLabel(for template: DashboardReviewTemplate) -> (text: String, color: Color)? {
+        guard let lastRun = latestSnapshot(for: template),
+              let dueDate = nextReviewDate(for: template, from: lastRun.createdAt) else {
+            return nil
+        }
+
+        let offsetDays = daysUntilStartOfDay(dueDate)
+
+        if offsetDays < 0 {
+            return ("Overdue by \(-offsetDays)d", .red)
+        }
+        if offsetDays == 0 {
+            return ("Due today", .orange)
+        }
+        return ("Next review in \(offsetDays)d", offsetDays <= 2 ? .orange : .green)
+    }
+
     private func decodeSnapshots() -> [DashboardSnapshot] {
         guard !snapshotData.isEmpty else { return [] }
         return (try? JSONDecoder().decode([DashboardSnapshot].self, from: snapshotData)) ?? []
@@ -1007,6 +2858,17 @@ struct DashboardView: View {
 
     private func persistSnapshots(_ snapshots: [DashboardSnapshot]) {
         snapshotData = (try? JSONEncoder().encode(snapshots)) ?? Data()
+    }
+
+    private func updateSnapshot(_ id: UUID, update: (inout DashboardSnapshot) -> Void) {
+        var storedSnapshots = decodeSnapshots()
+        guard let index = storedSnapshots.firstIndex(where: { $0.id == id }) else { return }
+        update(&storedSnapshots[index])
+        persistSnapshots(storedSnapshots)
+    }
+
+    private func persistFlaggedTaskIDs(_ ids: Set<Int>) {
+        flaggedTaskIDsData = (try? JSONEncoder().encode(ids)) ?? Data()
     }
 
     private func baselinePill(_ label: String, color: Color) -> some View {
@@ -1018,6 +2880,52 @@ struct DashboardView: View {
             .background(color.opacity(0.14))
             .foregroundStyle(color)
             .clipShape(Capsule())
+    }
+
+    @ViewBuilder
+    private func reminderActivityStrip(for template: DashboardReviewTemplate, limit: Int) -> some View {
+        let events = Array(template.reminderEvents.prefix(limit))
+
+        if !events.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Reminder Activity")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+
+                HStack(spacing: 6) {
+                    ForEach(events) { event in
+                        reminderEventPill(event)
+                    }
+                }
+            }
+        }
+    }
+
+    private func reminderEventPill(_ event: ReviewReminderEvent) -> some View {
+        let style = reminderEventStyle(for: event.action)
+        let label = "\(style.title) \(event.createdAt.formatted(date: .abbreviated, time: .omitted))"
+
+        return Label(label, systemImage: style.icon)
+            .font(.caption2)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(style.color.opacity(0.12))
+            .foregroundStyle(style.color)
+            .clipShape(Capsule())
+            .help(event.detail)
+    }
+
+    private func reminderEventStyle(for action: ReviewReminderEvent.Action) -> (title: String, icon: String, color: Color) {
+        switch action {
+        case .snoozed:
+            return ("Snoozed", "moon.zzz.fill", .orange)
+        case .dismissed:
+            return ("Dismissed", "bell.slash.fill", .secondary)
+        case .restored:
+            return ("Restored", "arrow.uturn.backward.circle.fill", .blue)
+        case .completed:
+            return ("Completed", "checkmark.circle.fill", .green)
+        }
     }
 
     private func baselineStat(_ label: String, _ value: String, color: Color) -> some View {
@@ -1078,6 +2986,60 @@ struct DashboardView: View {
         .font(.caption)
     }
 
+    private func snapshotReviewSummary(_ snapshot: DashboardSnapshot) -> String {
+        "\(snapshot.flaggedTaskCount) flagged · \(snapshot.unresolvedIssueCount) unresolved · \(snapshot.followUpIssueCount) follow-up"
+    }
+
+    private func snapshotLayoutSummary(_ comparison: DashboardSnapshotComparison) -> String {
+        var parts: [String] = []
+        if comparison.presetChanged {
+            parts.append("Audience changed from \(comparison.baseline.preset.rawValue) to \(comparison.selected.preset.rawValue)")
+        }
+        if comparison.taskScopeChanged {
+            parts.append("task filter changed")
+        }
+        if comparison.milestoneLimitChanged {
+            parts.append("milestone count changed")
+        }
+        if comparison.widgetChangeCount > 0 {
+            parts.append("\(comparison.widgetChangeCount) widget settings changed")
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    private func snapshotDeltaPill(_ label: String, delta: Int, accent: Color) -> some View {
+        let text: String
+        let color: Color
+
+        if delta > 0 {
+            text = "\(label) +\(delta)"
+            color = accent
+        } else if delta < 0 {
+            text = "\(label) \(delta)"
+            color = .green
+        } else {
+            text = "\(label) 0"
+            color = .secondary
+        }
+
+        return baselinePill(text, color: color)
+    }
+
+    private func signedDeltaText(_ delta: Int) -> String {
+        if delta > 0 {
+            return "+\(delta)"
+        }
+        return "\(delta)"
+    }
+
+    private func snapshotChangeMarkdownLines(title: String, items: [String]) -> [String] {
+        guard !items.isEmpty else { return [] }
+
+        var lines = ["", "## \(title)"]
+        lines.append(contentsOf: items.map { "- \($0)" })
+        return lines
+    }
+
     private func exportExecutiveSummary(stats: ProjectStats) {
         let validationIssues = ProjectValidator.validate(project: project)
         var lines: [String] = [
@@ -1127,14 +3089,326 @@ struct DashboardView: View {
     }
 
     private func saveAudienceSnapshot(stats: ProjectStats) {
+        saveSnapshot(
+            stats: stats,
+            preset: audiencePreset,
+            configuration: currentAudienceConfiguration,
+            cadence: defaultSnapshotCadence(for: audiencePreset)
+        )
+    }
+
+    private func saveSnapshotTemplate(_ template: SnapshotTemplate, stats: ProjectStats) {
+        saveTemplateRun(
+            title: template.rawValue,
+            stats: stats,
+            preset: template.preset,
+            configuration: .default(for: template.preset),
+            cadence: template.cadence,
+            isPinned: template.isPinned
+        )
+    }
+
+    private func applySnapshotTemplate(_ template: SnapshotTemplate) {
+        applyTemplate(preset: template.preset, configuration: .default(for: template.preset))
+        appliedReviewTemplateID = nil
+    }
+
+    private func saveCurrentReviewTemplate() {
+        let trimmedTitle = customTemplateTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty else { return }
+
+        let template = DashboardReviewTemplate(
+            id: UUID(),
+            createdAt: Date(),
+            title: trimmedTitle,
+            preset: audiencePreset,
+            configuration: currentAudienceConfiguration,
+            cadence: customTemplateCadence,
+            isPinned: customTemplatePinned,
+            preferredExports: orderedTemplateExports(from: customTemplatePreferredExports.isEmpty ? Set(audiencePreset.defaultTemplateExports) : customTemplatePreferredExports),
+            reminderSnoozedUntil: nil,
+            dismissedReminderKey: nil,
+            reminderEvents: []
+        )
+
+        var storedTemplates = reviewTemplates
+        storedTemplates.insert(template, at: 0)
+        storedTemplates = Array(storedTemplates.prefix(10))
+        persistReviewTemplates(storedTemplates)
+        customTemplateTitle = ""
+        customTemplateCadence = defaultSnapshotCadence(for: audiencePreset)
+        customTemplatePinned = true
+        customTemplatePreferredExports = Set(audiencePreset.defaultTemplateExports)
+    }
+
+    private func saveReviewTemplateSnapshot(_ template: DashboardReviewTemplate, stats: ProjectStats) {
+        saveTemplateRun(
+            title: template.title,
+            stats: stats,
+            preset: template.preset,
+            configuration: template.configuration,
+            cadence: template.cadence,
+            isPinned: template.isPinned,
+            sourceReviewTemplateID: template.id
+        )
+        updateReviewTemplate(template.id) { storedTemplate in
+            storedTemplate.reminderSnoozedUntil = nil
+            storedTemplate.dismissedReminderKey = nil
+            appendReminderEvent(
+                ReviewReminderEvent(
+                    id: UUID(),
+                    action: .completed,
+                    createdAt: Date(),
+                    detail: "Saved review run",
+                    reminderKey: nil
+                ),
+                to: &storedTemplate
+            )
+        }
+    }
+
+    private func saveReviewTemplateSnapshots(for entries: [ReviewQueueEntry], stats: ProjectStats) {
+        for entry in entries {
+            saveReviewTemplateSnapshot(entry.template, stats: stats)
+        }
+        guard !entries.isEmpty else { return }
+        setReviewQueueActionFeedback(
+            message: "\(entries.count) templates saved as review runs",
+            color: .green,
+            icon: "checkmark.circle.fill"
+        )
+    }
+
+    private func applyReviewTemplate(_ template: DashboardReviewTemplate) {
+        applyTemplate(preset: template.preset, configuration: template.configuration)
+        customTemplatePreferredExports = Set(template.preferredExports)
+        appliedReviewTemplateID = template.id
+    }
+
+    private func reviewTemplateTitleBinding(for template: DashboardReviewTemplate) -> Binding<String> {
+        Binding(
+            get: { template.title },
+            set: { newValue in
+                updateReviewTemplate(template.id) { storedTemplate in
+                    let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                    storedTemplate.title = trimmed.isEmpty ? storedTemplate.title : trimmed
+                }
+            }
+        )
+    }
+
+    private func reviewTemplateCadenceBinding(for template: DashboardReviewTemplate) -> Binding<SnapshotCadence> {
+        Binding(
+            get: { template.cadence },
+            set: { newValue in
+                updateReviewTemplate(template.id) { storedTemplate in
+                    storedTemplate.cadence = newValue
+                }
+            }
+        )
+    }
+
+    private func reviewTemplatePinnedBinding(for template: DashboardReviewTemplate) -> Binding<Bool> {
+        Binding(
+            get: { template.isPinned },
+            set: { newValue in
+                updateReviewTemplate(template.id) { storedTemplate in
+                    storedTemplate.isPinned = newValue
+                }
+            }
+        )
+    }
+
+    private func toggleCustomTemplateExport(_ export: DashboardTemplateExport) {
+        if customTemplatePreferredExports.contains(export) {
+            customTemplatePreferredExports.remove(export)
+        } else {
+            customTemplatePreferredExports.insert(export)
+        }
+    }
+
+    private func toggleReviewTemplateExport(_ id: UUID, export: DashboardTemplateExport) {
+        updateReviewTemplate(id) { storedTemplate in
+            var exports = Set(storedTemplate.preferredExports)
+            if exports.contains(export) {
+                exports.remove(export)
+            } else {
+                exports.insert(export)
+            }
+            storedTemplate.preferredExports = orderedTemplateExports(from: exports.isEmpty ? Set(storedTemplate.preset.defaultTemplateExports) : exports)
+        }
+    }
+
+    private func overwriteReviewTemplate(_ id: UUID) {
+        updateReviewTemplate(id) { storedTemplate in
+            storedTemplate = DashboardReviewTemplate(
+                id: storedTemplate.id,
+                createdAt: storedTemplate.createdAt,
+                title: storedTemplate.title,
+                preset: audiencePreset,
+                configuration: currentAudienceConfiguration,
+                cadence: storedTemplate.cadence,
+                isPinned: storedTemplate.isPinned,
+                preferredExports: storedTemplate.preferredExports,
+                reminderSnoozedUntil: storedTemplate.reminderSnoozedUntil,
+                dismissedReminderKey: storedTemplate.dismissedReminderKey,
+                reminderEvents: storedTemplate.reminderEvents
+            )
+        }
+    }
+
+    private func snoozeReminder(for id: UUID, days: Int) {
+        guard let snoozedUntil = Calendar.current.date(byAdding: .day, value: days, to: Date()) else { return }
+        updateReviewTemplate(id) { storedTemplate in
+            storedTemplate.reminderSnoozedUntil = snoozedUntil
+            storedTemplate.dismissedReminderKey = nil
+            appendReminderEvent(
+                ReviewReminderEvent(
+                    id: UUID(),
+                    action: .snoozed,
+                    createdAt: Date(),
+                    detail: "Snoozed for \(days)d",
+                    reminderKey: nil
+                ),
+                to: &storedTemplate
+            )
+        }
+    }
+
+    private func snoozeReminders(for entries: [ReviewQueueEntry], days: Int) {
+        for entry in entries {
+            snoozeReminder(for: entry.template.id, days: days)
+        }
+        guard !entries.isEmpty else { return }
+        setReviewQueueActionFeedback(
+            message: "\(entries.count) templates snoozed for \(days)d",
+            color: .orange,
+            icon: "moon.zzz.fill"
+        )
+    }
+
+    private func dismissReminder(for entry: ReviewQueueEntry) {
+        guard let reminderKey = reminderKey(for: entry) else { return }
+        updateReviewTemplate(entry.template.id) { storedTemplate in
+            storedTemplate.dismissedReminderKey = reminderKey
+            storedTemplate.reminderSnoozedUntil = nil
+            appendReminderEvent(
+                ReviewReminderEvent(
+                    id: UUID(),
+                    action: .dismissed,
+                    createdAt: Date(),
+                    detail: reviewQueueLabel(for: entry)?.text ?? "Dismissed reminder",
+                    reminderKey: reminderKey
+                ),
+                to: &storedTemplate
+            )
+        }
+    }
+
+    private func restoreReminder(for id: UUID) {
+        updateReviewTemplate(id) { storedTemplate in
+            storedTemplate.dismissedReminderKey = nil
+            storedTemplate.reminderSnoozedUntil = nil
+            appendReminderEvent(
+                ReviewReminderEvent(
+                    id: UUID(),
+                    action: .restored,
+                    createdAt: Date(),
+                    detail: "Reminder restored",
+                    reminderKey: nil
+                ),
+                to: &storedTemplate
+            )
+        }
+    }
+
+    private func restoreReminders(for entries: [ReviewQueueEntry]) {
+        for entry in entries {
+            restoreReminder(for: entry.template.id)
+        }
+        guard !entries.isEmpty else { return }
+        setReviewQueueActionFeedback(
+            message: "\(entries.count) hidden reminders restored",
+            color: .blue,
+            icon: "arrow.uturn.backward.circle.fill"
+        )
+    }
+
+    private func deleteReviewTemplate(_ id: UUID) {
+        persistReviewTemplates(reviewTemplates.filter { $0.id != id })
+        if appliedReviewTemplateID == id {
+            appliedReviewTemplateID = nil
+        }
+    }
+
+    private func applyTemplate(preset: DashboardAudiencePreset, configuration: DashboardAudienceConfiguration) {
+        audiencePreset = preset
+        var configurations = decodeAudienceConfigurations()
+        configurations[preset.rawValue] = configuration
+        audienceConfigurationData = (try? JSONEncoder().encode(configurations)) ?? Data()
+        customTemplateCadence = defaultSnapshotCadence(for: preset)
+        customTemplatePreferredExports = Set(preset.defaultTemplateExports)
+        isCustomizationExpanded = false
+    }
+
+    private func performTemplateExport(_ export: DashboardTemplateExport, stats: ProjectStats) {
+        switch export {
+        case .audienceDashboard:
+            exportAudienceDashboard(stats: stats)
+        case .reviewPack:
+            exportReviewPack()
+        case .openIssues:
+            exportOpenIssues()
+        case .issuesCSV:
+            exportOpenIssuesCSV()
+        case .executiveSummary:
+            exportExecutiveSummary(stats: stats)
+        }
+    }
+
+    private func saveTemplateRun(
+        title: String,
+        stats: ProjectStats,
+        preset: DashboardAudiencePreset,
+        configuration: DashboardAudienceConfiguration,
+        cadence: SnapshotCadence,
+        isPinned: Bool,
+        sourceReviewTemplateID: UUID? = nil
+    ) {
+        saveSnapshot(
+            stats: stats,
+            preset: preset,
+            configuration: configuration,
+            cadence: cadence,
+            customTitle: title,
+            isPinned: isPinned,
+            sourceReviewTemplateID: sourceReviewTemplateID
+        )
+    }
+
+    private func saveSnapshot(
+        stats: ProjectStats,
+        preset: DashboardAudiencePreset,
+        configuration: DashboardAudienceConfiguration,
+        cadence: SnapshotCadence,
+        customTitle: String? = nil,
+        isPinned: Bool = false,
+        sourceReviewTemplateID: UUID? = nil
+    ) {
         let snapshot = DashboardSnapshot(
             id: UUID(),
             createdAt: Date(),
             projectTitle: project.properties.projectTitle ?? "Project",
-            preset: audiencePreset,
-            configuration: currentAudienceConfiguration,
-            headline: audienceDetail(stats: stats),
-            markdown: audienceDashboardMarkdown(stats: stats)
+            preset: preset,
+            configuration: configuration,
+            cadence: cadence,
+            customTitle: customTitle,
+            isPinned: isPinned,
+            sourceReviewTemplateID: sourceReviewTemplateID,
+            headline: audienceDetail(stats: stats, preset: preset),
+            markdown: audienceDashboardMarkdown(stats: stats, preset: preset, configuration: configuration),
+            flaggedTaskIDs: Array(flaggedTaskIDs),
+            reviewAnnotations: reviewAnnotations
         )
 
         var storedSnapshots = snapshots
@@ -1142,6 +3416,8 @@ struct DashboardView: View {
         storedSnapshots = Array(storedSnapshots.prefix(12))
         persistSnapshots(storedSnapshots)
         selectedSnapshotID = snapshot.id
+        comparisonSnapshotID = defaultComparisonSnapshotID(for: snapshot.id)
+        selectedTrendFocus = nil
     }
 
     private func applySnapshot(_ snapshot: DashboardSnapshot) {
@@ -1149,6 +3425,10 @@ struct DashboardView: View {
         var configurations = decodeAudienceConfigurations()
         configurations[snapshot.preset.rawValue] = snapshot.configuration
         audienceConfigurationData = (try? JSONEncoder().encode(configurations)) ?? Data()
+        appliedReviewTemplateID = nil
+        customTemplatePreferredExports = Set(snapshot.preset.defaultTemplateExports)
+        persistFlaggedTaskIDs(Set(snapshot.flaggedTaskIDs))
+        taskReviewNotesData = ReviewNotesStore.encodeAnnotations(snapshot.reviewAnnotations)
     }
 
     private func exportSnapshot(_ snapshot: DashboardSnapshot) {
@@ -1161,40 +3441,108 @@ struct DashboardView: View {
         }
     }
 
+    private func exportSnapshotComparison(_ comparison: DashboardSnapshotComparison) {
+        let markdown = snapshotComparisonMarkdown(comparison)
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "Snapshot Delta \(PDFExporter.fileNameTimestamp).md"
+        panel.allowedContentTypes = [UTType.plainText]
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            try? markdown.write(to: url, atomically: true, encoding: .utf8)
+        }
+    }
+
     private func deleteSnapshot(_ id: UUID) {
         let remaining = snapshots.filter { $0.id != id }
         persistSnapshots(remaining)
         selectedSnapshotID = remaining.first?.id
+        comparisonSnapshotID = defaultComparisonSnapshotID(for: selectedSnapshotID)
+        selectedTrendFocus = nil
+    }
+
+    private func snapshotComparisonMarkdown(_ comparison: DashboardSnapshotComparison) -> String {
+        var lines: [String] = [
+            "# \(comparison.selected.projectTitle) Snapshot Delta",
+            "",
+            "Generated: \(ISO8601DateFormatter().string(from: Date()))",
+            "",
+            "## Snapshot Pair",
+            "- Current: \(snapshotLabel(comparison.selected))",
+            "- Baseline: \(snapshotLabel(comparison.baseline))",
+            "",
+            "## Review Deltas",
+            "- Flagged tasks: \(comparison.selected.flaggedTaskCount) (\(signedDeltaText(comparison.flaggedDelta)))",
+            "- Annotated tasks: \(comparison.selected.annotatedTaskCount) (\(signedDeltaText(comparison.annotatedDelta)))",
+            "- Open issues: \(comparison.selected.unresolvedIssueCount) (\(signedDeltaText(comparison.unresolvedDelta)))",
+            "- Follow-up items: \(comparison.selected.followUpIssueCount) (\(signedDeltaText(comparison.followUpDelta)))"
+        ]
+
+        if comparison.hasLayoutChanges {
+            lines.append("")
+            lines.append("## Layout Changes")
+            lines.append("- \(snapshotLayoutSummary(comparison))")
+        }
+
+        lines.append(contentsOf: snapshotChangeMarkdownLines(title: "New Flagged Tasks", items: comparison.addedFlaggedTasks))
+        lines.append(contentsOf: snapshotChangeMarkdownLines(title: "Cleared Flags", items: comparison.clearedFlaggedTasks))
+        lines.append(contentsOf: snapshotChangeMarkdownLines(title: "New Open Issues", items: comparison.newOpenIssues))
+        lines.append(contentsOf: snapshotChangeMarkdownLines(title: "Resolved Issues", items: comparison.resolvedIssues))
+        lines.append(contentsOf: snapshotChangeMarkdownLines(title: "Added Follow-Up", items: comparison.addedFollowUpTasks))
+        lines.append(contentsOf: snapshotChangeMarkdownLines(title: "Cleared Follow-Up", items: comparison.clearedFollowUpTasks))
+
+        if !comparison.hasReviewChanges {
+            lines.append("")
+            lines.append("## Review Change Summary")
+            lines.append("- No review-state changes between these snapshots.")
+        }
+
+        return lines.joined(separator: "\n")
     }
 
     private func audienceDashboardMarkdown(stats: ProjectStats) -> String {
+        audienceDashboardMarkdown(stats: stats, preset: audiencePreset, configuration: currentAudienceConfiguration)
+    }
+
+    private func audienceDashboardMarkdown(
+        stats: ProjectStats,
+        preset: DashboardAudiencePreset,
+        configuration: DashboardAudienceConfiguration
+    ) -> String {
         var lines: [String] = [
-            "# \(project.properties.projectTitle ?? "Project") \(audiencePreset.rawValue) Dashboard",
+            "# \(project.properties.projectTitle ?? "Project") \(preset.rawValue) Dashboard",
             "",
             "Generated: \(ISO8601DateFormatter().string(from: Date()))",
             "",
             "## Dashboard Profile",
-            "- Audience: \(audiencePreset.rawValue)",
-            "- Focus: \(audiencePreset.summary)",
-            "- Task Filter: \(currentAudienceConfiguration.taskScope.rawValue)",
-            "- Milestone Count: \(currentAudienceConfiguration.milestoneLimit)",
-            "- Visible Widgets: \(currentAudienceConfiguration.visibleWidgets.map(\.rawValue).joined(separator: ", "))",
+            "- Audience: \(preset.rawValue)",
+            "- Focus: \(preset.summary)",
+            "- Task Filter: \(configuration.taskScope.rawValue)",
+            "- Milestone Count: \(configuration.milestoneLimit)",
+            "- Visible Widgets: \(configuration.visibleWidgets.map(\.rawValue).joined(separator: ", "))",
             "",
             "## Recommended Navigation",
         ]
 
-        lines.append(contentsOf: audiencePreset.recommendedViews.map { "- \($0.rawValue)" })
+        lines.append(contentsOf: preset.recommendedViews.map { "- \($0.rawValue)" })
         lines.append("")
         lines.append("## Recommended Exports")
-        lines.append(contentsOf: audiencePreset.recommendedExports.map { "- \($0)" })
+        lines.append(contentsOf: preset.recommendedExports.map { "- \($0)" })
         lines.append("")
         lines.append("## Headline")
-        lines.append(audienceDetail(stats: stats))
+        lines.append(audienceDetail(stats: stats, preset: preset))
+        lines.append("")
+        lines.append("## Review Snapshot")
+        lines.append("- Flagged tasks: \(flaggedTaskIDs.count)")
+        lines.append("- Annotated tasks: \(reviewAnnotations.count)")
+        lines.append("- Unresolved issues: \(unresolvedIssueCount)")
+        lines.append("- Follow-up items: \(followUpIssueCount)")
+        lines.append(contentsOf: flaggedTaskSnapshotLines())
+        lines.append(contentsOf: unresolvedIssueSnapshotLines())
         lines.append("")
         lines.append("## KPI Snapshot")
-        lines.append(contentsOf: audienceMetrics(stats: stats).map { "- \($0.title): \($0.value) (\($0.subtitle))" })
+        lines.append(contentsOf: audienceMetrics(stats: stats, preset: preset).map { "- \($0.title): \($0.value) (\($0.subtitle))" })
 
-        if currentAudienceConfiguration.visibleWidgets.contains(.baselineAlert), stats.hasBaselineData {
+        if configuration.visibleWidgets.contains(.baselineAlert), stats.hasBaselineData {
             lines.append("")
             lines.append("## Baseline Alert")
             if stats.baselineSlippedTasks > 0 || stats.baselineSlippedMilestones > 0 {
@@ -1209,23 +3557,23 @@ struct DashboardView: View {
             }
         }
 
-        if currentAudienceConfiguration.visibleWidgets.contains(.taskStatus) {
+        if configuration.visibleWidgets.contains(.taskStatus) {
             lines.append("")
-            lines.append("## \(taskStatusTitle)")
-            lines.append("- Scope total: \(filteredTaskTotal)")
-            lines.append("- Completed: \(filteredCompletedTasks)")
-            lines.append("- In progress: \(filteredInProgressTasks)")
-            lines.append("- Not started: \(filteredNotStartedTasks)")
-            lines.append("- Overdue: \(filteredOverdueTasks)")
+            lines.append("## \(taskStatusTitle(for: configuration))")
+            lines.append("- Scope total: \(filteredTaskTotal(for: configuration))")
+            lines.append("- Completed: \(filteredCompletedTasks(for: configuration))")
+            lines.append("- In progress: \(filteredInProgressTasks(for: configuration))")
+            lines.append("- Not started: \(filteredNotStartedTasks(for: configuration))")
+            lines.append("- Overdue: \(filteredOverdueTasks(for: configuration))")
         }
 
-        if currentAudienceConfiguration.visibleWidgets.contains(.milestones) {
+        if configuration.visibleWidgets.contains(.milestones) {
             lines.append("")
             lines.append("## Milestones")
-            lines.append(contentsOf: milestoneSummaryLines(displayedMilestones(stats)))
+            lines.append(contentsOf: milestoneSummaryLines(displayedMilestones(stats, configuration: configuration)))
         }
 
-        if currentAudienceConfiguration.visibleWidgets.contains(.resourceSummary) {
+        if configuration.visibleWidgets.contains(.resourceSummary) {
             let workResources = project.resources.filter { $0.type == "work" || $0.type == nil }.count
             let materialResources = project.resources.filter { $0.type == "material" }.count
             lines.append("")
@@ -1236,7 +3584,7 @@ struct DashboardView: View {
             lines.append("- Assignments: \(project.assignments.count)")
         }
 
-        if currentAudienceConfiguration.visibleWidgets.contains(.scheduleHealth) {
+        if configuration.visibleWidgets.contains(.scheduleHealth) {
             lines.append("")
             lines.append("## Schedule Health")
             if let start = project.properties.startDate {
@@ -1249,7 +3597,7 @@ struct DashboardView: View {
             lines.append("- Days remaining: \(stats.daysRemainingText)")
         }
 
-        if currentAudienceConfiguration.visibleWidgets.contains(.baselineAnalysis), stats.hasBaselineData {
+        if configuration.visibleWidgets.contains(.baselineAnalysis), stats.hasBaselineData {
             lines.append("")
             lines.append("## Baseline Analysis")
             lines.append("- Tracked tasks: \(stats.baselineTrackedTasks)")
@@ -1263,6 +3611,45 @@ struct DashboardView: View {
         }
 
         return lines.joined(separator: "\n")
+    }
+
+    private func flaggedTaskSnapshotLines() -> [String] {
+        let flaggedTasks = flaggedTaskIDs.sorted().compactMap { project.tasksByID[$0]?.displayName }
+        guard !flaggedTasks.isEmpty else { return [] }
+
+        var lines = ["", "### Flagged Tasks"]
+        lines.append(contentsOf: flaggedTasks.prefix(5).map { "- \($0)" })
+        if flaggedTasks.count > 5 {
+            lines.append("- ... \(flaggedTasks.count - 5) more")
+        }
+        return lines
+    }
+
+    private func unresolvedIssueSnapshotLines() -> [String] {
+        let issues = reviewAnnotations
+            .filter { $0.value.isUnresolved }
+            .compactMap { uniqueID, annotation -> String? in
+                guard let task = project.tasksByID[uniqueID] else { return nil }
+                var tags: [String] = []
+                if annotation.status != .notReviewed {
+                    tags.append(annotation.status.rawValue)
+                }
+                if annotation.needsFollowUp {
+                    tags.append("Follow-Up")
+                }
+                let suffix = tags.isEmpty ? "" : " (\(tags.joined(separator: ", ")))"
+                return "- \(task.displayName)\(suffix)"
+            }
+            .sorted()
+
+        guard !issues.isEmpty else { return [] }
+
+        var lines = ["", "### Open Issues"]
+        lines.append(contentsOf: issues.prefix(5))
+        if issues.count > 5 {
+            lines.append("- ... \(issues.count - 5) more")
+        }
+        return lines
     }
 
     private func exportReviewPack() {
@@ -1304,6 +3691,7 @@ struct ExecutiveModeView: View {
     let project: ProjectModel
 
     @State private var stats: ProjectStats?
+    @State private var projectAnalysis: DashboardProjectAnalysis?
 
     var body: some View {
         Group {
@@ -1315,6 +3703,7 @@ struct ExecutiveModeView: View {
         }
         .task {
             stats = ProjectStats(project: project)
+            projectAnalysis = DashboardProjectAnalysis.build(project: project)
         }
     }
 
@@ -1473,7 +3862,7 @@ struct ExecutiveModeView: View {
     }
 
     private var validationSummary: String {
-        let issues = ProjectValidator.validate(project: project)
+        let issues = projectAnalysis?.validationIssues ?? []
         let errors = issues.filter { $0.severity == .error }.count
         let warnings = issues.filter { $0.severity == .warning }.count
         if errors == 0 && warnings == 0 { return "No major validation problems detected." }
@@ -1481,13 +3870,13 @@ struct ExecutiveModeView: View {
     }
 
     private var diagnosticsSummary: String {
-        let signals = ProjectDiagnostics.analyze(project: project)
+        let signals = projectAnalysis?.diagnosticItems ?? []
         if signals.isEmpty { return "No major dependency or constraint hotspots detected." }
         return "\(signals.count) dependency and constraint signals flagged."
     }
 
     private var resourceRiskSummary: String {
-        let risks = ResourceDiagnostics.analyze(project: project)
+        let risks = projectAnalysis?.resourceIssues ?? []
         if risks.isEmpty { return "No resource over-allocation hotspots detected." }
         return "\(risks.count) resource allocation risks identified."
     }

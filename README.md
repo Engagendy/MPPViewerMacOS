@@ -5,9 +5,9 @@
 <h1 align="center">MPP Viewer</h1>
 
 <p align="center">
-  <strong>A free, native macOS app for viewing Microsoft Project (.mpp) files</strong><br>
+  <strong>A free, native macOS app for reviewing, creating, and updating project plans</strong><br>
   No Windows. No MS Project license. No subscriptions.<br>
-  Built with SwiftUI &bull; Powered by MPXJ
+  Open `.mpp` files &bull; Create native `.mppplan` files &bull; Built with SwiftUI &bull; Powered by MPXJ
 </p>
 
 <p align="center">
@@ -90,94 +90,66 @@ Go to **System Settings → Privacy & Security**, scroll down, and click **Open 
 
 ## Features
 
-### Dashboard
-Instant overview of project health with KPI cards for average task progress, completed-task ratio, on-track status, critical tasks, total cost, CPI, and SPI. Includes task status breakdown, upcoming milestones, resource summary, schedule timeline with days remaining, baseline analysis, executive summary export, and review pack export.
+### File Types
+- Open Microsoft Project `.mpp` files for review and analysis.
+- Create, save, and reopen native editable `.mppplan` files.
+- Use document-based macOS behavior so plans open directly from Finder.
 
-### Executive Mode
-Presentation-focused management view with headline health messaging, top risks, major milestones, and concise summary cards separated from the more operational dashboard.
-It now surfaces the live baseline variance alert so slipped tasks pop in red, and the executive header includes both summary and review-pack exports so stakeholders can capture the latest insights with one click.
+### Native Planning
+- `Plan Builder` for fast grid entry plus a detailed task inspector.
+- Create, delete, duplicate, reorder, indent, and outdent tasks.
+- Edit task dates, duration, milestones, predecessors, constraints, baselines, actual dates, and financial overrides.
+- Grid-first editing designed to feel closer to Microsoft Project for rapid task entry.
 
-### Gantt Chart
-Interactive timeline visualization with:
-- Zoom controls — Fit All, Week, Month presets, and manual px/day adjustment
-- Critical path toggle and baseline comparison overlay
-- Today marker, dependency arrows (FS, SS, FF, SF), and weekend shading
-- Color-coded task bars with progress fill
-- Pinch-to-zoom gesture support
-- PDF export — multi-page landscape output
-- Baseline variance markers always visible plus a toggle for the full baseline overlay to compare plan vs actual at a glance
-- Slipped tasks now display delta badges beside their bars so variance is visible without extra drilling.
+### Visual Gantt Editing
+- `Gantt Chart` supports both review and native-plan editing.
+- Move task bars, resize duration, create and remove dependencies, and restructure task hierarchy.
+- Create tasks and subtasks directly from Gantt.
+- Use `View | Edit` mode so the chart stays clean in review mode.
+- Includes baseline overlays, critical path styling, variance indicators, and zoom controls.
 
-### Schedule View
-Microsoft Project-style split view with a task list on the left and Gantt timeline on the right. Both panes share collapse/expand state and scroll together.
+### Imports, Templates, and Bulk Loading
+- Import tasks, resources, calendars, assignments, dependencies, constraints, and baselines.
+- Supports CSV and Excel-compatible `.xls` templates.
+- Built-in mapping sheets let you map arbitrary column names before import.
+- Import reports show created/updated/skipped rows, warnings, and jump-to-item actions.
+- Template exports help teams prepare spreadsheets in the right format.
 
-### Task Table
-Hierarchical task table with expand/collapse, sortable columns (ID, WBS, Name, Duration, Start, Finish, % Complete, Cost, Predecessors), detail inspector panel, resizable inspector sidebar, flag/bookmark tasks, and custom field columns. Filter by critical, milestones, flagged, baseline slip, linked tasks, status, resources, and richer text matching across IDs, notes, resources, and custom fields. Export to CSV or PDF.
+### Resources, Calendars, and Staffing
+- Native resource editor with name, type, initials, group, email, max units, rates, and cost-per-use.
+- Native calendar editor with working days, work ranges, exceptions, default calendar selection, and leave-style exceptions.
+- Quick task assignment from both the planner grid and Gantt.
+- Resource workload and resource-risk views for overload detection and staffing review.
 
-The task inspector includes:
-- source-data inspection for raw task flags and classification
-- baseline details and variance
-- relationship inspector for predecessors/successors and blockers
-- Relationship badges now surface predecessor, successor, blocking, and driving counts that jump straight to the next task in the chain
-- dependency map
-- local persistent review notes
-- baseline delta badges show finish/start slips (F+3d/S-1d) directly in the task list
-- interactive dependency navigation with clickable predecessor/successor nodes, breadcrumb history, and depth control
+### Statusing and Project Controls
+- `Status Center` for status-date-based updates.
+- Update actual start, actual finish, percent complete, actual cost, status notes, and assignment actual/remaining/overtime hours.
+- Control filters for in-progress, overdue, needs-attention, and missing-actuals tasks.
+- Live cost and schedule indicators such as `BAC`, `AC`, `CPI`, `SPI`, `EAC`, and `VAC`.
 
-### Milestones
-Dedicated view for explicit project milestones with status badges, baseline variance, predecessor-aware health reasoning, and sortable columns.
+### Finance and Earned Value
+- Native plan finance authoring includes fixed cost, baseline cost, actual cost, resource rates, cost-per-use, accrual timing, and assignment overtime.
+- `Earned Value` screen includes KPI cards, S-curve, and task-level EVM analysis.
+- Financial metrics are available across planner, Gantt, dashboard, and status workflows.
+- Abbreviations such as `BAC`, `PV`, `EV`, `AC`, `CPI`, `SPI`, `EAC`, `VAC`, and `TCPI` now have in-app glossary help.
 
-### Validation
-Project validation screen for suspicious source data and planning issues such as summary tasks marked as milestones, invalid dates, missing links, progress inconsistencies, and inactive tasks with assignments. Includes severity filters, CSV export, and task drill-down.
+### Analysis and Review
+- `Dashboard` and `Executive Mode` for health review, KPIs, milestones, and export-ready summaries.
+- `Validation` for planning and data quality issues.
+- `Diagnostics` and `Dependency Explorer` for schedule-logic analysis.
+- `Critical Path`, `Resource Risks`, `Workload`, `Timeline`, and `Schedule` views for focused review.
+- `Compare` view for diffing another `.mpp` or native plan against the current project.
 
-### Diagnostics
-Dependency and constraint diagnostics for schedule-structure review, including explicit constraints, date drift, long lag/lead links, dependency-heavy tasks, successor fan-out, blocked-start signals, and critical-chain hubs.
+### Notes, Exports, and Reporting
+- Persistent local review notes per task.
+- Markdown, CSV, PDF, and Excel-compatible exports in relevant screens.
+- Review pack and issue exports for recurring governance workflows.
 
-- **Dependency Explorer** — immersive pan/zoom graph that stacks linked tasks vertically with consistent spacing, plus highlight/zoom controls, clickable nodes, a breadcrumb trail, and synced inspector detail.
-
-### Resource Risks
-Resource-focused diagnostics for over-allocation, assignment units above max capacity, overload windows, sustained overload periods, and overlapping task hotspots.
-
-- Each row now renders a severity alert badge so errors, warnings, and info signals are instantly visible without opening a detail view.
-
-### Earned Value Analysis
-Full EVM dashboard with CPI, SPI, EAC, VAC indicators, an S-Curve chart plotting PV/EV/AC over time, and a task-level EVM breakdown table.
-
-### Resources
-Resource sheet showing all work, material, and cost resources with standard rates, max units, email, group, and assignment counts.
-
-### Resource Drill-down
-Resizable resource inspector with overview stats, daily load timeline highlighting overload days, assignment list, and clickable links that jump back to the task table for quick analysis.
-
-- Weekly overload calendar shows each day’s allocation and highlights the assignments behind peak loads.
-
-### Resource Workload
-Calendar-aware weekly workload view per resource. Green bars for normal allocation, red for over-allocation. Uses project calendar working days and exception dates.
-
-### Calendar
-Visual calendar display with working/non-working day highlighting, exception days (holidays), and month navigation. Supports calendar inheritance (parent calendar chains).
-
-### Timeline View
-Executive-level summary showing only summary tasks and milestones as horizontal ribbons and diamond markers, with optional baseline overlays.
-- Baseline slips also draw inline delta badges and planned-range outlines when the baseline toggle is enabled so timeline deviations are easy to scan.
-
-### Critical Path
-Dedicated critical-path and near-critical review screen showing driving tasks, float/slack where available from the source data, and direct navigation back into the task view.
-- Baseline variance badges now accompany critical-path entries to surface the worst slips while reviewing dependencies.
-
-### Compare (Diff Two Versions)
-Open a second `.mpp` file to compare against the current project. Shows added, removed, and modified tasks with field-level change details.
-
-### Additional
-- **Project Summary** — metadata, schedule info, statistics, and file information
-- **Search** — filter and navigate tasks by name, ID, WBS, notes, resources, and custom fields across all views
-- **Saved Presets** — reusable task presets such as overdue critical, in progress, upcoming milestones, flagged review, and completed
-- **Review Notes** — persistent local notes per task for internal review workflows
-- **Review Pack Export** — consolidated Markdown export with executive summary, validation, diagnostics, resource risks, milestone outlook, and review notes
-- **Keyboard Navigation** — Cmd+1 through Cmd+9 for sidebar navigation
-- **Dark Mode** — optimized contrast for all views
-- **Print** — native macOS print dialog for tasks and Gantt views
-- **Document-based** — double-click any `.mpp` file to open it directly
+### Help and Usability
+- In-app `Guide & Help` screen with feature documentation and workflow guidance.
+- macOS Help menu entries for the guide and financial glossary.
+- Search across task name, ID, WBS, notes, resources, and custom fields.
+- Keyboard shortcuts for navigation and planner editing.
 
 ---
 
@@ -225,25 +197,25 @@ Options: `--skip-jar`, `--skip-app`, `--arch arm64|x86_64`, `--version X.Y.Z`
 ```
 MPPViewerMacOS/
 ├── MPPViewer/                          # macOS app (Swift/SwiftUI)
-│   ├── App/                            # Entry point, routing, document handling
-│   ├── Models/                         # Data models (tasks, resources, calendars)
-│   ├── Services/                       # MPP conversion, JSON parsing, workload calculator
+│   ├── App/                            # Entry point, routing, document handling, help
+│   ├── Models/                         # Runtime + native planning models
+│   ├── Services/                       # MPP conversion, validation, EVM, workload
 │   ├── Views/
-│   │   ├── Dashboard/                  # KPI cards, status breakdown, schedule health
-│   │   ├── Gantt/                      # Interactive Gantt chart with Canvas rendering
-│   │   ├── Schedule/                   # Split-view task list + Gantt
-│   │   ├── Tasks/                      # Task table, detail inspector, CSV export
+│   │   ├── Dashboard/                  # Health review, executive mode, snapshots
+│   │   ├── Planner/                    # Native plan builder
+│   │   ├── Gantt/                      # Interactive chart + editing
+│   │   ├── Schedule/                   # Schedule review layout
+│   │   ├── Tasks/                      # Task table, detail inspector, dependency exploration
 │   │   ├── Milestones/                 # Milestone tracking and health analysis
-│   │   ├── Resources/                  # Resource sheet
-│   │   ├── EarnedValue/               # EVM dashboard with S-Curve
+│   │   ├── Resources/                  # Resource review + native editor
+│   │   ├── Calendar/                   # Calendar review + native editor
+│   │   ├── EarnedValue/                # EVM dashboard with S-Curve
 │   │   ├── Workload/                   # Resource workload heatmap
-│   │   ├── Calendar/                   # Calendar visualization
 │   │   ├── Timeline/                   # Executive timeline view
-│   │   ├── Critical/                   # Critical-path and float review
-│   │   ├── Diff/                       # Two-version comparison
+│   │   ├── Diff/                       # Comparison and baseline review
 │   │   ├── Summary/                    # Project metadata
-│   │   └── Components/                 # Shared UI (filter bar, zoom controls)
-│   └── Utilities/                      # PDF/CSV export, print, date formatting
+│   │   └── Components/                 # Shared UI, import mapping, controls
+│   └── Utilities/                      # CSV/PDF export, print, date formatting
 ├── MPPConverterXPC/                    # XPC service target (sandboxed builds)
 ├── MPPConverter/                       # Java converter (Maven project)
 │   └── src/main/java/.../MppToJson.java

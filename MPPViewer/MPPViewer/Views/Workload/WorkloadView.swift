@@ -5,6 +5,8 @@ struct WorkloadView: View {
 
     @State private var workloads: [ResourceWorkload] = []
     @State private var pixelsPerDay: CGFloat = 8
+    @State private var timelineViewportWidth: CGFloat = 0
+    @State private var shouldAutoFitTimeline = true
     @State private var rowHeight: CGFloat = 32
     @GestureState private var magnifyBy: CGFloat = 1.0
 
@@ -49,7 +51,30 @@ struct WorkloadView: View {
 
                 Divider().frame(height: 16)
 
-                GanttZoomControls(pixelsPerDay: $pixelsPerDay, totalDays: totalDays)
+                GanttZoomControls(
+                    pixelsPerDay: pixelsPerDay,
+                    totalDays: totalDays,
+                    onFitAll: {
+                        shouldAutoFitTimeline = true
+                        applyAutoFitIfNeeded()
+                    },
+                    onShowWeek: {
+                        shouldAutoFitTimeline = false
+                        pixelsPerDay = 40
+                    },
+                    onShowMonth: {
+                        shouldAutoFitTimeline = false
+                        pixelsPerDay = 10
+                    },
+                    onZoomOut: {
+                        shouldAutoFitTimeline = false
+                        pixelsPerDay = max(2, pixelsPerDay / 1.5)
+                    },
+                    onZoomIn: {
+                        shouldAutoFitTimeline = false
+                        pixelsPerDay = min(100, pixelsPerDay * 1.5)
+                    }
+                )
             }
             .padding(.horizontal)
             .padding(.vertical, 8)
@@ -64,62 +89,78 @@ struct WorkloadView: View {
                     description: Text("No work resources with assignments found.")
                 )
             } else {
-                ScrollView([.horizontal, .vertical]) {
-                    HStack(alignment: .top, spacing: 0) {
-                        // Left pane: resource names
-                        VStack(alignment: .leading, spacing: 0) {
-                            // Header spacer
-                            Color.clear
-                                .frame(width: nameColumnWidth, height: 44)
-                                .background(Color(nsColor: .controlBackgroundColor))
+                GeometryReader { geometry in
+                    let viewportWidth = max(geometry.size.width - nameColumnWidth - 1, 1)
 
-                            ForEach(workloads) { workload in
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(workload.resource.name ?? "Unknown")
-                                            .font(.caption)
-                                            .fontWeight(.medium)
-                                            .lineLimit(1)
-                                        Text("Peak: \(Int(workload.peakAllocation))%")
-                                            .font(.caption2)
-                                            .foregroundStyle(workload.isOverAllocated ? .red : .secondary)
+                    ScrollView([.horizontal, .vertical]) {
+                        HStack(alignment: .top, spacing: 0) {
+                            // Left pane: resource names
+                            VStack(alignment: .leading, spacing: 0) {
+                                // Header spacer
+                                Color.clear
+                                    .frame(width: nameColumnWidth, height: 44)
+                                    .background(Color(nsColor: .controlBackgroundColor))
+
+                                ForEach(workloads) { workload in
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(workload.resource.name ?? "Unknown")
+                                                .font(.caption)
+                                                .fontWeight(.medium)
+                                                .lineLimit(1)
+                                            Text("Peak: \(Int(workload.peakAllocation))%")
+                                                .font(.caption2)
+                                                .foregroundStyle(workload.isOverAllocated ? .red : .secondary)
+                                        }
+                                        Spacer()
                                     }
-                                    Spacer()
+                                    .padding(.horizontal, 8)
+                                    .frame(width: nameColumnWidth, height: rowHeight)
+                                    .background(workload.isOverAllocated ? Color.red.opacity(0.05) : Color.clear)
+                                    Divider()
                                 }
-                                .padding(.horizontal, 8)
-                                .frame(width: nameColumnWidth, height: rowHeight)
-                                .background(workload.isOverAllocated ? Color.red.opacity(0.05) : Color.clear)
-                                Divider()
+                            }
+
+                            Divider()
+
+                            // Right pane: timeline
+                            VStack(alignment: .leading, spacing: 0) {
+                                GanttHeaderView(
+                                    dateRange: dateRange,
+                                    pixelsPerDay: pixelsPerDay,
+                                    totalWidth: timelineWidth
+                                )
+
+                                workloadCanvas
+                                    .frame(
+                                        width: timelineWidth,
+                                        height: CGFloat(workloads.count) * rowHeight
+                                    )
                             }
                         }
-
-                        Divider()
-
-                        // Right pane: timeline
-                        VStack(alignment: .leading, spacing: 0) {
-                            GanttHeaderView(
-                                dateRange: dateRange,
-                                pixelsPerDay: pixelsPerDay,
-                                totalWidth: timelineWidth
-                            )
-
-                            workloadCanvas
-                                .frame(
-                                    width: timelineWidth,
-                                    height: CGFloat(workloads.count) * rowHeight
-                                )
-                        }
                     }
+                    .onAppear {
+                        timelineViewportWidth = viewportWidth
+                        applyAutoFitIfNeeded()
+                    }
+                    .onChange(of: viewportWidth) { _, newWidth in
+                        timelineViewportWidth = newWidth
+                        applyAutoFitIfNeeded()
+                    }
+                    .onChange(of: totalDays) { _, _ in
+                        applyAutoFitIfNeeded()
+                    }
+                    .gesture(
+                        MagnifyGesture()
+                            .updating($magnifyBy) { value, state, _ in
+                                state = value.magnification
+                            }
+                            .onEnded { value in
+                                shouldAutoFitTimeline = false
+                                pixelsPerDay = min(100, max(2, pixelsPerDay * value.magnification))
+                            }
+                    )
                 }
-                .gesture(
-                    MagnifyGesture()
-                        .updating($magnifyBy) { value, state, _ in
-                            state = value.magnification
-                        }
-                        .onEnded { value in
-                            pixelsPerDay = min(100, max(2, pixelsPerDay * value.magnification))
-                        }
-                )
             }
         }
         .task {
@@ -157,6 +198,15 @@ struct WorkloadView: View {
                 dateRange: range
             )
         }
+    }
+
+    private func applyAutoFitIfNeeded() {
+        guard shouldAutoFitTimeline, timelineViewportWidth > 0 else { return }
+        pixelsPerDay = fittedPixelsPerDay(for: timelineViewportWidth)
+    }
+
+    private func fittedPixelsPerDay(for viewportWidth: CGFloat) -> CGFloat {
+        max(2, min(100, viewportWidth / CGFloat(max(totalDays, 1))))
     }
 
     // MARK: - Canvas

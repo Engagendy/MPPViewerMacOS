@@ -7,8 +7,468 @@ extension Notification.Name {
     static let navigateToItem = Notification.Name("navigateToItem")
 }
 
+struct NativePlanAnalysis {
+    let project: ProjectModel
+    let evm: EVMMetrics
+    let validationIssues: [ProjectValidationIssue]
+    let diagnosticItems: [ProjectDiagnosticItem]
+
+    static func build(from plan: NativeProjectPlan) -> NativePlanAnalysis {
+        let project = plan.asProjectModel()
+        return NativePlanAnalysis(
+            project: project,
+            evm: EVMCalculator.projectMetrics(tasks: project.tasks, statusDate: plan.statusDate),
+            validationIssues: ProjectValidator.validate(project: project),
+            diagnosticItems: ProjectDiagnostics.analyze(project: project)
+        )
+    }
+}
+
+struct StableDecimalTextField: View {
+    let title: String
+    @Binding var text: String
+
+    @State private var draftText = ""
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        TextField(
+            title,
+            text: Binding(
+                get: { isFocused ? draftText : text },
+                set: { newValue in
+                    if isFocused {
+                        draftText = newValue
+                    } else {
+                        text = newValue
+                    }
+                }
+            )
+        )
+        .focused($isFocused)
+        .onAppear {
+            draftText = text
+        }
+        .onChange(of: isFocused) { _, focused in
+            if focused {
+                draftText = text
+            } else {
+                commitDraft()
+            }
+        }
+        .onChange(of: text) { _, newValue in
+            if !isFocused {
+                draftText = newValue
+            }
+        }
+        .onSubmit {
+            commitDraft()
+            isFocused = false
+        }
+    }
+
+    private func commitDraft() {
+        let committed = draftText.trimmingCharacters(in: .whitespacesAndNewlines)
+        draftText = committed
+        text = committed
+    }
+}
+
+struct AppFinanceTerm: Identifiable {
+    let shortCode: String
+    let fullName: String
+    let meaning: String
+    let guidance: String
+
+    var id: String { shortCode }
+}
+
+struct AppFeatureGuide: Identifiable {
+    let title: String
+    let icon: String
+    let availability: String
+    let summary: String
+    let details: [String]
+
+    var id: String { title }
+}
+
+enum AppHelpCatalog {
+    static let financeTerms: [AppFinanceTerm] = [
+        AppFinanceTerm(shortCode: "BAC", fullName: "Budget at Completion", meaning: "The full planned budget for the work when finished.", guidance: "Higher than expected later EAC means the forecast is overrunning BAC."),
+        AppFinanceTerm(shortCode: "PV", fullName: "Planned Value", meaning: "How much budgeted work should have been earned by the status date.", guidance: "Use it as the schedule baseline for earned value."),
+        AppFinanceTerm(shortCode: "EV", fullName: "Earned Value", meaning: "The budgeted value of the work actually completed so far.", guidance: "If EV lags PV, the work is behind plan."),
+        AppFinanceTerm(shortCode: "AC", fullName: "Actual Cost", meaning: "What the work has actually cost so far.", guidance: "If AC rises faster than EV, cost efficiency is dropping."),
+        AppFinanceTerm(shortCode: "CPI", fullName: "Cost Performance Index", meaning: "EV divided by AC, showing cost efficiency.", guidance: "Above 1.00 is favorable, below 1.00 means over budget for the value earned."),
+        AppFinanceTerm(shortCode: "SPI", fullName: "Schedule Performance Index", meaning: "EV divided by PV, showing schedule efficiency.", guidance: "Above 1.00 is ahead of plan, below 1.00 is behind plan."),
+        AppFinanceTerm(shortCode: "EAC", fullName: "Estimate at Completion", meaning: "The current forecast of total cost at finish.", guidance: "Compare EAC to BAC to see the likely final overrun or underrun."),
+        AppFinanceTerm(shortCode: "ETC", fullName: "Estimate to Complete", meaning: "The forecast remaining cost from now to finish.", guidance: "ETC helps answer what is still expected to be spent."),
+        AppFinanceTerm(shortCode: "VAC", fullName: "Variance at Completion", meaning: "BAC minus EAC, showing forecast budget variance at finish.", guidance: "Negative VAC means the current forecast ends over budget."),
+        AppFinanceTerm(shortCode: "CV", fullName: "Cost Variance", meaning: "EV minus AC, showing whether earned value is ahead of or behind actual cost.", guidance: "Negative CV means the work has cost more than the value earned."),
+        AppFinanceTerm(shortCode: "SV", fullName: "Schedule Variance", meaning: "EV minus PV, showing whether earned value is ahead of or behind planned value.", guidance: "Negative SV means progress is lagging the plan."),
+        AppFinanceTerm(shortCode: "TCPI", fullName: "To-Complete Performance Index", meaning: "The cost efficiency needed on remaining work to hit the target budget.", guidance: "Well above 1.00 means the remaining work must perform unusually efficiently to recover."),
+        AppFinanceTerm(shortCode: "BCWS", fullName: "Budgeted Cost of Work Scheduled", meaning: "Older term for PV.", guidance: "In this app, BCWS maps to planned value."),
+        AppFinanceTerm(shortCode: "BCWP", fullName: "Budgeted Cost of Work Performed", meaning: "Older term for EV.", guidance: "In this app, BCWP maps to earned value."),
+        AppFinanceTerm(shortCode: "ACWP", fullName: "Actual Cost of Work Performed", meaning: "Older term for AC.", guidance: "In this app, ACWP maps to actual cost."),
+        AppFinanceTerm(shortCode: "WBS", fullName: "Work Breakdown Structure", meaning: "The outline code that shows a task’s place in the hierarchy.", guidance: "WBS is useful for grouping and locating summary and child tasks.")
+    ]
+
+    static let featureSections: [(title: String, items: [AppFeatureGuide])] = [
+        (
+            "Core Screens",
+            [
+                AppFeatureGuide(title: "Dashboard", icon: NavigationItem.dashboard.icon, availability: "MPP + Native Plan", summary: "Audience-focused review dashboard for project managers, executives, schedulers, and resource managers.", details: [
+                    "Shows KPI cards, baseline alerts, schedule health, resource summary, milestones, and open review signals.",
+                    "Supports snapshots, review templates, reminder cadence, and export-oriented review flows.",
+                    "Best used as the first stop for health review rather than detailed editing."
+                ]),
+                AppFeatureGuide(title: "Executive Mode", icon: NavigationItem.executive.icon, availability: "MPP + Native Plan", summary: "Condensed executive health view for sponsor and steering review.", details: [
+                    "Highlights progress, schedule position, cost outlook, major milestones, and top risks.",
+                    "Provides summary-oriented exports and narrative review text.",
+                    "Useful when you need a high-level read without planner detail."
+                ]),
+                AppFeatureGuide(title: "Summary", icon: NavigationItem.summary.icon, availability: "MPP + Native Plan", summary: "Read-only project property and project structure summary.", details: [
+                    "Shows project metadata, counts, date bounds, calendars, cost basics, and structural facts.",
+                    "Useful for orientation when opening a new project or validating file content."
+                ])
+            ]
+        ),
+        (
+            "Plan Creation & Editing",
+            [
+                AppFeatureGuide(title: "Plan Builder", icon: NavigationItem.planner.icon, availability: "Native Plan Only", summary: "Primary native planning editor with grid entry and detailed inspector editing.", details: [
+                    "Create, delete, duplicate, reorder, indent, and outdent tasks.",
+                    "Edit dates, duration, predecessors, constraints, baselines, financial values, assignments, and actuals.",
+                    "Supports CSV/Excel-compatible imports for tasks, assignments, dependencies, constraints, baselines, plus starter templates and import reports."
+                ]),
+                AppFeatureGuide(title: "Gantt Chart", icon: NavigationItem.gantt.icon, availability: "MPP Review + Native Edit", summary: "Timeline chart for visual schedule review and native plan editing.", details: [
+                    "View mode keeps the chart clean for review; Edit mode unlocks task creation and visual schedule changes.",
+                    "Supports drag to move or resize tasks, control-click source linking, dependency editing, and hierarchy actions.",
+                    "Has a docked inspector with Task, Links, Staffing, and Finance tabs for selected items."
+                ]),
+                AppFeatureGuide(title: "Tasks", icon: NavigationItem.tasks.icon, availability: "MPP + Native Plan", summary: "Task table for task-by-task inspection and export.", details: [
+                    "Searches by task name, ID, WBS, notes, resources, and custom fields.",
+                    "Useful for broad task review when a Gantt is too visual or dense.",
+                    "Exports task lists and issue-oriented CSV outputs."
+                ]),
+                AppFeatureGuide(title: "Milestones", icon: NavigationItem.milestones.icon, availability: "MPP + Native Plan", summary: "Milestone-focused view for upcoming checkpoints and completion review.", details: [
+                    "Filters the project down to milestone tasks for schedule checkpoint review.",
+                    "Useful for reporting and gate-readiness validation."
+                ]),
+                AppFeatureGuide(title: "Timeline", icon: NavigationItem.timeline.icon, availability: "MPP + Native Plan", summary: "High-level visual timeline for broader date-range review.", details: [
+                    "Best for coarse schedule communication and presentation.",
+                    "Shows the plan on a simpler temporal strip than the full editable Gantt."
+                ]),
+                AppFeatureGuide(title: "Schedule", icon: NavigationItem.schedule.icon, availability: "MPP + Native Plan", summary: "Read-focused schedule layout for inspecting time-phased task placement.", details: [
+                    "Keeps schedule review separate from the more interactive Gantt editing surface.",
+                    "Useful for scanning durations, placements, and summary alignment."
+                ])
+            ]
+        ),
+        (
+            "Resources, Calendars & Status",
+            [
+                AppFeatureGuide(title: "Resources", icon: NavigationItem.resources.icon, availability: "MPP Review + Native Edit", summary: "Resource sheet and native resource editor for staffing data.", details: [
+                    "For native plans, create and edit resources, rates, cost-per-use, max units, group, email, and base calendar.",
+                    "For imported MPP files, review imported resources and their assignments in the read-only sheet.",
+                    "Supports resource CSV/Excel-compatible imports, templates, and review mode."
+                ]),
+                AppFeatureGuide(title: "Calendar", icon: NavigationItem.calendar.icon, availability: "MPP Review + Native Edit", summary: "Calendar review and native calendar authoring for working time rules.", details: [
+                    "Edit working days, time ranges, exceptions, project default calendar, and leave/holiday exceptions for native plans.",
+                    "Imported projects keep the original read-only calendar inspection view.",
+                    "Supports calendar CSV/Excel-compatible import, templates, and review mode."
+                ]),
+                AppFeatureGuide(title: "Workload", icon: NavigationItem.workload.icon, availability: "MPP + Native Plan", summary: "Resource allocation and time-phased workload review.", details: [
+                    "Shows resource loading over time using task assignments and calendars.",
+                    "Useful for spotting overloads, underuse, and overtime pressure."
+                ]),
+                AppFeatureGuide(title: "Status Center", icon: NavigationItem.statusCenter.icon, availability: "Native Plan Only", summary: "Periodic project-controls screen for updating actuals and reviewing live variance.", details: [
+                    "Set the project status date and then update actual start, actual finish, progress, actual cost, status notes, and assignment actual/remaining/overtime work.",
+                    "Includes filters like Needs Attention, In Progress, Overdue, and Missing Actuals.",
+                    "Surfaces CPI, SPI, EAC, VAC, top slippages, cost overruns, and overtime drivers."
+                ])
+            ]
+        ),
+        (
+            "Analysis & Assurance",
+            [
+                AppFeatureGuide(title: "Validation", icon: NavigationItem.validation.icon, availability: "MPP + Native Plan", summary: "Project quality checks focused on structural and data-entry issues.", details: [
+                    "Flags errors, warnings, and information-level validation items tied to specific tasks where possible.",
+                    "Useful for catching finish-before-start, missing dates, weak baselines, and similar plan defects."
+                ]),
+                AppFeatureGuide(title: "Diagnostics", icon: NavigationItem.diagnostics.icon, availability: "MPP + Native Plan", summary: "Schedule signal analysis for dependency, constraint, and logic hotspots.", details: [
+                    "Surfaces schedule-quality concerns beyond simple validation rules.",
+                    "Good for explaining where the network is brittle or where planning assumptions need review."
+                ]),
+                AppFeatureGuide(title: "Dependency Explorer", icon: NavigationItem.dependencyExplorer.icon, availability: "MPP + Native Plan", summary: "Focused task-relationship analysis view.", details: [
+                    "Lets you inspect predecessor and successor relationships more directly than the broader task table.",
+                    "Useful for network review and impact tracing."
+                ]),
+                AppFeatureGuide(title: "Resource Risks", icon: NavigationItem.resourceRisks.icon, availability: "MPP + Native Plan", summary: "Risk-oriented resource analysis view.", details: [
+                    "Highlights over-allocation and staffing hotspots from the current schedule and assignments.",
+                    "Useful for triage before adjusting calendars, staffing, or sequencing."
+                ]),
+                AppFeatureGuide(title: "Critical Path", icon: NavigationItem.criticalPath.icon, availability: "MPP + Native Plan", summary: "Critical and near-critical schedule review.", details: [
+                    "Shows work most likely to move finish dates or absorb float first.",
+                    "Useful before baseline capture, forecast review, and status meetings."
+                ]),
+                AppFeatureGuide(title: "Compare", icon: NavigationItem.diff.icon, availability: "MPP + Native Plan", summary: "Baseline and file-to-file comparison view.", details: [
+                    "Compares project versions, native plans, or baseline states to show change impact.",
+                    "Useful for change review, forecast discussion, and auditability."
+                ])
+            ]
+        ),
+        (
+            "Financial & Reporting",
+            [
+                AppFeatureGuide(title: "Earned Value", icon: NavigationItem.earnedValue.icon, availability: "MPP + Native Plan", summary: "Dedicated financial control and earned value screen.", details: [
+                    "Shows project CPI, SPI, EAC, VAC, S-curve, and task-level EVM rows.",
+                    "Useful after baselines, costs, and actuals are populated.",
+                    "Includes an in-screen glossary because many financial labels are abbreviated."
+                ]),
+                AppFeatureGuide(title: "Guide & Help", icon: NavigationItem.helpCenter.icon, availability: "App-Wide", summary: "Built-in documentation, feature reference, workflow guide, glossary, and shortcuts.", details: [
+                    "Available from the sidebar and the macOS Help menu.",
+                    "Explains feature purpose, availability, and common workflow paths."
+                ])
+            ]
+        )
+    ]
+}
+
+struct FinancialTermsLegendView: View {
+    var terms: [AppFinanceTerm] = AppHelpCatalog.financeTerms
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Financial & EVM Terms")
+                .font(.headline)
+            Text("Short labels used in financial, status, and earned value views.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            LazyVStack(alignment: .leading, spacing: 10) {
+                ForEach(terms) { term in
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Text(term.shortCode)
+                                .font(.system(.subheadline, design: .monospaced))
+                                .fontWeight(.semibold)
+                                .foregroundStyle(.primary)
+                            Text(term.fullName)
+                                .font(.subheadline.weight(.semibold))
+                        }
+                        Text(term.meaning)
+                            .font(.caption)
+                            .foregroundStyle(.primary)
+                        Text(term.guidance)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(10)
+                    .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+            }
+        }
+    }
+}
+
+struct FinancialTermsButton: View {
+    var title = "Financial Terms"
+    @State private var isPresented = false
+
+    var body: some View {
+        Button {
+            isPresented = true
+        } label: {
+            Label(title, systemImage: "text.book.closed")
+        }
+        .buttonStyle(.bordered)
+        .popover(isPresented: $isPresented, arrowEdge: .bottom) {
+            ScrollView {
+                FinancialTermsLegendView()
+                    .padding(16)
+                    .frame(width: 520, alignment: .topLeading)
+            }
+        }
+        .help("Open a glossary for financial and earned value abbreviations used in the app.")
+    }
+}
+
+struct AppGuideView: View {
+    let isEditablePlan: Bool
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Guide & Help")
+                        .font(.largeTitle.weight(.semibold))
+                    Text("A quick reference for building plans, updating status, and reading financial and earned value signals.")
+                        .foregroundStyle(.secondary)
+                }
+
+                guideSection(
+                    title: "What This App Covers",
+                    icon: "square.text.square",
+                    lines: [
+                        "Open imported `.mpp` schedules for review and analysis.",
+                        isEditablePlan ? "Create and edit native `.mppplan` schedules directly in the app." : "Create a new `.mppplan` document from File > New to edit plans directly in the app.",
+                        "Review schedule, workload, resources, calendars, status, financials, and earned value from the same project model."
+                    ]
+                )
+
+                guideSection(
+                    title: "Build a Plan",
+                    icon: "square.and.pencil",
+                    lines: [
+                        "Use `Plan Builder` for fast grid entry and detailed task editing.",
+                        "Use `Gantt Chart` in `Edit` mode for visual move, resize, link, indent, and subtask changes.",
+                        "Use `Resources` and `Calendar` to define staffing, base calendars, and leave exceptions."
+                    ]
+                )
+
+                guideSection(
+                    title: "Import & Templates",
+                    icon: "square.and.arrow.down",
+                    lines: [
+                        "Task, resource, calendar, assignment, dependency, constraint, and baseline imports support CSV and Excel-compatible `.xls` files.",
+                        "Template exports provide starter sheets for bulk loading and recurring updates.",
+                        "Import reports can reopen mapping, export warnings, and jump to affected items."
+                    ]
+                )
+
+                guideSection(
+                    title: "Status & Control",
+                    icon: "checklist",
+                    lines: [
+                        "Use `Status Center` to set status date, actual dates, progress, actual cost, and assignment actual/remaining/overtime work.",
+                        "Use `Earned Value` for CPI, SPI, EAC, VAC, S-curve, and task-level EVM.",
+                        "Use `Dashboard`, `Validation`, and `Diagnostics` to spot schedule-quality and resource-risk issues."
+                    ]
+                )
+
+                guideSection(
+                    title: "Useful Shortcuts",
+                    icon: "command",
+                    lines: [
+                        "Command-1 through Command-9 open the first sidebar views directly.",
+                        "In the planner grid, Tab and Shift-Tab move between cells, Enter moves down, and Command-Return adds a row.",
+                        "In Gantt edit mode, Control-click a task bar starts dependency linking."
+                    ]
+                )
+
+                guideSection(
+                    title: "Document Types",
+                    icon: "doc.on.doc",
+                    lines: [
+                        "Imported `.mpp` files are review-first documents. They feed analysis, dashboards, schedule views, and read-only inspection screens.",
+                        isEditablePlan ? "This document is a native `.mppplan`, so plan creation, statusing, finance entry, resource editing, and calendar editing are available." : "Create a native `.mppplan` from `File > New` when you want in-app editing, imports, status updates, and native save/open later.",
+                        "Many screens work for both document types, but native plans unlock editing workflows."
+                    ]
+                )
+
+                GroupBox {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("Feature Reference")
+                            .font(.headline)
+                        Text("Each major screen in the app, what it is for, and what you can do there.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        ForEach(Array(AppHelpCatalog.featureSections.enumerated()), id: \.offset) { section in
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text(section.element.title)
+                                    .font(.title3.weight(.semibold))
+
+                                ForEach(section.element.items) { feature in
+                                    featureCard(feature)
+                                }
+                            }
+
+                            if section.offset != AppHelpCatalog.featureSections.count - 1 {
+                                Divider()
+                            }
+                        }
+                    }
+                    .padding(8)
+                } label: {
+                    Label("Detailed Feature Guide", systemImage: "books.vertical")
+                }
+
+                GroupBox {
+                    FinancialTermsLegendView()
+                        .padding(8)
+                } label: {
+                    Label("Financial Glossary", systemImage: "chart.line.uptrend.xyaxis")
+                }
+            }
+            .padding(24)
+            .frame(maxWidth: 980, alignment: .topLeading)
+        }
+        .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    private func guideSection(title: String, icon: String, lines: [String]) -> some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(Array(lines.enumerated()), id: \.offset) { item in
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "circle.fill")
+                            .font(.system(size: 6))
+                            .foregroundStyle(.secondary)
+                            .padding(.top, 6)
+                        Text(item.element)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+            .padding(8)
+        } label: {
+            Label(title, systemImage: icon)
+        }
+    }
+
+    private func featureCard(_ feature: AppFeatureGuide) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Label(feature.title, systemImage: feature.icon)
+                    .font(.headline)
+                Text(feature.availability)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color(nsColor: .controlBackgroundColor), in: Capsule())
+            }
+
+            Text(feature.summary)
+                .foregroundStyle(.primary)
+
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(Array(feature.details.enumerated()), id: \.offset) { item in
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "circle.fill")
+                            .font(.system(size: 6))
+                            .foregroundStyle(.secondary)
+                            .padding(.top, 6)
+                        Text(item.element)
+                            .font(.caption)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+}
+
 enum NavigationItem: String, CaseIterable, Identifiable {
     case dashboard = "Dashboard"
+    case planner = "Plan Builder"
+    case statusCenter = "Status Center"
     case executive = "Executive Mode"
     case summary = "Summary"
     case validation = "Validation"
@@ -26,12 +486,15 @@ enum NavigationItem: String, CaseIterable, Identifiable {
     case calendar = "Calendar"
     case timeline = "Timeline"
     case diff = "Compare"
+    case helpCenter = "Guide & Help"
 
     var id: String { rawValue }
 
     var icon: String {
         switch self {
         case .dashboard: return "gauge.with.dots.needle.33percent"
+        case .planner: return "square.and.pencil"
+        case .statusCenter: return "checklist"
         case .executive: return "display"
         case .summary: return "doc.text"
         case .validation: return "checklist.unchecked"
@@ -49,17 +512,24 @@ enum NavigationItem: String, CaseIterable, Identifiable {
         case .calendar: return "calendar"
         case .timeline: return "rectangle.split.3x1"
         case .diff: return "arrow.triangle.2.circlepath"
+        case .helpCenter: return "questionmark.circle"
         }
     }
 }
 
 struct ContentView: View {
-    let document: MPPDocument
+    @Binding var document: PlanningDocument
     @StateObject private var store = ProjectStore()
-    @State private var selectedNav: NavigationItem? = .dashboard
+    @State private var editableAnalysis: NativePlanAnalysis?
+    @State private var selectedNav: NavigationItem?
     @State private var searchText = ""
     @State private var navigateToTaskID: Int?
     @AppStorage("flaggedTaskIDs") private var flaggedTaskIDsData: Data = Data()
+
+    init(document: Binding<PlanningDocument>) {
+        self._document = document
+        self._editableAnalysis = State(initialValue: document.wrappedValue.nativePlan.map(NativePlanAnalysis.build(from:)))
+    }
 
     private var flaggedTaskIDs: Binding<Set<Int>> {
         Binding(
@@ -73,7 +543,7 @@ struct ContentView: View {
     }
 
     private var searchSuggestionTasks: [ProjectTask] {
-        guard let project = store.project, !searchText.isEmpty else { return [] }
+        guard let project = currentProject, !searchText.isEmpty else { return [] }
         let search = searchText.lowercased()
         return project.tasks.filter { task in
             let directMatch =
@@ -94,19 +564,37 @@ struct ContentView: View {
         .map { $0 }
     }
 
+    private var currentProject: ProjectModel? {
+        if document.isEditablePlan {
+            return editableAnalysis?.project
+        }
+        return store.project
+    }
+
+    private var nativePlanBinding: Binding<NativeProjectPlan>? {
+        guard document.isEditablePlan else { return nil }
+        return Binding(
+            get: { document.nativePlan ?? .empty() },
+            set: {
+                document.nativePlan = $0
+                editableAnalysis = NativePlanAnalysis.build(from: $0)
+            }
+        )
+    }
+
     var body: some View {
         NavigationSplitView {
-            SidebarView(selection: $selectedNav)
+            SidebarView(selection: $selectedNav, showsPlanner: document.isEditablePlan)
         } detail: {
             Group {
-                if store.isLoading {
+                if !document.isEditablePlan && store.isLoading {
                     VStack(spacing: 16) {
                         ProgressView()
                             .scaleEffect(1.5)
                         Text("Converting MPP file...")
                             .foregroundStyle(.secondary)
                     }
-                } else if let error = store.error {
+                } else if !document.isEditablePlan, let error = store.error {
                     VStack(spacing: 12) {
                         Image(systemName: "exclamationmark.triangle")
                             .font(.system(size: 48))
@@ -119,8 +607,8 @@ struct ContentView: View {
                             .multilineTextAlignment(.center)
                             .frame(maxWidth: 400)
                     }
-                } else if let project = store.project {
-                    detailView(for: selectedNav, project: project)
+                } else if let project = currentProject {
+                    detailView(for: selectedNav, project: project, nativePlan: nativePlanBinding)
                 } else {
                     Text("No project loaded")
                         .foregroundStyle(.secondary)
@@ -159,9 +647,24 @@ struct ContentView: View {
                 }
             }
         }
-        .navigationTitle(store.project?.properties.projectTitle ?? "MPP Viewer")
-        .task {
-            await store.loadFromDocument(document)
+        .navigationTitle(currentProject?.properties.projectTitle ?? "MPP Viewer")
+        .task(id: document.isEditablePlan) {
+            if document.isEditablePlan {
+                store.reset()
+                refreshEditableAnalysis()
+                if selectedNav == nil || selectedNav == .dashboard {
+                    selectedNav = .planner
+                }
+            } else {
+                editableAnalysis = nil
+                if selectedNav == nil || selectedNav == .planner {
+                    selectedNav = .dashboard
+                }
+                await store.loadFromDocument(document)
+            }
+        }
+        .onChange(of: document.nativePlan) { _, _ in
+            refreshEditableAnalysis()
         }
         .onReceive(NotificationCenter.default.publisher(for: .navigateToItem)) { notification in
             if let item = notification.object as? NavigationItem {
@@ -171,10 +674,34 @@ struct ContentView: View {
     }
 
     @ViewBuilder
-    private func detailView(for item: NavigationItem?, project: ProjectModel) -> some View {
+    private func detailView(
+        for item: NavigationItem?,
+        project: ProjectModel,
+        nativePlan: Binding<NativeProjectPlan>?
+    ) -> some View {
         switch item {
         case .dashboard:
             DashboardView(project: project)
+        case .planner:
+            if let nativePlan {
+                PlanEditorView(plan: nativePlan)
+            } else {
+                ContentUnavailableView(
+                    "Read-Only Import",
+                    systemImage: "lock",
+                    description: Text("Open or create a native plan document to edit tasks in the app.")
+                )
+            }
+        case .statusCenter:
+            if let nativePlan {
+                StatusCenterView(plan: nativePlan, project: project)
+            } else {
+                ContentUnavailableView(
+                    "Read-Only Import",
+                    systemImage: "lock",
+                    description: Text("Open or create a native plan document to apply status updates in the app.")
+                )
+            }
         case .executive:
             ExecutiveModeView(project: project)
         case .summary:
@@ -220,35 +747,53 @@ struct ContentView: View {
                 navigateToTaskID: $navigateToTaskID
             )
         case .gantt:
-            GanttChartView(project: project, searchText: searchText)
+            GanttChartView(project: project, searchText: searchText, nativePlan: nativePlan)
         case .schedule:
             ScheduleView(project: project, searchText: searchText)
         case .milestones:
             MilestonesView(tasks: project.tasks, allTasks: project.tasksByID, searchText: searchText)
         case .resources:
-            ResourceSheetView(
-                resources: project.resources,
-                assignments: project.assignments,
-                calendars: project.calendars,
-                defaultCalendarID: project.properties.defaultCalendarUniqueId,
-                allTasks: project.tasksByID,
-                navigateToTaskID: $navigateToTaskID,
-                selectedNav: $selectedNav
-            )
+            if let nativePlan {
+                NativeResourcesEditorView(
+                    plan: nativePlan,
+                    navigateToTaskID: $navigateToTaskID,
+                    selectedNav: $selectedNav
+                )
+            } else {
+                ResourceSheetView(
+                    resources: project.resources,
+                    assignments: project.assignments,
+                    calendars: project.calendars,
+                    defaultCalendarID: project.properties.defaultCalendarUniqueId,
+                    allTasks: project.tasksByID,
+                    navigateToTaskID: $navigateToTaskID,
+                    selectedNav: $selectedNav
+                )
+            }
         case .earnedValue:
             EarnedValueView(project: project)
         case .workload:
             WorkloadView(project: project)
         case .calendar:
-            CalendarView(calendars: project.calendars)
+            if let nativePlan {
+                NativeCalendarEditorView(plan: nativePlan)
+            } else {
+                CalendarView(calendars: project.calendars)
+            }
         case .timeline:
             TimelineView(project: project)
         case .diff:
             DiffView(project: project)
+        case .helpCenter:
+            AppGuideView(isEditablePlan: nativePlan != nil)
         case .none:
             Text("Select a view from the sidebar")
                 .foregroundStyle(.secondary)
         }
+    }
+
+    private func refreshEditableAnalysis() {
+        editableAnalysis = document.nativePlan.map(NativePlanAnalysis.build(from:))
     }
 }
 
@@ -1342,7 +1887,7 @@ struct CriticalPathView: View {
         }
     }
 
-    private func summaryChip(_ text: String, color: Color) -> some View {
+private func summaryChip(_ text: String, color: Color) -> some View {
         Text(text)
             .font(.caption)
             .fontWeight(.medium)
@@ -1352,4 +1897,898 @@ struct CriticalPathView: View {
             .foregroundStyle(color)
             .clipShape(Capsule())
     }
+}
+
+struct StatusCenterView: View {
+    @Binding var plan: NativeProjectPlan
+    let project: ProjectModel
+
+    @State private var selectedTaskID: Int?
+    @State private var filter: StatusTaskFilter = .attention
+    @State private var searchText = ""
+
+    private var workTasks: [ProjectTask] {
+        project.tasks.filter { $0.summary != true }
+    }
+
+    private var statusMetrics: EVMMetrics {
+        EVMCalculator.projectMetrics(tasks: workTasks, statusDate: plan.statusDate)
+    }
+
+    private var overdueCount: Int {
+        workTasks.filter { !$0.isCompleted && ($0.finishDate ?? .distantFuture) < plan.statusDate }.count
+    }
+
+    private var inProgressCount: Int {
+        workTasks.filter(\.isInProgress).count
+    }
+
+    private var missingActualCount: Int {
+        workTasks.filter { task in
+            let shouldHaveActualStart = (task.percentComplete ?? 0) > 0
+            let shouldHaveActualFinish = task.isCompleted
+            let missingStart = shouldHaveActualStart && task.actualStart == nil
+            let missingFinish = shouldHaveActualFinish && task.actualFinish == nil
+            return missingStart || missingFinish
+        }.count
+    }
+
+    private var filteredTasks: [ProjectTask] {
+        let trimmedSearch = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return workTasks.filter { task in
+            let matchesFilter = switch filter {
+            case .all:
+                true
+            case .attention:
+                taskStatusNeedsAttention(task)
+            case .inProgress:
+                task.isInProgress
+            case .overdue:
+                !task.isCompleted && ((task.finishDate ?? .distantFuture) < plan.statusDate)
+            case .missingActuals:
+                ((task.percentComplete ?? 0) > 0 && task.actualStart == nil) || (task.isCompleted && task.actualFinish == nil)
+            }
+
+            guard matchesFilter else { return false }
+            guard !trimmedSearch.isEmpty else { return true }
+            return task.displayName.lowercased().contains(trimmedSearch)
+                || (task.wbs?.lowercased().contains(trimmedSearch) == true)
+                || (task.id.map(String.init)?.contains(trimmedSearch) == true)
+        }
+    }
+
+    private var selectedProjectTask: ProjectTask? {
+        guard let selectedTaskID else { return nil }
+        return project.tasksByID[selectedTaskID]
+    }
+
+    private var selectedAssignments: [NativePlanAssignment] {
+        guard let selectedTaskID else { return [] }
+        return plan.assignments.filter { $0.taskID == selectedTaskID }
+    }
+
+    private var topScheduleSlips: [ProjectTask] {
+        workTasks
+            .filter { ($0.finishVarianceDays ?? 0) > 0 }
+            .sorted { ($0.finishVarianceDays ?? 0) > ($1.finishVarianceDays ?? 0) }
+            .prefix(5)
+            .map { $0 }
+    }
+
+    private var topCostOverruns: [ProjectTask] {
+        workTasks
+            .filter { task in
+                let baseline = task.baselineCost ?? task.cost ?? 0
+                let actual = task.actualCost ?? 0
+                return baseline > 0 && actual > baseline
+            }
+            .sorted {
+                (($0.actualCost ?? 0) - ($0.baselineCost ?? $0.cost ?? 0)) >
+                (($1.actualCost ?? 0) - ($1.baselineCost ?? $1.cost ?? 0))
+            }
+            .prefix(5)
+            .map { $0 }
+    }
+
+    private var topOvertimeDrivers: [(assignment: NativePlanAssignment, resource: NativePlanResource?)] {
+        plan.assignments
+            .filter { ($0.overtimeWorkSeconds ?? 0) > 0 }
+            .sorted { ($0.overtimeWorkSeconds ?? 0) > ($1.overtimeWorkSeconds ?? 0) }
+            .prefix(5)
+            .map { assignment in
+                (assignment, plan.resources.first(where: { $0.id == assignment.resourceID }))
+            }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            statusHeader
+            Divider()
+            metricsStrip
+            Divider()
+
+            HStack(spacing: 0) {
+                taskListPane
+                    .frame(minWidth: 420, idealWidth: 540, maxWidth: 680)
+
+                Divider()
+
+                detailPane
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            }
+        }
+        .onAppear {
+            if selectedTaskID == nil {
+                selectedTaskID = filteredTasks.first?.uniqueID ?? workTasks.first?.uniqueID
+            }
+        }
+        .onChange(of: plan.tasks.map(\.id)) { _, ids in
+            guard !ids.isEmpty else {
+                selectedTaskID = nil
+                return
+            }
+
+            if let selectedTaskID, ids.contains(selectedTaskID) {
+                return
+            }
+
+            selectedTaskID = ids.first
+        }
+        .onChange(of: filter) { _, _ in
+            if let selectedTaskID, filteredTasks.contains(where: { $0.uniqueID == selectedTaskID }) {
+                return
+            }
+            selectedTaskID = filteredTasks.first?.uniqueID
+        }
+    }
+
+    private var statusHeader: some View {
+        HStack(alignment: .center, spacing: 14) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Status Center")
+                    .font(.title2.weight(.semibold))
+                Text("Update actuals, variance, and earned value as of the current status date.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Picker("Filter", selection: $filter) {
+                ForEach(StatusTaskFilter.allCases) { option in
+                    Text(option.rawValue).tag(option)
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 440)
+
+            TextField("Search Tasks", text: $searchText)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 180)
+
+            DatePicker("Status Date", selection: statusDateBinding, displayedComponents: .date)
+                .labelsHidden()
+                .help("Sets the control date used by earned value and variance calculations.")
+
+            Button("Today") {
+                statusDateBinding.wrappedValue = Calendar.current.startOfDay(for: Date())
+            }
+            .help("Move the status date to today.")
+
+            Button("Apply Status Defaults") {
+                applyStatusDefaults()
+            }
+            .help("Fill missing actual dates for tasks that have already started or finished by the current status date.")
+
+            FinancialTermsButton()
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 10)
+        .background(.bar)
+    }
+
+    private var metricsStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                statusMetricCard(title: "In Progress", value: "\(inProgressCount)", tone: .blue)
+                statusMetricCard(title: "Overdue", value: "\(overdueCount)", tone: overdueCount > 0 ? .red : .secondary)
+                statusMetricCard(title: "Missing Actuals", value: "\(missingActualCount)", tone: missingActualCount > 0 ? .orange : .secondary)
+                statusMetricCard(title: "BAC", value: currencyText(statusMetrics.bac), tone: .primary)
+                statusMetricCard(title: "AC", value: currencyText(statusMetrics.ac), tone: .primary)
+                statusMetricCard(title: "CPI", value: ratioText(statusMetrics.cpi), tone: statusMetrics.cpi >= 1 ? .green : .orange)
+                statusMetricCard(title: "SPI", value: ratioText(statusMetrics.spi), tone: statusMetrics.spi >= 1 ? .green : .orange)
+                statusMetricCard(title: "EAC", value: currencyText(statusMetrics.eac), tone: .primary)
+                statusMetricCard(title: "VAC", value: currencyText(statusMetrics.vac), tone: statusMetrics.vac >= 0 ? .green : .red)
+            }
+            .padding(.horizontal)
+            .padding(.vertical, 10)
+        }
+        .background(Color(nsColor: .controlBackgroundColor))
+    }
+
+    private var taskListPane: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                Text("Task Status")
+                    .font(.headline)
+                Text("(\(filteredTasks.count))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            .padding(.horizontal)
+            .padding(.vertical, 10)
+
+            Divider()
+
+            HStack(spacing: 0) {
+                listHeader("Task", width: 220, alignment: .leading)
+                listHeader("%", width: 48)
+                listHeader("Actual Start", width: 94)
+                listHeader("Actual Finish", width: 94)
+                listHeader("Cost Δ", width: 82)
+                listHeader("Slip", width: 62)
+            }
+            .padding(.horizontal)
+            .padding(.vertical, 6)
+            .background(.thinMaterial)
+
+            Divider()
+
+            List(selection: $selectedTaskID) {
+                ForEach(filteredTasks, id: \.uniqueID) { task in
+                    Button {
+                        selectedTaskID = task.uniqueID
+                    } label: {
+                        HStack(spacing: 0) {
+                            taskCell(task: task)
+                            numericCell(task.percentComplete.map { "\(Int($0))%" } ?? "0%", width: 48)
+                            numericCell(task.actualStart.map(DateFormatting.shortDate) ?? "Missing", width: 94, tint: task.actualStart == nil && (task.percentComplete ?? 0) > 0 ? .orange : .secondary)
+                            numericCell(task.actualFinish.map(DateFormatting.shortDate) ?? "Missing", width: 94, tint: task.actualFinish == nil && task.isCompleted ? .orange : .secondary)
+                            numericCell(costVarianceText(for: task), width: 82, tint: costVarianceColor(for: task))
+                            numericCell(slipText(for: task), width: 62, tint: slipColor(for: task))
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .tag(task.uniqueID)
+                    .listRowInsets(EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12))
+                }
+            }
+            .listStyle(.plain)
+        }
+    }
+
+    private var detailPane: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                if let task = selectedProjectTask {
+                    taskStatusEditor(task: task)
+                    assignmentStatusEditor(task: task)
+                } else {
+                    Text("Select a task from the left to update status, actuals, and progress.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal)
+                        .padding(.top)
+                }
+
+                varianceDashboard
+            }
+            .padding()
+        }
+        .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    private func taskStatusEditor(task: ProjectTask) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(task.displayName)
+                        .font(.title3.weight(.semibold))
+                    HStack(spacing: 8) {
+                        if let wbs = task.wbs {
+                            Text(wbs)
+                                .font(.caption.weight(.semibold))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Capsule().fill(Color.accentColor.opacity(0.12)))
+                        }
+
+                        statusBadge(for: task)
+                    }
+                }
+
+                Spacer()
+            }
+
+            GroupBox("Task Update") {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 12) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Actual Start")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            DatePicker("", selection: actualStartBinding(for: task.uniqueID), displayedComponents: .date)
+                                .labelsHidden()
+                            HStack(spacing: 8) {
+                                Button("Use Scheduled") {
+                                    setActualStart(for: task.uniqueID, to: task.startDate ?? plan.statusDate)
+                                }
+                                Button("Clear") {
+                                    setActualStart(for: task.uniqueID, to: nil)
+                                }
+                            }
+                            .buttonStyle(.link)
+                            .font(.caption)
+                        }
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Actual Finish")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            DatePicker("", selection: actualFinishBinding(for: task.uniqueID), displayedComponents: .date)
+                                .labelsHidden()
+                            HStack(spacing: 8) {
+                                Button("Use Scheduled") {
+                                    setActualFinish(for: task.uniqueID, to: task.finishDate ?? plan.statusDate)
+                                }
+                                Button("Clear") {
+                                    setActualFinish(for: task.uniqueID, to: nil)
+                                }
+                            }
+                            .buttonStyle(.link)
+                            .font(.caption)
+                        }
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("% Complete")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            TextField("0", text: percentCompleteBinding(for: task.uniqueID))
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 84)
+                            Text("Statused progress")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Actual Cost")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            StableDecimalTextField(title: "0", text: actualCostBinding(for: task.uniqueID))
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 110)
+                            Text("Override only if needed")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+                    }
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Status Notes")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        TextEditor(text: notesBinding(for: task.uniqueID))
+                            .font(.body)
+                            .frame(minHeight: 72)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
+                            )
+                    }
+                }
+                .padding(.top, 4)
+            }
+
+            GroupBox("Variance Snapshot") {
+                VStack(alignment: .leading, spacing: 8) {
+                    statusFactRow(label: "Baseline", value: baselineRangeText(for: task))
+                    statusFactRow(label: "Current", value: currentRangeText(for: task))
+                    statusFactRow(label: "Planned Value", value: currencyText(task.bcws ?? EVMCalculator.compute(for: task, statusDate: plan.statusDate).pv))
+                    statusFactRow(label: "Earned Value", value: currencyText(task.bcwp ?? EVMCalculator.compute(for: task, statusDate: plan.statusDate).ev))
+                    statusFactRow(label: "Actual Cost", value: currencyText(task.acwp ?? EVMCalculator.compute(for: task, statusDate: plan.statusDate).ac))
+                    statusFactRow(label: "Cost Variance", value: costVarianceText(for: task), tint: costVarianceColor(for: task))
+                    statusFactRow(label: "Schedule Variance", value: currencyText(EVMCalculator.compute(for: task, statusDate: plan.statusDate).sv), tint: EVMCalculator.compute(for: task, statusDate: plan.statusDate).sv >= 0 ? .green : .red)
+                }
+                .padding(.top, 4)
+            }
+        }
+    }
+
+    private func assignmentStatusEditor(task: ProjectTask) -> some View {
+        GroupBox("Assignment Updates") {
+            VStack(alignment: .leading, spacing: 10) {
+                if selectedAssignments.isEmpty {
+                    Text("No assignments on this task yet.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(selectedAssignments) { assignment in
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text(resourceName(for: assignment))
+                                    .font(.subheadline.weight(.semibold))
+                                Spacer()
+                                Text("Units \(Int(assignment.units))%")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            HStack(spacing: 12) {
+                                assignmentField(title: "Actual (h)", text: assignmentHoursBinding(for: assignment.id, keyPath: \.actualWorkSeconds))
+                                assignmentField(title: "Remaining (h)", text: assignmentHoursBinding(for: assignment.id, keyPath: \.remainingWorkSeconds))
+                                assignmentField(title: "OT (h)", text: assignmentHoursBinding(for: assignment.id, keyPath: \.overtimeWorkSeconds))
+                                Spacer()
+                                Text(assignmentCostSummary(for: assignment))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .padding(10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(Color.primary.opacity(0.03))
+                        )
+                    }
+                }
+            }
+            .padding(.top, 4)
+        }
+    }
+
+    private var varianceDashboard: some View {
+        GroupBox("Control Radar") {
+            HStack(alignment: .top, spacing: 18) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Top Schedule Slips")
+                        .font(.headline)
+                    if topScheduleSlips.isEmpty {
+                        Text("No slipped tasks against the current baseline.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(topScheduleSlips, id: \.uniqueID) { task in
+                            radarRow(
+                                title: task.displayName,
+                                detail: slipText(for: task),
+                                tint: .red,
+                                action: { selectedTaskID = task.uniqueID }
+                            )
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Top Cost Overruns")
+                        .font(.headline)
+                    if topCostOverruns.isEmpty {
+                        Text("No tasks are exceeding baseline cost.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(topCostOverruns, id: \.uniqueID) { task in
+                            radarRow(
+                                title: task.displayName,
+                                detail: costVarianceText(for: task),
+                                tint: .orange,
+                                action: { selectedTaskID = task.uniqueID }
+                            )
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Overtime Drivers")
+                        .font(.headline)
+                    if topOvertimeDrivers.isEmpty {
+                        Text("No explicit overtime has been statused yet.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(Array(topOvertimeDrivers.enumerated()), id: \.offset) { _, item in
+                            radarRow(
+                                title: resourceName(for: item.assignment),
+                                detail: hoursText(item.assignment.overtimeWorkSeconds),
+                                tint: .purple,
+                                action: { selectedTaskID = item.assignment.taskID }
+                            )
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+            }
+            .padding(.top, 4)
+        }
+    }
+
+    private func radarRow(title: String, detail: String, tint: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Text(detail)
+                        .font(.caption)
+                        .foregroundStyle(tint)
+                }
+                Spacer()
+                Image(systemName: "arrow.right")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(8)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(tint.opacity(0.08))
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func listHeader(_ title: String, width: CGFloat, alignment: Alignment = .center) -> some View {
+        Text(title)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .frame(width: width, alignment: alignment)
+    }
+
+    private func taskCell(task: ProjectTask) -> some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(taskStatusColor(for: task))
+                .frame(width: 8, height: 8)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(task.displayName)
+                    .lineLimit(1)
+                    .foregroundStyle(.primary)
+                HStack(spacing: 6) {
+                    if let wbs = task.wbs {
+                        Text(wbs)
+                    }
+                    Text(statusText(for: task))
+                }
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: 220, alignment: .leading)
+    }
+
+    private func numericCell(_ value: String, width: CGFloat, tint: Color = .secondary) -> some View {
+        Text(value)
+            .font(.caption)
+            .foregroundStyle(tint)
+            .frame(width: width)
+    }
+
+    private func statusMetricCard(title: String, value: String, tone: Color) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.headline)
+                .foregroundStyle(tone)
+        }
+        .frame(width: 108, alignment: .leading)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color.primary.opacity(0.05))
+        )
+    }
+
+    private func statusBadge(for task: ProjectTask) -> some View {
+        Text(statusText(for: task))
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(taskStatusColor(for: task))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+                Capsule()
+                    .fill(taskStatusColor(for: task).opacity(0.14))
+            )
+    }
+
+    private func statusFactRow(label: String, value: String, tint: Color = .primary) -> some View {
+        HStack {
+            Text(label)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Text(value)
+                .foregroundStyle(tint)
+        }
+        .font(.callout)
+    }
+
+    private func assignmentField(title: String, text: Binding<String>) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            TextField("0", text: text)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 88)
+        }
+    }
+
+    private var statusDateBinding: Binding<Date> {
+        Binding(
+            get: { plan.statusDate },
+            set: { plan.statusDate = Calendar.current.startOfDay(for: $0) }
+        )
+    }
+
+    private func percentCompleteBinding(for taskID: Int) -> Binding<String> {
+        Binding(
+            get: {
+                guard let index = plan.tasks.firstIndex(where: { $0.id == taskID }) else { return "" }
+                return "\(Int(plan.tasks[index].percentComplete.rounded()))"
+            },
+            set: { newValue in
+                guard let index = plan.tasks.firstIndex(where: { $0.id == taskID }) else { return }
+                let parsed = Double(newValue.filter { $0.isNumber || $0 == "." }) ?? 0
+                plan.tasks[index].percentComplete = min(max(parsed, 0), 100)
+
+                if plan.tasks[index].percentComplete > 0, plan.tasks[index].actualStartDate == nil {
+                    plan.tasks[index].actualStartDate = min(plan.tasks[index].startDate, plan.statusDate)
+                }
+                if plan.tasks[index].percentComplete >= 100, plan.tasks[index].actualFinishDate == nil {
+                    plan.tasks[index].actualFinishDate = min(plan.tasks[index].finishDate, plan.statusDate)
+                }
+            }
+        )
+    }
+
+    private func actualCostBinding(for taskID: Int) -> Binding<String> {
+        Binding(
+            get: {
+                guard let index = plan.tasks.firstIndex(where: { $0.id == taskID }) else { return "" }
+                return plan.tasks[index].actualCost.map(decimalText) ?? ""
+            },
+            set: { newValue in
+                guard let index = plan.tasks.firstIndex(where: { $0.id == taskID }) else { return }
+                plan.tasks[index].actualCost = parseDecimalInput(newValue)
+            }
+        )
+    }
+
+    private func notesBinding(for taskID: Int) -> Binding<String> {
+        Binding(
+            get: {
+                guard let index = plan.tasks.firstIndex(where: { $0.id == taskID }) else { return "" }
+                return plan.tasks[index].notes
+            },
+            set: { newValue in
+                guard let index = plan.tasks.firstIndex(where: { $0.id == taskID }) else { return }
+                plan.tasks[index].notes = newValue
+            }
+        )
+    }
+
+    private func actualStartBinding(for taskID: Int) -> Binding<Date> {
+        Binding(
+            get: {
+                guard let index = plan.tasks.firstIndex(where: { $0.id == taskID }) else { return plan.statusDate }
+                return plan.tasks[index].actualStartDate ?? plan.tasks[index].startDate
+            },
+            set: { newValue in
+                setActualStart(for: taskID, to: newValue)
+            }
+        )
+    }
+
+    private func actualFinishBinding(for taskID: Int) -> Binding<Date> {
+        Binding(
+            get: {
+                guard let index = plan.tasks.firstIndex(where: { $0.id == taskID }) else { return plan.statusDate }
+                return plan.tasks[index].actualFinishDate ?? plan.tasks[index].finishDate
+            },
+            set: { newValue in
+                setActualFinish(for: taskID, to: newValue)
+            }
+        )
+    }
+
+    private func assignmentHoursBinding(for assignmentID: Int, keyPath: WritableKeyPath<NativePlanAssignment, Int?>) -> Binding<String> {
+        Binding(
+            get: {
+                guard let index = plan.assignments.firstIndex(where: { $0.id == assignmentID }) else { return "" }
+                return hoursText(plan.assignments[index][keyPath: keyPath])
+            },
+            set: { newValue in
+                guard let index = plan.assignments.firstIndex(where: { $0.id == assignmentID }) else { return }
+                let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                if trimmed.isEmpty {
+                    plan.assignments[index][keyPath: keyPath] = nil
+                } else if let value = Double(trimmed) {
+                    plan.assignments[index][keyPath: keyPath] = max(0, Int(value * 3600))
+                }
+            }
+        )
+    }
+
+    private func setActualStart(for taskID: Int, to date: Date?) {
+        guard let index = plan.tasks.firstIndex(where: { $0.id == taskID }) else { return }
+        let normalized = date.map { Calendar.current.startOfDay(for: $0) }
+        plan.tasks[index].actualStartDate = normalized
+        if let normalized, let finish = plan.tasks[index].actualFinishDate, finish < normalized {
+            plan.tasks[index].actualFinishDate = normalized
+        }
+    }
+
+    private func setActualFinish(for taskID: Int, to date: Date?) {
+        guard let index = plan.tasks.firstIndex(where: { $0.id == taskID }) else { return }
+        let normalized = date.map { Calendar.current.startOfDay(for: $0) }
+        if let normalized, let start = plan.tasks[index].actualStartDate, normalized < start {
+            plan.tasks[index].actualFinishDate = start
+        } else {
+            plan.tasks[index].actualFinishDate = normalized
+        }
+
+        if plan.tasks[index].actualFinishDate != nil, plan.tasks[index].percentComplete < 100 {
+            plan.tasks[index].percentComplete = 100
+        }
+    }
+
+    private func applyStatusDefaults() {
+        let statusDate = Calendar.current.startOfDay(for: plan.statusDate)
+        for index in plan.tasks.indices {
+            if plan.tasks[index].percentComplete > 0, plan.tasks[index].actualStartDate == nil {
+                plan.tasks[index].actualStartDate = min(plan.tasks[index].startDate, statusDate)
+            }
+
+            if plan.tasks[index].percentComplete >= 100, plan.tasks[index].actualFinishDate == nil {
+                plan.tasks[index].actualFinishDate = min(plan.tasks[index].finishDate, statusDate)
+            }
+
+            if let actualStart = plan.tasks[index].actualStartDate, actualStart > statusDate {
+                plan.tasks[index].actualStartDate = statusDate
+            }
+
+            if let actualFinish = plan.tasks[index].actualFinishDate, actualFinish > statusDate {
+                plan.tasks[index].actualFinishDate = statusDate
+            }
+        }
+    }
+
+    private func taskStatusNeedsAttention(_ task: ProjectTask) -> Bool {
+        isOverdue(task)
+            || task.finishVarianceDays ?? 0 > 0
+            || costVarianceValue(for: task) > 0
+            || ((task.percentComplete ?? 0) > 0 && task.actualStart == nil)
+            || (task.isCompleted && task.actualFinish == nil)
+    }
+
+    private func costVarianceValue(for task: ProjectTask) -> Double {
+        (task.actualCost ?? 0) - (task.baselineCost ?? task.cost ?? 0)
+    }
+
+    private func costVarianceText(for task: ProjectTask) -> String {
+        let variance = costVarianceValue(for: task)
+        guard variance != 0 else { return "On plan" }
+        return currencyText(variance)
+    }
+
+    private func costVarianceColor(for task: ProjectTask) -> Color {
+        let variance = costVarianceValue(for: task)
+        if variance > 0 { return .red }
+        if variance < 0 { return .green }
+        return .secondary
+    }
+
+    private func slipText(for task: ProjectTask) -> String {
+        let days = task.finishVarianceDays ?? task.startVarianceDays ?? 0
+        if days == 0 { return "On time" }
+        return "\(days > 0 ? "+" : "")\(days)d"
+    }
+
+    private func slipColor(for task: ProjectTask) -> Color {
+        let days = task.finishVarianceDays ?? task.startVarianceDays ?? 0
+        if days > 0 { return .red }
+        if days < 0 { return .green }
+        return .secondary
+    }
+
+    private func baselineRangeText(for task: ProjectTask) -> String {
+        let start = task.baselineStartDate.map(DateFormatting.simpleDate) ?? "?"
+        let finish = task.baselineFinishDate.map(DateFormatting.simpleDate) ?? "?"
+        return "\(start) -> \(finish)"
+    }
+
+    private func currentRangeText(for task: ProjectTask) -> String {
+        let start = task.startDate.map(DateFormatting.simpleDate) ?? "?"
+        let finish = task.finishDate.map(DateFormatting.simpleDate) ?? "?"
+        return "\(start) -> \(finish)"
+    }
+
+    private func statusText(for task: ProjectTask) -> String {
+        if task.isCompleted { return "Complete" }
+        if isOverdue(task) { return "Overdue" }
+        if task.isInProgress { return "In Progress" }
+        return "Not Started"
+    }
+
+    private func taskStatusColor(for task: ProjectTask) -> Color {
+        if task.isCompleted { return .green }
+        if isOverdue(task) { return .red }
+        if task.isInProgress { return .blue }
+        return .secondary
+    }
+
+    private func isOverdue(_ task: ProjectTask) -> Bool {
+        guard !task.isCompleted, let finishDate = task.finishDate else { return false }
+        return finishDate < plan.statusDate
+    }
+
+    private func resourceName(for assignment: NativePlanAssignment) -> String {
+        if let resourceID = assignment.resourceID {
+            if let name = plan.resources.first(where: { $0.id == resourceID })?.name,
+               !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return name
+            }
+        }
+        return "Unassigned"
+    }
+
+    private func assignmentCostSummary(for assignment: NativePlanAssignment) -> String {
+        guard let projectAssignment = project.assignments.first(where: { $0.uniqueID == assignment.id }) else {
+            return "No rolled cost"
+        }
+        return projectAssignment.cost.map(currencyText) ?? "No rolled cost"
+    }
+
+    private func hoursText(_ seconds: Int?) -> String {
+        guard let seconds else { return "" }
+        let hours = Double(seconds) / 3600
+        return abs(hours.rounded() - hours) < 0.01 ? "\(Int(hours.rounded()))" : String(format: "%.1f", hours)
+    }
+
+    private func decimalText(_ value: Double) -> String {
+        if value.rounded() == value {
+            return String(Int(value))
+        }
+        return String(format: "%.2f", value)
+    }
+
+    private func parseDecimalInput(_ text: String) -> Double? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let normalized = trimmed
+            .replacingOccurrences(of: ",", with: "")
+            .filter { $0.isNumber || $0 == "." }
+        return Double(normalized)
+    }
+
+    private func currencyText(_ value: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencyCode = project.properties.currencyCode ?? "USD"
+        formatter.currencySymbol = project.properties.currencySymbol ?? "$"
+        formatter.maximumFractionDigits = 0
+        formatter.minimumFractionDigits = 0
+        return formatter.string(from: NSNumber(value: value)) ?? String(format: "%.0f", value)
+    }
+
+    private func ratioText(_ value: Double) -> String {
+        value == 0 ? "0.00" : String(format: "%.2f", value)
+    }
+}
+
+private enum StatusTaskFilter: String, CaseIterable, Identifiable {
+    case attention = "Needs Attention"
+    case all = "All"
+    case inProgress = "In Progress"
+    case overdue = "Overdue"
+    case missingActuals = "Missing Actuals"
+
+    var id: String { rawValue }
 }

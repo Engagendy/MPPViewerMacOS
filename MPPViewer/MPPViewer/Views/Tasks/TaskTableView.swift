@@ -208,6 +208,20 @@ struct TaskTableView: View {
                         .help("Export task list as CSV")
 
                         Button {
+                            CSVExporter.exportTasksToExcel(
+                                tasks: filteredTasks,
+                                allTasks: allTasks,
+                                resources: resources,
+                                assignments: assignments,
+                                fileName: "Task List \(PDFExporter.fileNameTimestamp).xls"
+                            )
+                        } label: {
+                            Label("Export Excel", systemImage: "tablecells.badge.ellipsis")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Export task list as an Excel-compatible spreadsheet")
+
+                        Button {
                             printTaskList()
                         } label: {
                             Label("Print", systemImage: "printer")
