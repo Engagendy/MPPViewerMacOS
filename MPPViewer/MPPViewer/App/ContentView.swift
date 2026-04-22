@@ -1968,26 +1968,29 @@ struct StatusCenterView: View {
     }
 
     private var topScheduleSlips: [ProjectTask] {
-        workTasks
-            .filter { ($0.finishVarianceDays ?? 0) > 0 }
-            .sorted { ($0.finishVarianceDays ?? 0) > ($1.finishVarianceDays ?? 0) }
-            .prefix(5)
-            .map { $0 }
+        let slippedTasks = workTasks.filter { ($0.finishVarianceDays ?? 0) > 0 }
+        let sortedTasks = slippedTasks.sorted { lhs, rhs in
+            (lhs.finishVarianceDays ?? 0) > (rhs.finishVarianceDays ?? 0)
+        }
+        return Array(sortedTasks.prefix(5))
     }
 
     private var topCostOverruns: [ProjectTask] {
-        workTasks
-            .filter { task in
-                let baseline = task.baselineCost ?? task.cost ?? 0
-                let actual = task.actualCost ?? 0
-                return baseline > 0 && actual > baseline
-            }
-            .sorted {
-                (($0.actualCost ?? 0) - ($0.baselineCost ?? $0.cost ?? 0)) >
-                (($1.actualCost ?? 0) - ($1.baselineCost ?? $1.cost ?? 0))
-            }
-            .prefix(5)
-            .map { $0 }
+        let overrunningTasks = workTasks.filter { task in
+            let baseline = task.baselineCost ?? task.cost ?? 0
+            let actual = task.actualCost ?? 0
+            return baseline > 0 && actual > baseline
+        }
+
+        let sortedTasks = overrunningTasks.sorted { lhs, rhs in
+            let lhsBaseline = lhs.baselineCost ?? lhs.cost ?? 0
+            let rhsBaseline = rhs.baselineCost ?? rhs.cost ?? 0
+            let lhsOverrun = (lhs.actualCost ?? 0) - lhsBaseline
+            let rhsOverrun = (rhs.actualCost ?? 0) - rhsBaseline
+            return lhsOverrun > rhsOverrun
+        }
+
+        return Array(sortedTasks.prefix(5))
     }
 
     private var topOvertimeDrivers: [(assignment: NativePlanAssignment, resource: NativePlanResource?)] {
