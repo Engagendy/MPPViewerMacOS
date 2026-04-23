@@ -93,6 +93,24 @@ struct AppFeatureGuide: Identifiable {
     var id: String { title }
 }
 
+struct AppWorkflowGuide: Identifiable {
+    let title: String
+    let icon: String
+    let summary: String
+    let steps: [String]
+
+    var id: String { title }
+}
+
+struct AppDocumentModeGuide: Identifiable {
+    let typeName: String
+    let bestFor: String
+    let editing: String
+    let notes: [String]
+
+    var id: String { typeName }
+}
+
 enum AppHelpCatalog {
     static let financeTerms: [AppFinanceTerm] = [
         AppFinanceTerm(shortCode: "BAC", fullName: "Budget at Completion", meaning: "The full planned budget for the work when finished.", guidance: "Higher than expected later EAC means the forecast is overrunning BAC."),
@@ -233,6 +251,77 @@ enum AppHelpCatalog {
             ]
         )
     ]
+
+    static let documentModes: [AppDocumentModeGuide] = [
+        AppDocumentModeGuide(
+            typeName: ".mpp",
+            bestFor: "Reviewing Microsoft Project schedules on macOS",
+            editing: "Read-only review and analysis",
+            notes: [
+                "Use imported MPP files for dashboard review, schedule analysis, workload, diagnostics, and exports.",
+                "Imported MPP files keep original project data and do not unlock native editing screens like Plan Builder or Status Center."
+            ]
+        ),
+        AppDocumentModeGuide(
+            typeName: ".mppplan",
+            bestFor: "Building and updating plans directly in the app",
+            editing: "Full native editing",
+            notes: [
+                "Native plans unlock Plan Builder, Gantt editing, Resources, Calendar, Status Center, finance entry, imports, and native save/open later.",
+                "Use `.mppplan` when the app is the working system for planning, statusing, and project controls."
+            ]
+        )
+    ]
+
+    static let workflows: [AppWorkflowGuide] = [
+        AppWorkflowGuide(
+            title: "Start Here",
+            icon: "play.circle",
+            summary: "Recommended first-run path for understanding the app quickly.",
+            steps: [
+                "Open the included showcase `.mppplan` to see a fully populated native schedule with resources, calendars, status, and finance already filled in.",
+                "Visit `Dashboard` for overall health, then `Plan Builder` and `Gantt Chart` to see the two main editing surfaces.",
+                "Continue to `Status Center`, `Earned Value`, `Resources`, and `Calendar` to see project controls and staffing workflows."
+            ]
+        ),
+        AppWorkflowGuide(
+            title: "Build a Native Plan",
+            icon: "square.and.pencil",
+            summary: "Use this path when creating or maintaining a plan directly in the app.",
+            steps: [
+                "Create a new `.mppplan` document or duplicate a native plan you already have.",
+                "Use `Plan Builder` for grid-first entry, hierarchy editing, constraints, baselines, assignments, and finance values.",
+                "Use `Gantt Chart` in Edit mode when date movement, visual resizing, linking, or structure changes are easier to do on a timeline.",
+                "Use `Resources` and `Calendar` to set staffing, rates, working time, and exceptions before deeper controls work."
+            ]
+        ),
+        AppWorkflowGuide(
+            title: "Import Spreadsheet Data",
+            icon: "square.and.arrow.down",
+            summary: "Use mapped imports when your source data already lives in spreadsheets.",
+            steps: [
+                "Open a native `.mppplan`, then use import actions in `Plan Builder`, `Resources`, or `Calendar`.",
+                "Map your spreadsheet columns in the import sheet rather than forcing a fixed template shape.",
+                "Review the import report for created, updated, skipped, and warning rows, then jump back to affected items if needed."
+            ]
+        ),
+        AppWorkflowGuide(
+            title: "Status and Controls Cycle",
+            icon: "checklist",
+            summary: "Use this path for weekly or periodic updates after the plan is underway.",
+            steps: [
+                "Set the project status date in `Status Center`, then update actual start, actual finish, progress, actual cost, and assignment actual/remaining/overtime work.",
+                "Review `Earned Value` for CPI, SPI, EAC, VAC, S-curve shape, and task-level cost/schedule variance.",
+                "Finish in `Validation`, `Diagnostics`, `Workload`, and `Dashboard` to identify issues, overloads, and review outputs."
+            ]
+        )
+    ]
+
+    static let importCoverage: [String] = [
+        "Tasks, resources, calendars, assignments, dependencies, constraints, baselines, and financial fields support mapped CSV import.",
+        "Excel-compatible `.xls` templates are included for bulk loading and recurring update cycles.",
+        "Template exports provide starter sheets, while import reports let you reopen mapping, export warnings, and jump to affected items."
+    ]
 }
 
 struct FinancialTermsLegendView: View {
@@ -318,6 +407,74 @@ struct AppGuideView: View {
                     ]
                 )
 
+                GroupBox {
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text("Use the included showcase plan as your first guided tour through the app.")
+                            .font(.headline)
+                        Text("Open `aurora-commerce-launch.mppplan` to see tasks, hierarchy, calendars, resources, assignments, status, and financial controls already populated.")
+                            .foregroundStyle(.secondary)
+
+                        HStack(spacing: 12) {
+                            Label("Native sample plan included", systemImage: "doc.badge.plus")
+                                .font(.caption.weight(.semibold))
+                            Label("Best viewed with Dashboard → Plan Builder → Gantt → Status Center", systemImage: "arrow.right.circle")
+                                .font(.caption.weight(.semibold))
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(8)
+                } label: {
+                    Label("Start With The Sample Plan", systemImage: "star")
+                }
+
+                GroupBox {
+                    VStack(alignment: .leading, spacing: 14) {
+                        ForEach(AppHelpCatalog.documentModes) { mode in
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                                    Text(mode.typeName)
+                                        .font(.system(.headline, design: .monospaced))
+                                    Text(mode.bestFor)
+                                        .font(.subheadline.weight(.semibold))
+                                }
+                                Text("Editing: \(mode.editing)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+
+                                ForEach(Array(mode.notes.enumerated()), id: \.offset) { note in
+                                    HStack(alignment: .top, spacing: 8) {
+                                        Image(systemName: "circle.fill")
+                                            .font(.system(size: 6))
+                                            .foregroundStyle(.secondary)
+                                            .padding(.top, 6)
+                                        Text(note.element)
+                                            .font(.caption)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                    }
+                                }
+                            }
+
+                            if mode.id != AppHelpCatalog.documentModes.last?.id {
+                                Divider()
+                            }
+                        }
+                    }
+                    .padding(8)
+                } label: {
+                    Label("Document Modes", systemImage: "doc.on.doc")
+                }
+
+                GroupBox {
+                    VStack(alignment: .leading, spacing: 12) {
+                        ForEach(AppHelpCatalog.workflows) { workflow in
+                            workflowCard(workflow)
+                        }
+                    }
+                    .padding(8)
+                } label: {
+                    Label("Common Workflows", systemImage: "point.3.filled.connected.trianglepath.dotted")
+                }
+
                 guideSection(
                     title: "Build a Plan",
                     icon: "square.and.pencil",
@@ -336,6 +493,12 @@ struct AppGuideView: View {
                         "Template exports provide starter sheets for bulk loading and recurring updates.",
                         "Import reports can reopen mapping, export warnings, and jump to affected items."
                     ]
+                )
+
+                guideSection(
+                    title: "Import Coverage",
+                    icon: "tablecells",
+                    lines: AppHelpCatalog.importCoverage
                 )
 
                 guideSection(
@@ -456,6 +619,31 @@ struct AppGuideView: View {
                             .font(.caption)
                             .fixedSize(horizontal: false, vertical: true)
                     }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private func workflowCard(_ workflow: AppWorkflowGuide) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(workflow.title, systemImage: workflow.icon)
+                .font(.headline)
+
+            Text(workflow.summary)
+                .foregroundStyle(.primary)
+
+            ForEach(Array(workflow.steps.enumerated()), id: \.offset) { item in
+                HStack(alignment: .top, spacing: 10) {
+                    Text("\(item.offset + 1).")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 20, alignment: .leading)
+                    Text(item.element)
+                        .font(.caption)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }

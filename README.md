@@ -20,7 +20,40 @@
 
 ---
 
+## Why MPP Viewer
+
+- Review Microsoft Project schedules on macOS without opening Windows or buying Microsoft Project.
+- Build native plans directly in the app with grid editing, Gantt editing, resources, calendars, statusing, and finance.
+- Run analysis, workload, validation, and earned value from the same project model instead of jumping between tools.
+- Import operational spreadsheets, update status centrally, and export governance-ready outputs from the same workspace.
+
+## What You Can Do
+
+- Open `.mpp` files for review, diagnostics, reporting, and schedule analysis.
+- Create `.mppplan` files for fully native planning and ongoing project control.
+- Edit tasks in a grid, in Gantt, or through focused status and resource workflows.
+- Track baselines, actuals, costs, overtime, CPI/SPI/EAC/VAC, and workload in one app.
+- Import tasks, resources, calendars, assignments, dependencies, constraints, and baselines from mapped spreadsheets.
+
+## Quick Start
+
+1. Download the latest release from [GitHub Releases](https://github.com/Engagendy/MPPViewerMacOS/releases) or install with Homebrew.
+2. Open the included [aurora-commerce-launch.mppplan](docs/sample-plans/aurora-commerce-launch.mppplan) to explore a fully populated native project.
+3. Start in `Plan Builder` to edit, `Dashboard` to review, or `Status Center` / `Earned Value` for controls work.
+
+## Document Modes
+
+| Document Type | Best For | Editing |
+|---|---|---|
+| `.mpp` | Reviewing Microsoft Project schedules on macOS | Read-only review and analysis |
+| `.mppplan` | Building and updating plans directly in the app | Full native editing |
+
 ## Screenshots
+
+All screenshots below were captured from the included showcase native plan:
+[aurora-commerce-launch.mppplan](docs/sample-plans/aurora-commerce-launch.mppplan)
+
+### Core Review Views
 
 <p align="center">
   <img src="docs/screenshots/dashboard.png" width="800" alt="Dashboard — project health at a glance">
@@ -51,6 +84,51 @@
   <img src="docs/screenshots/workload.png" width="800" alt="Resource Workload — allocation heatmap">
   <br><em>Resource Workload — weekly allocation view with over-allocation highlighting</em>
 </p>
+
+### Native Planning Workflow
+
+<p align="center">
+  <img src="docs/screenshots/plan-builder.png" width="800" alt="Plan Builder — native plan editor with grid and inspector">
+  <br><em>Plan Builder — grid-first planning with task hierarchy, assignments, finance, constraints, and baselines</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/status-center.png" width="800" alt="Status Center — actuals, cost, and control updates">
+  <br><em>Status Center — status-date updates, actual dates, actual costs, overtime, and live variance review</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/resources.png" width="800" alt="Resources — native staffing and rate editor">
+  <br><em>Resources — native staffing editor with rates, calendars, assignments, and accrual setup</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/calendar.png" width="800" alt="Calendar — native working time and exception editor">
+  <br><em>Calendar — working week, project default calendar, and leave/holiday exception editing</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/timeline.png" width="800" alt="Timeline — phase-level visual summary">
+  <br><em>Timeline — high-level phase and milestone summary for steering and executive review</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/help-guide.png" width="800" alt="Guide and Help — built-in workflow reference">
+  <br><em>Guide &amp; Help — built-in onboarding, workflow guidance, glossary, document types, and shortcuts</em>
+</p>
+
+## Showcase Sample Plan
+
+- Open [aurora-commerce-launch.mppplan](docs/sample-plans/aurora-commerce-launch.mppplan) to explore the native planning workflow with tasks, hierarchy, resources, calendars, assignments, earned value, and workload already populated.
+- The sample is intended for demos, screenshots, and first-run exploration of the app’s editing and analysis features.
+
+## Recommended Tour
+
+1. Open the included [aurora-commerce-launch.mppplan](docs/sample-plans/aurora-commerce-launch.mppplan) to see a fully populated native plan.
+2. Start in `Plan Builder` or `Gantt Chart` if you want to edit, or `Dashboard` / `Earned Value` if you want to review.
+3. Open `Resources` and `Calendar` to see native staffing and working-time setup.
+4. Use `Status Center` to apply actual dates, progress, cost, and overtime updates against a status date.
+5. Finish in `Workload`, `Validation`, `Diagnostics`, and `Compare` for review and follow-up.
 
 ---
 

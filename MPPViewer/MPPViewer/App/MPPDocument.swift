@@ -21,7 +21,10 @@ struct PlanningDocument: FileDocument {
     }
 
     init(configuration: ReadConfiguration) throws {
-        guard let data = configuration.file.regularFileContents else {
+        let data = configuration.file.regularFileContents
+            ?? configuration.file.serializedRepresentation
+
+        guard let data else {
             throw CocoaError(.fileReadCorruptFile)
         }
         self.fileURL = nil
