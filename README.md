@@ -158,7 +158,7 @@ Right-click (or Control-click) the app → **Open** → click **Open** in the di
 
 **Option B — Remove quarantine attribute:**
 ```bash
-xattr -cr /Applications/MPP\ Viewer.app
+xattr -cr /Applications/MPPViewer.app
 ```
 
 **Option C — System Settings:**
