@@ -3101,11 +3101,13 @@ struct ContentView: View {
         }
     }
 
-    private var searchSuggestionsConfiguredView: some View {
+    private var searchSuggestionsConfiguredView: AnyView {
         let baseView = toolbarConfiguredView
-        return baseView.searchSuggestions {
-            searchSuggestionsMenuContent
-        }
+        return AnyView(
+            baseView.searchSuggestions {
+                searchSuggestionsMenuContent
+            }
+        )
     }
 
     @ViewBuilder
@@ -3149,39 +3151,71 @@ struct ContentView: View {
         }
     }
 
-    private var lifecycleConfiguredView: some View {
-        searchSuggestionsConfiguredView
-        .onAppear(perform: handleViewAppear)
-        .onChange(of: searchText) { _, _ in
-            scheduleSearchSuggestionsRefresh()
-        }
-        .onChange(of: currentProject?.tasks.count ?? 0) { _, _ in
-            scheduleSearchSuggestionsRefresh()
-        }
-        .onChange(of: flaggedTaskIDsData) { _, _ in
-            refreshCachedFlaggedTaskIDs()
-        }
-        .navigationTitle(
-            displayProject?.properties.projectTitle
-            ?? currentProject?.properties.projectTitle
-            ?? "MPP Viewer"
+    private var searchSuggestionSourceTaskCount: Int {
+        currentProject?.tasks.count ?? 0
+    }
+
+    private var contentNavigationTitle: String {
+        displayProject?.properties.projectTitle
+        ?? currentProject?.properties.projectTitle
+        ?? "MPP Viewer"
+    }
+
+    private var appearConfiguredView: AnyView {
+        AnyView(
+            searchSuggestionsConfiguredView
+                .onAppear(perform: handleViewAppear)
         )
-        .task(id: document.isEditablePlan) {
-            await handleDocumentModeTask()
-        }
-        .onChange(of: document.editablePlanData) { _, _ in
-            ensureEditablePortfolioPlanLoaded()
-            refreshEditableAnalysis()
-        }
-        .onChange(of: workspacePortfolioID) { _, newValue in
-            if document.isEditablePlan {
-                document.editablePortfolioID = newValue
-            }
-            if newValue != nil {
-                refreshEditableAnalysis()
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .navigateToItem), perform: handleNavigationNotification)
+    }
+
+    private var searchRefreshConfiguredView: AnyView {
+        AnyView(
+            appearConfiguredView
+                .onChange(of: searchText) { _, _ in
+                    scheduleSearchSuggestionsRefresh()
+                }
+                .onChange(of: searchSuggestionSourceTaskCount) { _, _ in
+                    scheduleSearchSuggestionsRefresh()
+                }
+                .onChange(of: flaggedTaskIDsData) { _, _ in
+                    refreshCachedFlaggedTaskIDs()
+                }
+        )
+    }
+
+    private var documentLifecycleConfiguredView: AnyView {
+        AnyView(
+            searchRefreshConfiguredView
+                .navigationTitle(contentNavigationTitle)
+                .task(id: document.isEditablePlan) {
+                    await handleDocumentModeTask()
+                }
+        )
+    }
+
+    private var editableLifecycleConfiguredView: AnyView {
+        AnyView(
+            documentLifecycleConfiguredView
+                .onChange(of: document.editablePlanData) { _, _ in
+                    ensureEditablePortfolioPlanLoaded()
+                    refreshEditableAnalysis()
+                }
+                .onChange(of: workspacePortfolioID) { _, newValue in
+                    if document.isEditablePlan {
+                        document.editablePortfolioID = newValue
+                    }
+                    if newValue != nil {
+                        refreshEditableAnalysis()
+                    }
+                }
+        )
+    }
+
+    private var lifecycleConfiguredView: AnyView {
+        AnyView(
+            editableLifecycleConfiguredView
+                .onReceive(NotificationCenter.default.publisher(for: .navigateToItem), perform: handleNavigationNotification)
+        )
     }
 
     private var alertConfiguredView: some View {
