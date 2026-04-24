@@ -41,6 +41,12 @@
 2. Open the included [aurora-commerce-launch.mppplan](docs/sample-plans/aurora-commerce-launch.mppplan) to explore a fully populated native project.
 3. Start in `Plan Builder` to edit, `Dashboard` to review, or `Status Center` / `Earned Value` for controls work.
 
+## Performance Engineering
+
+- Repo performance standards: [docs/performance-guide.md](docs/performance-guide.md)
+- Current remediation roadmap: [docs/performance-remediation-plan.md](docs/performance-remediation-plan.md)
+- Profiling workflow: [docs/profiling-playbook.md](docs/profiling-playbook.md)
+
 ## Document Modes
 
 | Document Type | Best For | Editing |

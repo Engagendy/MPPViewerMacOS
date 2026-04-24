@@ -37,8 +37,8 @@ enum WorkloadCalculator {
         dateRange: (start: Date, end: Date)
     ) -> [ResourceWorkload] {
         let calendar = Calendar.current
-        let tasksByID = Dictionary(uniqueKeysWithValues: tasks.map { ($0.uniqueID, $0) })
-        let calendarsByID = Dictionary(uniqueKeysWithValues: calendars.compactMap { cal -> (Int, ProjectCalendar)? in
+        let tasksByID = Dictionary(nonThrowingUniquePairs: tasks.map { ($0.uniqueID, $0) })
+        let calendarsByID = Dictionary(nonThrowingUniquePairs: calendars.compactMap { cal -> (Int, ProjectCalendar)? in
             guard let uid = cal.uniqueID else { return nil }
             return (uid, cal)
         })

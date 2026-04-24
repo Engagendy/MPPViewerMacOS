@@ -269,8 +269,7 @@ struct DiffView: View {
                 } else {
                     let converter = MPPConverterService()
                     let jsonData = try await converter.convert(mppFileURL: tempURL)
-                    let parser = JSONProjectParser()
-                    model = try parser.parse(jsonData: jsonData)
+                    model = try await JSONProjectParser.parseDetached(jsonData: jsonData)
                 }
                 try? FileManager.default.removeItem(at: tempURL)
 
@@ -392,9 +391,7 @@ struct DiffView: View {
     }
 
     private func formattedCurrencyDelta(_ value: Double) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        let amount = formatter.string(from: NSNumber(value: abs(value))) ?? String(format: "%.2f", abs(value))
+        let amount = CurrencyFormatting.string(from: abs(value), maximumFractionDigits: 2, minimumFractionDigits: 0)
         if value == 0 { return "No cost change" }
         return value > 0 ? "+\(amount)" : "-\(amount)"
     }

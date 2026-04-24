@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 enum DateFormatting {
     // MPXJ dates look like: "2026-02-04T08:00:00.0"
@@ -85,5 +86,79 @@ enum DateFormatting {
 
     static func simpleDate(_ date: Date) -> String {
         simpleDateFormatter.string(from: date)
+    }
+}
+
+enum CurrencyFormatting {
+    private static let lock = NSLock()
+    private static var formatterCache: [String: NumberFormatter] = [:]
+
+    static func string(
+        from value: Double,
+        currencyCode: String? = nil,
+        currencySymbol: String? = nil,
+        maximumFractionDigits: Int = 0,
+        minimumFractionDigits: Int = 0
+    ) -> String {
+        let formatter = formatter(
+            currencyCode: currencyCode,
+            currencySymbol: currencySymbol,
+            maximumFractionDigits: maximumFractionDigits,
+            minimumFractionDigits: minimumFractionDigits
+        )
+        return formatter.string(from: NSNumber(value: value)) ?? String(format: "%.\(maximumFractionDigits)f", value)
+    }
+
+    private static func formatter(
+        currencyCode: String?,
+        currencySymbol: String?,
+        maximumFractionDigits: Int,
+        minimumFractionDigits: Int
+    ) -> NumberFormatter {
+        let cacheKey = [
+            currencyCode ?? "",
+            currencySymbol ?? "",
+            String(maximumFractionDigits),
+            String(minimumFractionDigits)
+        ].joined(separator: "|")
+
+        lock.lock()
+        defer { lock.unlock() }
+
+        if let cached = formatterCache[cacheKey] {
+            return cached
+        }
+
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        if let currencyCode {
+            formatter.currencyCode = currencyCode
+        }
+        if let currencySymbol {
+            formatter.currencySymbol = currencySymbol
+        }
+        formatter.maximumFractionDigits = maximumFractionDigits
+        formatter.minimumFractionDigits = minimumFractionDigits
+        formatterCache[cacheKey] = formatter
+        return formatter
+    }
+}
+
+enum PerformanceMonitor {
+    static let subsystem = "com.mppviewer.MPPViewer"
+    static let interactionLogger = Logger(subsystem: subsystem, category: "Interaction")
+    static let signposter = OSSignposter(subsystem: subsystem, category: "Interaction")
+
+    @discardableResult
+    static func measure<T>(_ name: StaticString, _ body: () -> T) -> T {
+        let state = signposter.beginInterval(name)
+        let result = body()
+        signposter.endInterval(name, state)
+        return result
+    }
+
+    static func mark(_ name: StaticString, message: String) {
+        interactionLogger.debug("\(name, privacy: .public): \(message, privacy: .public)")
+        signposter.emitEvent(name, "\(message, privacy: .public)")
     }
 }

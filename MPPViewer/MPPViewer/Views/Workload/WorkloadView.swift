@@ -138,6 +138,7 @@ struct WorkloadView: View {
                                     )
                             }
                         }
+                        .frame(minHeight: geometry.size.height, alignment: .topLeading)
                     }
                     .onAppear {
                         timelineViewportWidth = viewportWidth
@@ -198,6 +199,10 @@ struct WorkloadView: View {
                 dateRange: range
             )
         }
+        .transaction { transaction in
+            transaction.animation = nil
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private func applyAutoFitIfNeeded() {

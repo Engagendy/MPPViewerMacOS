@@ -38,8 +38,9 @@ enum PDFExporter {
         hostingView.frame = CGRect(origin: .zero, size: contentSize)
         hostingView.appearance = NSAppearance(named: .aqua)
 
-        // Force layout
-        hostingView.layoutSubtreeIfNeeded()
+        // Force display preparation without recursively forcing layout during an active layout pass.
+        hostingView.needsLayout = true
+        hostingView.displayIfNeeded()
 
         // Capture to bitmap
         guard let bitmapRep = hostingView.bitmapImageRepForCachingDisplay(in: hostingView.bounds) else { return }

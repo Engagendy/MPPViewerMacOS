@@ -31,6 +31,9 @@ struct EarnedValueView: View {
             projectMetrics = pm
             taskMetrics = tm
         }
+        .transaction { transaction in
+            transaction.animation = nil
+        }
     }
 
     private func content(metrics: EVMMetrics) -> some View {
@@ -345,10 +348,7 @@ struct EarnedValueView: View {
     }
 
     private func formatCurrency(_ value: Double) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.maximumFractionDigits = 0
-        return formatter.string(from: NSNumber(value: value)) ?? "$\(Int(value))"
+        CurrencyFormatting.string(from: value, maximumFractionDigits: 0, minimumFractionDigits: 0)
     }
 }
 

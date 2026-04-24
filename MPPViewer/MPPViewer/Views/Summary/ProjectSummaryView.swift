@@ -2,8 +2,14 @@ import SwiftUI
 
 struct ProjectSummaryView: View {
     let project: ProjectModel
+    private let stats: ProjectSummaryStats
 
     private var props: ProjectProperties { project.properties }
+
+    init(project: ProjectModel) {
+        self.project = project
+        self.stats = ProjectSummaryStats(project: project)
+    }
 
     var body: some View {
         ScrollView {
@@ -38,18 +44,14 @@ struct ProjectSummaryView: View {
                 // Statistics
                 GroupBox("Statistics") {
                     VStack(alignment: .leading, spacing: 8) {
-                        summaryRow("Total Tasks", value: "\(project.tasks.count)")
-                        summaryRow("Summary Tasks", value: "\(project.tasks.filter { $0.summary == true }.count)")
-                        summaryRow("Milestones", value: "\(project.tasks.filter { $0.milestone == true }.count)")
-                        summaryRow("Resources", value: "\(project.resources.count)")
-                        summaryRow("Assignments", value: "\(project.assignments.count)")
-                        summaryRow("Calendars", value: "\(project.calendars.count)")
-
-                        let criticalCount = project.tasks.filter { $0.critical == true }.count
-                        summaryRow("Critical Tasks", value: "\(criticalCount)")
-
-                        let completedCount = project.tasks.filter { ($0.percentComplete ?? 0) >= 100 }.count
-                        summaryRow("Completed Tasks", value: "\(completedCount)")
+                        summaryRow("Total Tasks", value: "\(stats.totalTasks)")
+                        summaryRow("Summary Tasks", value: "\(stats.summaryTasks)")
+                        summaryRow("Milestones", value: "\(stats.milestones)")
+                        summaryRow("Resources", value: "\(stats.resources)")
+                        summaryRow("Assignments", value: "\(stats.assignments)")
+                        summaryRow("Calendars", value: "\(stats.calendars)")
+                        summaryRow("Critical Tasks", value: "\(stats.criticalTasks)")
+                        summaryRow("Completed Tasks", value: "\(stats.completedTasks)")
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(4)
@@ -100,5 +102,27 @@ struct ProjectSummaryView: View {
         if !formatted.isEmpty {
             summaryRow(label, value: formatted)
         }
+    }
+}
+
+private struct ProjectSummaryStats {
+    let totalTasks: Int
+    let summaryTasks: Int
+    let milestones: Int
+    let resources: Int
+    let assignments: Int
+    let calendars: Int
+    let criticalTasks: Int
+    let completedTasks: Int
+
+    init(project: ProjectModel) {
+        totalTasks = project.tasks.count
+        summaryTasks = project.tasks.reduce(0) { $0 + ($1.summary == true ? 1 : 0) }
+        milestones = project.tasks.reduce(0) { $0 + ($1.milestone == true ? 1 : 0) }
+        resources = project.resources.count
+        assignments = project.assignments.count
+        calendars = project.calendars.count
+        criticalTasks = project.tasks.reduce(0) { $0 + ($1.critical == true ? 1 : 0) }
+        completedTasks = project.tasks.reduce(0) { $0 + ((($1.percentComplete ?? 0) >= 100) ? 1 : 0) }
     }
 }

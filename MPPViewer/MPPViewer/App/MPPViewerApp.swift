@@ -1,6 +1,8 @@
 import SwiftUI
 import UniformTypeIdentifiers
 import AppKit
+import SwiftData
+import Foundation
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -11,11 +13,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 @main
 struct MPPViewerApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    private let modelContainer: ModelContainer = PortfolioModelContainer.make()
 
     var body: some Scene {
         DocumentGroup(newDocument: PlanningDocument()) { file in
             ContentView(document: file.$document)
         }
+        .modelContainer(modelContainer)
         .commands {
             CommandGroup(after: .sidebar) {
                 ForEach(Array(NavigationItem.allCases.enumerated()), id: \.element.id) { index, item in

@@ -116,6 +116,10 @@ final class ProjectTask: Codable, Identifiable {
 
     // Derived (not decoded)
     var children: [ProjectTask] = []
+    private let parsedStartDate: Date?
+    private let parsedFinishDate: Date?
+    private let parsedBaselineStartDate: Date?
+    private let parsedBaselineFinishDate: Date?
 
     var displayName: String {
         name ?? "Unnamed Task"
@@ -132,19 +136,19 @@ final class ProjectTask: Codable, Identifiable {
     }
 
     var startDate: Date? {
-        start.flatMap { DateFormatting.parseMPXJDate($0) }
+        parsedStartDate
     }
 
     var finishDate: Date? {
-        finish.flatMap { DateFormatting.parseMPXJDate($0) }
+        parsedFinishDate
     }
 
     var baselineStartDate: Date? {
-        baselineStart.flatMap { DateFormatting.parseMPXJDate($0) }
+        parsedBaselineStartDate
     }
 
     var baselineFinishDate: Date? {
-        baselineFinish.flatMap { DateFormatting.parseMPXJDate($0) }
+        parsedBaselineFinishDate
     }
 
     var isCompleted: Bool {
@@ -345,6 +349,10 @@ final class ProjectTask: Codable, Identifiable {
         self.sv = sv
         self.customFields = customFields
         self.children = []
+        self.parsedStartDate = start.flatMap(DateFormatting.parseMPXJDate)
+        self.parsedFinishDate = finish.flatMap(DateFormatting.parseMPXJDate)
+        self.parsedBaselineStartDate = baselineStart.flatMap(DateFormatting.parseMPXJDate)
+        self.parsedBaselineFinishDate = baselineFinish.flatMap(DateFormatting.parseMPXJDate)
     }
 
     required init(from decoder: Decoder) throws {
@@ -410,6 +418,11 @@ final class ProjectTask: Codable, Identifiable {
         }
 
         customFields = customs.isEmpty ? nil : customs
+        children = []
+        parsedStartDate = start.flatMap(DateFormatting.parseMPXJDate)
+        parsedFinishDate = finish.flatMap(DateFormatting.parseMPXJDate)
+        parsedBaselineStartDate = baselineStart.flatMap(DateFormatting.parseMPXJDate)
+        parsedBaselineFinishDate = baselineFinish.flatMap(DateFormatting.parseMPXJDate)
     }
 }
 

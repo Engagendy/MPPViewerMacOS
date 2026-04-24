@@ -30,7 +30,7 @@
 			<key>CFBundleTypeName</key>
 			<string>Microsoft Project File</string>
 			<key>CFBundleTypeRole</key>
-			<string>Viewer</string>
+			<string>Editor</string>
 			<key>LSHandlerRank</key>
 			<string>Default</string>
 			<key>LSItemContentTypes</key>

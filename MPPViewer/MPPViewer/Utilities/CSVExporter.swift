@@ -427,7 +427,7 @@ enum CSVExporter {
         }
 
         var plan = originalPlan
-        var calendarIDsByKey = Dictionary(uniqueKeysWithValues: plan.calendars.map { (normalizedLookupKey($0.name), $0.id) })
+        var calendarIDsByKey = Dictionary(nonThrowingUniquePairs: plan.calendars.map { (normalizedLookupKey($0.name), $0.id) })
         var pendingParentInfoByCalendarID: [Int: (normalized: String?, raw: String?)] = [:]
         var importedCount = 0
         var updatedCount = 0
@@ -492,7 +492,7 @@ enum CSVExporter {
             }
         }
 
-        calendarIDsByKey = Dictionary(uniqueKeysWithValues: plan.calendars.map { (normalizedLookupKey($0.name), $0.id) })
+        calendarIDsByKey = Dictionary(nonThrowingUniquePairs: plan.calendars.map { (normalizedLookupKey($0.name), $0.id) })
         for index in plan.calendars.indices {
             guard let parentInfo = pendingParentInfoByCalendarID[plan.calendars[index].id] else { continue }
             if let parentKey = parentInfo.normalized, let parentID = calendarIDsByKey[parentKey], parentID != plan.calendars[index].id {
@@ -543,7 +543,7 @@ enum CSVExporter {
 
         var plan = originalPlan
         let taskNameLookup = Dictionary(grouping: plan.tasks.indices, by: { normalizedLookupKey(plan.tasks[$0].name) })
-        var resourceLookup = Dictionary(uniqueKeysWithValues: plan.resources.map { (normalizedLookupKey($0.name), $0.id) })
+        var resourceLookup = Dictionary(nonThrowingUniquePairs: plan.resources.map { (normalizedLookupKey($0.name), $0.id) })
         var createdCount = 0
         var updatedCount = 0
         var autoCreatedResourceCount = 0

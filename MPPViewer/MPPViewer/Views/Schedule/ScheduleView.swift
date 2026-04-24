@@ -1,36 +1,98 @@
 import SwiftUI
 
+private struct ScheduleVerticalOffsetPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
+private struct ScheduleDerivedContent {
+    let visibleTasks: [ProjectTask]
+    let rowIndexByTaskID: [Int: Int]
+    let totalDays: Int
+    let dateRange: (start: Date, end: Date)
+
+    static func build(project: ProjectModel, searchText: String, collapsedIDs: Set<Int>) -> ScheduleDerivedContent {
+        let filteredTasks: [ProjectTask]
+        if searchText.isEmpty {
+            filteredTasks = project.rootTasks
+        } else {
+            filteredTasks = filterTasks(project.rootTasks, searchText: searchText.lowercased())
+        }
+
+        let visibleTasks = flattenTasks(filteredTasks, collapsedIDs: collapsedIDs)
+        let rowIndexByTaskID = Dictionary(nonThrowingUniquePairs: visibleTasks.enumerated().map { ($1.uniqueID, $0) })
+        let dateRange = GanttDateHelpers.dateRange(for: project.tasks)
+        return ScheduleDerivedContent(
+            visibleTasks: visibleTasks,
+            rowIndexByTaskID: rowIndexByTaskID,
+            totalDays: GanttDateHelpers.totalDays(for: dateRange),
+            dateRange: dateRange
+        )
+    }
+
+    private static func flattenTasks(_ tasks: [ProjectTask], collapsedIDs: Set<Int>) -> [ProjectTask] {
+        var result: [ProjectTask] = []
+        for task in tasks {
+            result.append(task)
+            if !task.children.isEmpty && !collapsedIDs.contains(task.uniqueID) {
+                result.append(contentsOf: flattenTasks(task.children, collapsedIDs: collapsedIDs))
+            }
+        }
+        return result
+    }
+
+    private static func filterTasks(_ tasks: [ProjectTask], searchText: String) -> [ProjectTask] {
+        var result: [ProjectTask] = []
+        for task in tasks {
+            let childMatches = filterTasks(task.children, searchText: searchText)
+            let selfMatches = task.name?.lowercased().contains(searchText) == true
+            if selfMatches || !childMatches.isEmpty {
+                result.append(task)
+            }
+        }
+        return result
+    }
+}
+
 struct ScheduleView: View {
     let project: ProjectModel
     let searchText: String
 
+    @State private var derivedContent: ScheduleDerivedContent
     @State private var pixelsPerDay: CGFloat = 8
     @State private var timelineViewportWidth: CGFloat = 0
     @State private var shouldAutoFitTimeline = true
     @State private var collapsedIDs: Set<Int> = []
+    @State private var verticalScrollOffset: CGFloat = 0
     private let rowHeight: CGFloat = 24
 
-    private var filteredTasks: [ProjectTask] {
-        if searchText.isEmpty {
-            return project.rootTasks
-        }
-        return filterTasks(project.rootTasks, searchText: searchText.lowercased())
-    }
-
     private var visibleTasks: [ProjectTask] {
-        flattenTasks(filteredTasks, collapsedIDs: collapsedIDs)
+        derivedContent.visibleTasks
     }
 
     private var dateRange: (start: Date, end: Date) {
-        GanttDateHelpers.dateRange(for: project.tasks)
+        derivedContent.dateRange
     }
 
     private var totalDays: Int {
-        GanttDateHelpers.totalDays(for: dateRange)
+        derivedContent.totalDays
     }
 
     private var timelineWidth: CGFloat {
         CGFloat(totalDays) * pixelsPerDay
+    }
+
+    private var taskRowsContentHeight: CGFloat {
+        CGFloat(visibleTasks.count) * rowHeight
+    }
+
+    init(project: ProjectModel, searchText: String) {
+        self.project = project
+        self.searchText = searchText
+        self._derivedContent = State(initialValue: ScheduleDerivedContent.build(project: project, searchText: searchText, collapsedIDs: []))
     }
 
     var body: some View {
@@ -54,7 +116,7 @@ struct ScheduleView: View {
                     .disabled(collapsedIDs.isEmpty)
 
                     Button("Collapse All") {
-                        for task in allTasksFlat(filteredTasks) where task.summary == true && !task.children.isEmpty {
+                        for task in allTasksFlat(project.rootTasks) where task.summary == true && !task.children.isEmpty {
                             collapsedIDs.insert(task.uniqueID)
                         }
                     }
@@ -108,6 +170,18 @@ struct ScheduleView: View {
                 }
             }
         }
+        .onAppear {
+            refreshDerivedContent()
+        }
+        .onChange(of: collapsedIDs) { _, _ in
+            refreshDerivedContent()
+        }
+        .onChange(of: searchText) { _, _ in
+            refreshDerivedContent()
+        }
+        .onChange(of: scheduleRefreshSignature) { _, _ in
+            refreshDerivedContent()
+        }
     }
 
     // MARK: - Left Pane: Task List
@@ -139,14 +213,16 @@ struct ScheduleView: View {
 
                 Divider()
 
-                // Task rows - shared ScrollView via GeometryReader for sync
-                ScrollView(.vertical) {
+                GeometryReader { rowsGeometry in
                     LazyVStack(spacing: 0) {
                         ForEach(Array(visibleTasks.enumerated()), id: \.element.uniqueID) { index, task in
                             scheduleTaskRow(task: task, index: index)
                         }
                     }
-                    .frame(minHeight: max(0, geometry.size.height - 29), alignment: .top)
+                    .frame(height: taskRowsContentHeight, alignment: .top)
+                    .offset(y: -verticalScrollOffset)
+                    .frame(width: rowsGeometry.size.width, height: rowsGeometry.size.height, alignment: .topLeading)
+                    .clipped()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -229,6 +305,15 @@ struct ScheduleView: View {
 
             ScrollView([.horizontal, .vertical]) {
                 VStack(alignment: .leading, spacing: 0) {
+                    GeometryReader { proxy in
+                        Color.clear
+                            .preference(
+                                key: ScheduleVerticalOffsetPreferenceKey.self,
+                                value: -proxy.frame(in: .named("ScheduleScrollView")).minY
+                            )
+                    }
+                    .frame(height: 0)
+
                     GanttHeaderView(
                         dateRange: dateRange,
                         pixelsPerDay: pixelsPerDay,
@@ -238,7 +323,7 @@ struct ScheduleView: View {
                     GanttCanvasView(
                         tasks: visibleTasks,
                         allTasks: project.tasksByID,
-                        rowIndexByTaskID: Dictionary(uniqueKeysWithValues: visibleTasks.enumerated().map { ($1.uniqueID, $0) }),
+                        rowIndexByTaskID: derivedContent.rowIndexByTaskID,
                         startDate: dateRange.start,
                         totalDays: totalDays,
                         pixelsPerDay: pixelsPerDay,
@@ -248,6 +333,7 @@ struct ScheduleView: View {
                 }
                 .frame(minHeight: geometry.size.height, alignment: .topLeading)
             }
+            .coordinateSpace(name: "ScheduleScrollView")
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .onAppear {
                 timelineViewportWidth = viewportWidth
@@ -260,21 +346,13 @@ struct ScheduleView: View {
             .onChange(of: totalDays) { _, _ in
                 applyAutoFitIfNeeded()
             }
+            .onPreferenceChange(ScheduleVerticalOffsetPreferenceKey.self) { newValue in
+                verticalScrollOffset = max(0, newValue)
+            }
         }
     }
 
     // MARK: - Helpers
-
-    private func flattenTasks(_ tasks: [ProjectTask], collapsedIDs: Set<Int>) -> [ProjectTask] {
-        var result: [ProjectTask] = []
-        for task in tasks {
-            result.append(task)
-            if !task.children.isEmpty && !collapsedIDs.contains(task.uniqueID) {
-                result.append(contentsOf: flattenTasks(task.children, collapsedIDs: collapsedIDs))
-            }
-        }
-        return result
-    }
 
     private func allTasksFlat(_ tasks: [ProjectTask]) -> [ProjectTask] {
         var result: [ProjectTask] = []
@@ -296,15 +374,23 @@ struct ScheduleView: View {
         max(2, min(100, viewportWidth / CGFloat(max(totalDays, 1))))
     }
 
-    private func filterTasks(_ tasks: [ProjectTask], searchText: String) -> [ProjectTask] {
-        var result: [ProjectTask] = []
-        for task in tasks {
-            let childMatches = filterTasks(task.children, searchText: searchText)
-            let selfMatches = task.name?.lowercased().contains(searchText) == true
-            if selfMatches || !childMatches.isEmpty {
-                result.append(task)
-            }
+    private var scheduleRefreshSignature: Int {
+        var hasher = Hasher()
+        hasher.combine(project.tasks.count)
+        for task in project.tasks {
+            hasher.combine(task.uniqueID)
+            hasher.combine(task.start ?? "")
+            hasher.combine(task.finish ?? "")
+            hasher.combine(task.percentComplete ?? 0)
+            hasher.combine(task.summary == true)
+            hasher.combine(task.children.count)
         }
-        return result
+        return hasher.finalize()
+    }
+
+    private func refreshDerivedContent() {
+        withAnimation(nil) {
+            derivedContent = ScheduleDerivedContent.build(project: project, searchText: searchText, collapsedIDs: collapsedIDs)
+        }
     }
 }

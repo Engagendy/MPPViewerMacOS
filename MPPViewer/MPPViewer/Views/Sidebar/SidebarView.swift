@@ -7,6 +7,7 @@ struct SidebarView: View {
     var body: some View {
         List(selection: $selection) {
             Section("Overview") {
+                sidebarRow(.portfolio)
                 sidebarRow(.dashboard)
                 sidebarRow(.executive)
                 sidebarRow(.summary)
@@ -15,6 +16,7 @@ struct SidebarView: View {
             Section("Planning") {
                 if showsPlanner {
                     sidebarRow(.planner)
+                    sidebarRow(.agileBoard)
                     sidebarRow(.statusCenter)
                 }
                 sidebarRow(.tasks)

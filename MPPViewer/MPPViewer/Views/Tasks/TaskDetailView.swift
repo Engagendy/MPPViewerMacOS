@@ -71,9 +71,7 @@ struct TaskDetailView: View {
                             detailRow("Baseline Finish", value: DateFormatting.mediumDateTime(task.baselineFinish))
                             detailRow("Baseline Duration", value: task.baselineDuration.map { DurationFormatting.formatSeconds($0) })
                             if let bc = task.baselineCost {
-                                let formatter = NumberFormatter()
-                                let _ = (formatter.numberStyle = .currency)
-                                detailRow("Baseline Cost", value: formatter.string(from: NSNumber(value: bc)))
+                                detailRow("Baseline Cost", value: CurrencyFormatting.string(from: bc, maximumFractionDigits: 0, minimumFractionDigits: 0))
                             }
                             if let bw = task.baselineWork {
                                 detailRow("Baseline Work", value: DurationFormatting.formatSeconds(bw))
@@ -117,9 +115,7 @@ struct TaskDetailView: View {
                     GroupBox("Cost & Work") {
                         detailGrid {
                             if let cost = task.cost {
-                                let formatter = NumberFormatter()
-                                let _ = (formatter.numberStyle = .currency)
-                                detailRow("Cost", value: formatter.string(from: NSNumber(value: cost)))
+                                detailRow("Cost", value: CurrencyFormatting.string(from: cost, maximumFractionDigits: 0, minimumFractionDigits: 0))
                             }
                             if let work = task.work {
                                 detailRow("Work", value: DurationFormatting.formatSeconds(work))

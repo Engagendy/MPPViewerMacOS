@@ -5,7 +5,7 @@ struct CalendarView: View {
     @State private var selectedCalendar: ProjectCalendar?
 
     var calendarsByID: [Int: ProjectCalendar] {
-        Dictionary(uniqueKeysWithValues: calendars.compactMap { cal -> (Int, ProjectCalendar)? in
+        Dictionary(nonThrowingUniquePairs: calendars.compactMap { cal -> (Int, ProjectCalendar)? in
             guard let uid = cal.uniqueID else { return nil }
             return (uid, cal)
         })

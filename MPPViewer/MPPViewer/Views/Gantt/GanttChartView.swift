@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 
 private enum GanttInteractionMode: String, CaseIterable, Identifiable {
     case view = "View"
@@ -75,7 +76,7 @@ private struct GanttDerivedContent {
 
         let flatTasks = flattenVisible(root)
         let taskIDs = flatTasks.map(\.uniqueID)
-        let rowIndexByTaskID = Dictionary(uniqueKeysWithValues: flatTasks.enumerated().map { ($1.uniqueID, $0) })
+        let rowIndexByTaskID = Dictionary(nonThrowingUniquePairs: flatTasks.enumerated().map { ($1.uniqueID, $0) })
         let dateRange = GanttDateHelpers.dateRange(for: project.tasks)
         return GanttDerivedContent(
             flatTasks: flatTasks,
@@ -99,15 +100,53 @@ private struct GanttDerivedContent {
     }
 }
 
+private struct GanttTaskSnapshot: Equatable {
+    let id: Int
+    let name: String
+    let start: String
+    let finish: String
+}
+
+private struct GanttDerivedInput: Equatable {
+    let searchText: String
+    let statusDate: String
+    let tasks: [GanttTaskSnapshot]
+
+    init(project: ProjectModel, searchText: String) {
+        self.searchText = searchText
+        self.statusDate = project.properties.statusDate ?? ""
+        self.tasks = project.tasks.map {
+            GanttTaskSnapshot(
+                id: $0.uniqueID,
+                name: $0.name ?? "",
+                start: $0.start ?? "",
+                finish: $0.finish ?? ""
+            )
+        }
+    }
+}
+
+private struct GanttTimelineViewportPreferenceKey: PreferenceKey {
+    static var defaultValue: CGRect = .zero
+
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+        value = nextValue()
+    }
+}
+
 struct GanttChartView: View {
+    @Environment(\.modelContext) private var modelContext
+
     let project: ProjectModel
     let searchText: String
-    var nativePlan: Binding<NativeProjectPlan>? = nil
+    let planModel: PortfolioProjectPlan?
 
     @State private var derivedContent: GanttDerivedContent
+    @State private var timelineVisibleRect: CGRect = .zero
 
     @State private var pixelsPerDay: CGFloat = 8
     @State private var timelineViewportWidth: CGFloat = 0
+    @State private var timelineViewportHeight: CGFloat = 0
     @State private var shouldAutoFitTimeline = true
     @State private var rowHeight: CGFloat = 24
     @State private var criticalPathOnly: Bool = false
@@ -126,6 +165,10 @@ struct GanttChartView: View {
         derivedContent.flatTasks
     }
 
+    private var derivedInput: GanttDerivedInput {
+        GanttDerivedInput(project: project, searchText: searchText)
+    }
+
     private var dateRange: (start: Date, end: Date) {
         derivedContent.dateRange
     }
@@ -135,7 +178,19 @@ struct GanttChartView: View {
     }
 
     private var isNativeEditablePlan: Bool {
-        nativePlan != nil
+        planModel != nil
+    }
+
+    private var nativeTasks: [NativePlanTask] {
+        planModel?.nativeTasksForUI ?? []
+    }
+
+    private var nativeAssignments: [NativePlanAssignment] {
+        planModel?.nativeAssignmentsForUI ?? []
+    }
+
+    private var nativeResources: [NativePlanResource] {
+        planModel?.nativeResourcesForUI ?? []
     }
 
     private var isEditingEnabled: Bool {
@@ -147,8 +202,8 @@ struct GanttChartView: View {
     }
 
     private var editableTaskIDs: Set<Int> {
-        guard isEditingEnabled, let nativePlan else { return [] }
-        let nativeTaskIDs = Set(nativePlan.wrappedValue.tasks.map(\.id))
+        guard isEditingEnabled else { return [] }
+        let nativeTaskIDs = Set(nativeTasks.map(\.id))
         return Set(derivedContent.taskIDs.filter { nativeTaskIDs.contains($0) && project.tasksByID[$0]?.summary != true })
     }
 
@@ -162,8 +217,8 @@ struct GanttChartView: View {
     }
 
     private var selectedNativeTask: NativePlanTask? {
-        guard let nativePlan, let selectedTaskID else { return nil }
-        return nativePlan.wrappedValue.tasks.first(where: { $0.id == selectedTaskID })
+        guard let selectedTaskID else { return nil }
+        return nativeTasks.first(where: { $0.id == selectedTaskID })
     }
 
     private var selectedTaskFinancialSummary: GanttFinancialSummary {
@@ -179,10 +234,10 @@ struct GanttChartView: View {
         124
     }
 
-    init(project: ProjectModel, searchText: String, nativePlan: Binding<NativeProjectPlan>? = nil) {
+    init(project: ProjectModel, searchText: String, planModel: PortfolioProjectPlan? = nil) {
         self.project = project
         self.searchText = searchText
-        self.nativePlan = nativePlan
+        self.planModel = planModel
         self._derivedContent = State(initialValue: GanttDerivedContent.build(project: project, searchText: searchText))
     }
 
@@ -212,17 +267,23 @@ struct GanttChartView: View {
                         ganttContent(taskListWidth: taskListWidth)
                             .frame(minHeight: geometry.size.height, alignment: .topLeading)
                     }
+                    .coordinateSpace(name: "GanttScrollViewport")
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     .onAppear {
                         timelineViewportWidth = viewportWidth
+                        timelineViewportHeight = geometry.size.height
                         applyAutoFitIfNeeded()
                     }
                     .onChange(of: viewportWidth) { _, newWidth in
                         timelineViewportWidth = newWidth
+                        timelineViewportHeight = geometry.size.height
                         applyAutoFitIfNeeded()
                     }
                     .onChange(of: totalDays) { _, _ in
                         applyAutoFitIfNeeded()
+                    }
+                    .onPreferenceChange(GanttTimelineViewportPreferenceKey.self) { rect in
+                        timelineVisibleRect = rect
                     }
                 }
                 .gesture(
@@ -246,10 +307,10 @@ struct GanttChartView: View {
                 selectedTaskID = flatTasks.first?.uniqueID
             }
         }
-        .onChange(of: searchText) { _, _ in
+        .onChange(of: derivedInput) { _, _ in
             refreshDerivedContent()
         }
-        .onChange(of: ganttRefreshSignature) { _, _ in
+        .onChange(of: planModel?.updatedAt) { _, _ in
             refreshDerivedContent()
         }
         .onChange(of: interactionMode) { _, mode in
@@ -277,22 +338,45 @@ struct GanttChartView: View {
                 self.selectedDependency = nil
             }
         }
+        .transaction { transaction in
+            transaction.animation = nil
+        }
     }
 
-    private var ganttRefreshSignature: Int {
-        var hasher = Hasher()
-        hasher.combine(project.properties.statusDate ?? "")
-        hasher.combine(project.tasks.count)
-        for task in project.tasks {
-            hasher.combine(task.uniqueID)
-            hasher.combine(task.start ?? "")
-            hasher.combine(task.finish ?? "")
-            hasher.combine(task.percentComplete ?? 0)
-            hasher.combine(task.summary == true)
-            hasher.combine(task.milestone == true)
-            hasher.combine(task.predecessors?.count ?? 0)
+    private func persistGanttStoreChanges(refreshMetrics: Bool = true) {
+        guard let planModel else { return }
+        planModel.updatedAt = Date()
+        if refreshMetrics {
+            planModel.refreshPortfolioMetrics()
         }
-        return hasher.finalize()
+        try? modelContext.save()
+    }
+
+    private func withGanttTask(_ taskID: Int, refreshDerived: Bool = true, _ update: (PortfolioPlanTask) -> Void) {
+        guard let task = planModel?.tasks.first(where: { $0.legacyID == taskID }) else { return }
+        update(task)
+        persistGanttStoreChanges()
+        if refreshDerived {
+            refreshDerivedContent()
+        }
+    }
+
+    private func withGanttAssignment(_ assignmentID: Int, refreshDerived: Bool = true, _ update: (PortfolioPlanAssignment) -> Void) {
+        guard let assignment = planModel?.tasks.flatMap(\.assignments).first(where: { $0.legacyID == assignmentID }) else { return }
+        update(assignment)
+        persistGanttStoreChanges()
+        if refreshDerived {
+            refreshDerivedContent()
+        }
+    }
+
+    private func fullSyncGanttPlan(_ update: (inout NativeProjectPlan) -> Void) {
+        guard let planModel else { return }
+        var snapshot = planModel.asNativePlan()
+        update(&snapshot)
+        planModel.update(from: snapshot)
+        persistGanttStoreChanges(refreshMetrics: true)
+        refreshDerivedContent()
     }
 
     private var dockedSelectionPanel: some View {
@@ -698,8 +782,8 @@ struct GanttChartView: View {
                             Text("Use child tasks")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
-                        } else if let nativePlan {
-                            let resources = nativePlan.wrappedValue.resources
+                        } else {
+                            let resources = nativeResources
 
                             if resources.isEmpty {
                                 Text("No resources")
@@ -967,14 +1051,15 @@ struct GanttChartView: View {
                     totalDays: totalDays,
                     pixelsPerDay: pixelsPerDay,
                     rowHeight: rowHeight,
+                    visibleRect: timelineVisibleRect,
                     criticalPathOnly: criticalPathOnly,
                     showBaseline: showBaseline,
                     editableTaskIDs: editableTaskIDs,
                     selectedTaskID: selectedTaskID,
                     selectedDependency: selectedDependency,
                     pendingLinkSourceTaskID: pendingDependencySourceTaskID,
-                    onMoveTask: nativePlan == nil ? nil : moveNativeTask,
-                    onResizeTask: nativePlan == nil ? nil : resizeNativeTask,
+                    onMoveTask: planModel == nil ? nil : moveNativeTask,
+                    onResizeTask: planModel == nil ? nil : resizeNativeTask,
                     onSelectTask: handleTaskSelection,
                     onStartLinkingFromTask: startLinkingFromTask,
                     onSelectDependency: { predecessorID, successorID in
@@ -989,6 +1074,19 @@ struct GanttChartView: View {
                     }
                 )
                 .frame(width: timelineWidth, height: CGFloat(flatTasks.count) * rowHeight)
+                .background(
+                    GeometryReader { proxy in
+                        Color.clear.preference(
+                            key: GanttTimelineViewportPreferenceKey.self,
+                            value: CGRect(
+                                x: max(0, -proxy.frame(in: .named("GanttScrollViewport")).minX),
+                                y: max(0, -proxy.frame(in: .named("GanttScrollViewport")).minY),
+                                width: timelineViewportWidth,
+                                height: timelineViewportHeight
+                            )
+                        )
+                    }
+                )
             }
         }
     }
@@ -1013,7 +1111,7 @@ struct GanttChartView: View {
     }
 
     private func ganttTaskList(width: CGFloat) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
+        LazyVStack(alignment: .leading, spacing: 0) {
             ForEach(flatTasks, id: \.uniqueID) { task in
                 taskListRow(task, width: width)
             }
@@ -1225,21 +1323,24 @@ struct GanttChartView: View {
     }
 
     private func handleTaskSelection(_ taskID: Int) {
-        if isEditingEnabled,
-           let sourceTaskID = pendingDependencySourceTaskID,
-           sourceTaskID != taskID {
-            createDependency(predecessorID: sourceTaskID, successorID: taskID)
-            pendingDependencySourceTaskID = nil
-            selectedTaskID = taskID
-            return
-        }
+        PerformanceMonitor.measure("Gantt.SelectTask") {
+            if isEditingEnabled,
+               let sourceTaskID = pendingDependencySourceTaskID,
+               sourceTaskID != taskID {
+                createDependency(predecessorID: sourceTaskID, successorID: taskID)
+                pendingDependencySourceTaskID = nil
+                selectedTaskID = taskID
+                return
+            }
 
-        selectedDependency = nil
-        selectedTaskID = taskID
+            selectedDependency = nil
+            selectedTaskID = taskID
+        }
     }
 
     private func startLinkingFromTask(_ taskID: Int) {
         guard isEditingEnabled else { return }
+        PerformanceMonitor.mark("Gantt.StartLinking", message: "task \(taskID)")
         selectedDependency = nil
         selectedTaskID = taskID
         pendingDependencySourceTaskID = taskID
@@ -1273,26 +1374,27 @@ struct GanttChartView: View {
     }
 
     private func createDependency(predecessorID: Int, successorID: Int) {
-        guard predecessorID != successorID, let nativePlan else { return }
+        guard predecessorID != successorID, planModel != nil else { return }
 
-        var plan = nativePlan.wrappedValue
-        guard let successorIndex = plan.tasks.firstIndex(where: { $0.id == successorID }) else { return }
+        PerformanceMonitor.measure("Gantt.CreateDependency") {
+            fullSyncGanttPlan { workingPlan in
+                guard let successorIndex = workingPlan.tasks.firstIndex(where: { $0.id == successorID }) else { return }
 
-        if plan.tasks[successorIndex].predecessorTaskIDs.contains(predecessorID) {
-            nativePlan.wrappedValue = plan
-            return
+                if workingPlan.tasks[successorIndex].predecessorTaskIDs.contains(predecessorID) {
+                    return
+                }
+
+                guard !createsDependencyCycle(addingDependencyFrom: predecessorID, to: successorID, tasks: workingPlan.tasks) else {
+                    return
+                }
+
+                workingPlan.tasks[successorIndex].predecessorTaskIDs.append(predecessorID)
+                workingPlan.tasks[successorIndex].predecessorTaskIDs = Array(Set(workingPlan.tasks[successorIndex].predecessorTaskIDs)).sorted()
+                workingPlan.tasks[successorIndex].manuallyScheduled = false
+                workingPlan.reschedule()
+                selectedDependency = GanttDependencySelection(predecessorID: predecessorID, successorID: successorID)
+            }
         }
-
-        guard !createsDependencyCycle(addingDependencyFrom: predecessorID, to: successorID, tasks: plan.tasks) else {
-            return
-        }
-
-        plan.tasks[successorIndex].predecessorTaskIDs.append(predecessorID)
-        plan.tasks[successorIndex].predecessorTaskIDs = Array(Set(plan.tasks[successorIndex].predecessorTaskIDs)).sorted()
-        plan.tasks[successorIndex].manuallyScheduled = false
-        plan.reschedule()
-        nativePlan.wrappedValue = plan
-        selectedDependency = GanttDependencySelection(predecessorID: predecessorID, successorID: successorID)
     }
 
     private func removeSelectedDependency() {
@@ -1304,19 +1406,21 @@ struct GanttChartView: View {
     }
 
     private func removeDependency(predecessorID: Int, successorID: Int) {
-        guard let nativePlan,
-              let successorIndex = nativePlan.wrappedValue.tasks.firstIndex(where: { $0.id == successorID }) else { return }
+        guard planModel != nil else { return }
 
-        var plan = nativePlan.wrappedValue
-        let originalCount = plan.tasks[successorIndex].predecessorTaskIDs.count
-        plan.tasks[successorIndex].predecessorTaskIDs.removeAll { $0 == predecessorID }
-        guard plan.tasks[successorIndex].predecessorTaskIDs.count != originalCount else { return }
+        PerformanceMonitor.measure("Gantt.RemoveDependency") {
+            fullSyncGanttPlan { workingPlan in
+                guard let successorIndex = workingPlan.tasks.firstIndex(where: { $0.id == successorID }) else { return }
+                let originalCount = workingPlan.tasks[successorIndex].predecessorTaskIDs.count
+                workingPlan.tasks[successorIndex].predecessorTaskIDs.removeAll { $0 == predecessorID }
+                guard workingPlan.tasks[successorIndex].predecessorTaskIDs.count != originalCount else { return }
 
-        plan.tasks[successorIndex].manuallyScheduled = false
-        plan.reschedule()
-        nativePlan.wrappedValue = plan
-        selectedDependency = nil
-        selectedTaskID = successorID
+                workingPlan.tasks[successorIndex].manuallyScheduled = false
+                workingPlan.reschedule()
+                selectedDependency = nil
+                selectedTaskID = successorID
+            }
+        }
     }
 
     private func createsDependencyCycle(addingDependencyFrom predecessorID: Int, to successorID: Int, tasks: [NativePlanTask]) -> Bool {
@@ -1342,67 +1446,70 @@ struct GanttChartView: View {
     }
 
     private func addTaskFromGantt() {
-        guard let nativePlan else { return }
+        guard planModel != nil else { return }
 
-        var plan = nativePlan.wrappedValue
-        let insertionAnchorIndex = selectedNativeTaskIndex(in: plan.tasks)
-        let insertionIndex: Int
-        let anchorDate: Date
-        let outlineLevel: Int
+        fullSyncGanttPlan { workingPlan in
+            let insertionAnchorIndex = selectedNativeTaskIndex(in: workingPlan.tasks)
+            let insertionIndex: Int
+            let anchorDate: Date
+            let outlineLevel: Int
 
-        if let insertionAnchorIndex {
-            let range = subtreeRange(for: insertionAnchorIndex, in: plan.tasks)
-            let anchorTask = plan.tasks[insertionAnchorIndex]
-            insertionIndex = range.upperBound
-            anchorDate = anchorTask.normalizedFinishDate
-            outlineLevel = anchorTask.outlineLevel
-        } else {
-            insertionIndex = plan.tasks.endIndex
-            anchorDate = plan.statusDate
-            outlineLevel = 1
+            if let insertionAnchorIndex {
+                let range = subtreeRange(for: insertionAnchorIndex, in: workingPlan.tasks)
+                let anchorTask = workingPlan.tasks[insertionAnchorIndex]
+                insertionIndex = range.upperBound
+                anchorDate = anchorTask.normalizedFinishDate
+                outlineLevel = anchorTask.outlineLevel
+            } else {
+                insertionIndex = workingPlan.tasks.endIndex
+                anchorDate = workingPlan.statusDate
+                outlineLevel = 1
+            }
+
+            var newTask = workingPlan.makeTask(anchoredTo: anchorDate)
+            newTask.outlineLevel = outlineLevel
+            workingPlan.tasks.insert(newTask, at: insertionIndex)
+            workingPlan.reschedule()
+            selectedTaskID = newTask.id
+            interactionMode = .edit
         }
-
-        var newTask = plan.makeTask(anchoredTo: anchorDate)
-        newTask.outlineLevel = outlineLevel
-        plan.tasks.insert(newTask, at: insertionIndex)
-        plan.reschedule()
-        nativePlan.wrappedValue = plan
-        selectedTaskID = newTask.id
-        interactionMode = .edit
     }
 
     private func refreshDerivedContent() {
-        derivedContent = GanttDerivedContent.build(project: project, searchText: searchText)
+        PerformanceMonitor.measure("Gantt.RefreshDerived") {
+            derivedContent = GanttDerivedContent.build(project: project, searchText: searchText)
+        }
     }
 
     private func addSubtaskFromGantt() {
-        guard let nativePlan else { return }
+        guard planModel != nil else { return }
 
         if selectedTaskID == nil {
             addTaskFromGantt()
             return
         }
 
-        var plan = nativePlan.wrappedValue
-        guard let selectedIndex = selectedNativeTaskIndex(in: plan.tasks) else {
+        guard selectedNativeTaskIndex(in: nativeTasks) != nil else {
             addTaskFromGantt()
             return
         }
 
-        let range = subtreeRange(for: selectedIndex, in: plan.tasks)
-        let parentTask = plan.tasks[selectedIndex]
+        fullSyncGanttPlan { workingPlan in
+            guard let selectedIndex = selectedNativeTaskIndex(in: workingPlan.tasks) else { return }
+            let range = subtreeRange(for: selectedIndex, in: workingPlan.tasks)
+            let parentTask = workingPlan.tasks[selectedIndex]
 
-        var newTask = plan.makeTask(anchoredTo: parentTask.normalizedFinishDate)
-        newTask.outlineLevel = parentTask.outlineLevel + 1
-        plan.tasks.insert(newTask, at: range.upperBound)
-        plan.reschedule()
-        nativePlan.wrappedValue = plan
-        selectedTaskID = newTask.id
-        interactionMode = .edit
+            var newTask = workingPlan.makeTask(anchoredTo: parentTask.normalizedFinishDate)
+            newTask.outlineLevel = parentTask.outlineLevel + 1
+            workingPlan.tasks.insert(newTask, at: range.upperBound)
+            workingPlan.reschedule()
+            selectedTaskID = newTask.id
+            interactionMode = .edit
+        }
     }
 
     private var canDeleteSelectedTask: Bool {
-        isEditingEnabled && selectedNativeTaskIndex(in: nativePlan?.wrappedValue.tasks ?? []) != nil
+        isEditingEnabled && selectedNativeTaskIndex(in: nativeTasks) != nil
     }
 
     private var canIndentSelectedTask: Bool {
@@ -1416,37 +1523,37 @@ struct GanttChartView: View {
     }
 
     private func addTask(after taskID: Int) {
-        guard let nativePlan else { return }
-        var plan = nativePlan.wrappedValue
-        guard let insertionAnchorIndex = plan.tasks.firstIndex(where: { $0.id == taskID }) else { return }
+        guard planModel != nil else { return }
+        fullSyncGanttPlan { workingPlan in
+            guard let insertionAnchorIndex = workingPlan.tasks.firstIndex(where: { $0.id == taskID }) else { return }
 
-        let range = subtreeRange(for: insertionAnchorIndex, in: plan.tasks)
-        let anchorTask = plan.tasks[insertionAnchorIndex]
+            let range = subtreeRange(for: insertionAnchorIndex, in: workingPlan.tasks)
+            let anchorTask = workingPlan.tasks[insertionAnchorIndex]
 
-        var newTask = plan.makeTask(anchoredTo: anchorTask.normalizedFinishDate)
-        newTask.outlineLevel = anchorTask.outlineLevel
-        plan.tasks.insert(newTask, at: range.upperBound)
-        plan.reschedule()
-        nativePlan.wrappedValue = plan
-        selectedTaskID = newTask.id
-        interactionMode = .edit
+            var newTask = workingPlan.makeTask(anchoredTo: anchorTask.normalizedFinishDate)
+            newTask.outlineLevel = anchorTask.outlineLevel
+            workingPlan.tasks.insert(newTask, at: range.upperBound)
+            workingPlan.reschedule()
+            selectedTaskID = newTask.id
+            interactionMode = .edit
+        }
     }
 
     private func addSubtask(under taskID: Int) {
-        guard let nativePlan else { return }
-        var plan = nativePlan.wrappedValue
-        guard let selectedIndex = plan.tasks.firstIndex(where: { $0.id == taskID }) else { return }
+        guard planModel != nil else { return }
+        fullSyncGanttPlan { workingPlan in
+            guard let selectedIndex = workingPlan.tasks.firstIndex(where: { $0.id == taskID }) else { return }
 
-        let range = subtreeRange(for: selectedIndex, in: plan.tasks)
-        let parentTask = plan.tasks[selectedIndex]
+            let range = subtreeRange(for: selectedIndex, in: workingPlan.tasks)
+            let parentTask = workingPlan.tasks[selectedIndex]
 
-        var newTask = plan.makeTask(anchoredTo: parentTask.normalizedFinishDate)
-        newTask.outlineLevel = parentTask.outlineLevel + 1
-        plan.tasks.insert(newTask, at: range.upperBound)
-        plan.reschedule()
-        nativePlan.wrappedValue = plan
-        selectedTaskID = newTask.id
-        interactionMode = .edit
+            var newTask = workingPlan.makeTask(anchoredTo: parentTask.normalizedFinishDate)
+            newTask.outlineLevel = parentTask.outlineLevel + 1
+            workingPlan.tasks.insert(newTask, at: range.upperBound)
+            workingPlan.reschedule()
+            selectedTaskID = newTask.id
+            interactionMode = .edit
+        }
     }
 
     private func deleteSelectedTask() {
@@ -1455,40 +1562,39 @@ struct GanttChartView: View {
     }
 
     private func deleteTask(taskID: Int) {
-        guard let nativePlan else { return }
+        guard planModel != nil else { return }
 
-        var plan = nativePlan.wrappedValue
-        guard let selectedIndex = plan.tasks.firstIndex(where: { $0.id == taskID }) else { return }
+        fullSyncGanttPlan { workingPlan in
+            guard let selectedIndex = workingPlan.tasks.firstIndex(where: { $0.id == taskID }) else { return }
 
-        let range = subtreeRange(for: selectedIndex, in: plan.tasks)
-        let removedIDs = Set(plan.tasks[range].map(\.id))
-        let nextSelectionIndex = range.lowerBound < plan.tasks.count - range.count ? range.lowerBound : max(0, range.lowerBound - 1)
+            let range = subtreeRange(for: selectedIndex, in: workingPlan.tasks)
+            let removedIDs = Set(workingPlan.tasks[range].map(\.id))
+            let nextSelectionIndex = range.lowerBound < workingPlan.tasks.count - range.count ? range.lowerBound : max(0, range.lowerBound - 1)
 
-        plan.tasks.removeSubrange(range)
-        for index in plan.tasks.indices {
-            plan.tasks[index].predecessorTaskIDs.removeAll { removedIDs.contains($0) }
+            workingPlan.tasks.removeSubrange(range)
+            for index in workingPlan.tasks.indices {
+                workingPlan.tasks[index].predecessorTaskIDs.removeAll { removedIDs.contains($0) }
+            }
+            workingPlan.assignments.removeAll { removedIDs.contains($0.taskID) }
+            workingPlan.reschedule()
+
+            if let pendingDependencySourceTaskID, removedIDs.contains(pendingDependencySourceTaskID) {
+                self.pendingDependencySourceTaskID = nil
+            }
+            if let selectedDependency,
+               removedIDs.contains(selectedDependency.predecessorID) || removedIDs.contains(selectedDependency.successorID) {
+                self.selectedDependency = nil
+            }
+            selectedTaskID = workingPlan.tasks.indices.contains(nextSelectionIndex) ? workingPlan.tasks[nextSelectionIndex].id : nil
         }
-        plan.assignments.removeAll { removedIDs.contains($0.taskID) }
-        plan.reschedule()
-        nativePlan.wrappedValue = plan
-
-        if let pendingDependencySourceTaskID, removedIDs.contains(pendingDependencySourceTaskID) {
-            self.pendingDependencySourceTaskID = nil
-        }
-        if let selectedDependency,
-           removedIDs.contains(selectedDependency.predecessorID) || removedIDs.contains(selectedDependency.successorID) {
-            self.selectedDependency = nil
-        }
-        selectedTaskID = plan.tasks.indices.contains(nextSelectionIndex) ? plan.tasks[nextSelectionIndex].id : nil
     }
 
     private func canIndent(taskID: Int) -> Bool {
-        guard let nativePlan,
-              let selectedIndex = nativePlan.wrappedValue.tasks.firstIndex(where: { $0.id == taskID }),
+        guard let selectedIndex = nativeTasks.firstIndex(where: { $0.id == taskID }),
               selectedIndex > 0 else { return false }
 
-        let currentLevel = nativePlan.wrappedValue.tasks[selectedIndex].outlineLevel
-        let previousLevel = nativePlan.wrappedValue.tasks[selectedIndex - 1].outlineLevel
+        let currentLevel = nativeTasks[selectedIndex].outlineLevel
+        let previousLevel = nativeTasks[selectedIndex - 1].outlineLevel
         return previousLevel + 1 > currentLevel
     }
 
@@ -1498,22 +1604,20 @@ struct GanttChartView: View {
     }
 
     private func indent(taskID: Int) {
-        guard let nativePlan, canIndent(taskID: taskID),
-              let selectedIndex = nativePlan.wrappedValue.tasks.firstIndex(where: { $0.id == taskID }) else { return }
+        guard canIndent(taskID: taskID), let selectedIndex = nativeTasks.firstIndex(where: { $0.id == taskID }) else { return }
 
-        var plan = nativePlan.wrappedValue
-        let newLevel = plan.tasks[selectedIndex - 1].outlineLevel + 1
-        let delta = newLevel - plan.tasks[selectedIndex].outlineLevel
-        adjustSubtreeOutlineLevel(taskID: taskID, by: delta, in: &plan)
-        plan.reschedule()
-        nativePlan.wrappedValue = plan
-        selectedTaskID = taskID
+        fullSyncGanttPlan { workingPlan in
+            let newLevel = workingPlan.tasks[selectedIndex - 1].outlineLevel + 1
+            let delta = newLevel - workingPlan.tasks[selectedIndex].outlineLevel
+            adjustSubtreeOutlineLevel(taskID: taskID, by: delta, in: &workingPlan)
+            workingPlan.reschedule()
+            selectedTaskID = taskID
+        }
     }
 
     private func canOutdent(taskID: Int) -> Bool {
-        guard let nativePlan,
-              let selectedIndex = nativePlan.wrappedValue.tasks.firstIndex(where: { $0.id == taskID }) else { return false }
-        return nativePlan.wrappedValue.tasks[selectedIndex].outlineLevel > 1
+        guard let selectedIndex = nativeTasks.firstIndex(where: { $0.id == taskID }) else { return false }
+        return nativeTasks[selectedIndex].outlineLevel > 1
     }
 
     private func outdentSelectedTask() {
@@ -1522,50 +1626,56 @@ struct GanttChartView: View {
     }
 
     private func outdent(taskID: Int) {
-        guard let nativePlan, canOutdent(taskID: taskID) else { return }
-        var plan = nativePlan.wrappedValue
-        adjustSubtreeOutlineLevel(taskID: taskID, by: -1, in: &plan)
-        plan.reschedule()
-        nativePlan.wrappedValue = plan
-        selectedTaskID = taskID
+        guard canOutdent(taskID: taskID) else { return }
+        fullSyncGanttPlan { workingPlan in
+            adjustSubtreeOutlineLevel(taskID: taskID, by: -1, in: &workingPlan)
+            workingPlan.reschedule()
+            selectedTaskID = taskID
+        }
     }
 
     private func adjustSubtreeOutlineLevel(taskID: Int, by delta: Int, in plan: inout NativeProjectPlan) {
-        guard let selectedIndex = plan.tasks.firstIndex(where: { $0.id == taskID }) else { return }
-        let range = subtreeRange(for: selectedIndex, in: plan.tasks)
+        guard let selectedIndex = nativeTasks.firstIndex(where: { $0.id == taskID }) else { return }
+        let range = subtreeRange(for: selectedIndex, in: nativeTasks)
         for index in range {
             plan.tasks[index].outlineLevel = max(1, plan.tasks[index].outlineLevel + delta)
         }
     }
 
     private func clearPredecessors(for taskID: Int) {
-        guard let nativePlan,
-              let taskIndex = nativePlan.wrappedValue.tasks.firstIndex(where: { $0.id == taskID }) else { return }
-        var plan = nativePlan.wrappedValue
-        plan.tasks[taskIndex].predecessorTaskIDs = []
-        plan.tasks[taskIndex].manuallyScheduled = false
-        plan.reschedule()
-        nativePlan.wrappedValue = plan
-        selectedTaskID = taskID
-        if pendingDependencySourceTaskID == taskID {
-            pendingDependencySourceTaskID = nil
-        }
-        if let selectedDependency, selectedDependency.successorID == taskID {
-            self.selectedDependency = nil
+        guard planModel != nil else { return }
+        fullSyncGanttPlan { workingPlan in
+            guard let taskIndex = workingPlan.tasks.firstIndex(where: { $0.id == taskID }) else { return }
+            workingPlan.tasks[taskIndex].predecessorTaskIDs = []
+            workingPlan.tasks[taskIndex].manuallyScheduled = false
+            workingPlan.reschedule()
+            selectedTaskID = taskID
+            if pendingDependencySourceTaskID == taskID {
+                pendingDependencySourceTaskID = nil
+            }
+            if let selectedDependency, selectedDependency.successorID == taskID {
+                self.selectedDependency = nil
+            }
         }
     }
 
     private func updateSelectedTask(reschedule: Bool = true, _ transform: (inout NativePlanTask) -> Void) {
-        guard let nativePlan,
-              let selectedTaskID,
-              let taskIndex = nativePlan.wrappedValue.tasks.firstIndex(where: { $0.id == selectedTaskID }) else { return }
+        guard let selectedTaskID else { return }
 
-        var plan = nativePlan.wrappedValue
-        transform(&plan.tasks[taskIndex])
         if reschedule {
-            plan.reschedule()
+            fullSyncGanttPlan { workingPlan in
+                guard let taskIndex = workingPlan.tasks.firstIndex(where: { $0.id == selectedTaskID }) else { return }
+                transform(&workingPlan.tasks[taskIndex])
+                workingPlan.reschedule()
+            }
+        } else {
+            guard let task = planModel?.tasks.first(where: { $0.legacyID == selectedTaskID }) else { return }
+            var nativeTask = task.asNativeTask()
+            transform(&nativeTask)
+            task.update(from: nativeTask, orderIndex: task.orderIndex)
+            persistGanttStoreChanges()
+            refreshDerivedContent()
         }
-        nativePlan.wrappedValue = plan
     }
 
     private func selectedTaskNameBinding() -> Binding<String> {
@@ -1700,8 +1810,8 @@ struct GanttChartView: View {
                     .joined(separator: ", ") ?? ""
             },
             set: { newValue in
-                guard let selectedTaskID, let nativePlan else { return }
-                let validIDs = Set(nativePlan.wrappedValue.tasks.map(\.id))
+                guard let selectedTaskID else { return }
+                let validIDs = Set(nativeTasks.map(\.id))
                 let parsed = newValue
                     .split(separator: ",")
                     .compactMap { Int($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
@@ -1789,66 +1899,68 @@ struct GanttChartView: View {
     }
 
     private func primaryAssignmentIndex(for taskID: Int) -> Int? {
-        guard let nativePlan else { return nil }
-        return nativePlan.wrappedValue.assignments.firstIndex(where: { $0.taskID == taskID })
+        return nativeAssignments.firstIndex(where: { $0.taskID == taskID })
     }
 
     private var primaryAssignmentUnitsSummary: String {
         guard let selectedTaskID,
-              let nativePlan,
               let index = primaryAssignmentIndex(for: selectedTaskID) else {
             return "0%"
         }
 
-        return "\(Int(nativePlan.wrappedValue.assignments[index].units))%"
+        return "\(Int(nativeAssignments[index].units))%"
     }
 
     private func addPrimaryAssignmentToSelectedTask() {
-        guard let nativePlan, let selectedTaskID else { return }
+        guard planModel != nil, let selectedTaskID else { return }
         guard primaryAssignmentIndex(for: selectedTaskID) == nil else { return }
-        let defaultResourceID = nativePlan.wrappedValue.resources.first?.id
+        let defaultResourceID = nativeResources.first?.id
         guard defaultResourceID != nil else { return }
 
-        var plan = nativePlan.wrappedValue
-        plan.assignments.append(plan.makeAssignment(taskID: selectedTaskID, resourceID: defaultResourceID))
-        nativePlan.wrappedValue = plan
+        fullSyncGanttPlan { workingPlan in
+            workingPlan.assignments.append(workingPlan.makeAssignment(taskID: selectedTaskID, resourceID: defaultResourceID))
+        }
     }
 
     private func clearPrimaryAssignmentFromSelectedTask() {
-        guard let nativePlan, let selectedTaskID else { return }
+        guard planModel != nil, let selectedTaskID else { return }
         guard let index = primaryAssignmentIndex(for: selectedTaskID) else { return }
 
-        var plan = nativePlan.wrappedValue
-        plan.assignments.remove(at: index)
-        nativePlan.wrappedValue = plan
+        fullSyncGanttPlan { workingPlan in
+            workingPlan.assignments.remove(at: index)
+        }
     }
 
     private func selectedTaskPrimaryAssignmentResourceBinding() -> Binding<Int?> {
         Binding(
             get: {
                 guard let selectedTaskID,
-                      let nativePlan,
                       let index = primaryAssignmentIndex(for: selectedTaskID) else {
                     return nil
                 }
 
-                return nativePlan.wrappedValue.assignments[index].resourceID
+                return nativeAssignments[index].resourceID
             },
             set: { newValue in
-                guard let nativePlan, let selectedTaskID else { return }
-                var plan = nativePlan.wrappedValue
+                guard let selectedTaskID else { return }
 
-                if let index = plan.assignments.firstIndex(where: { $0.taskID == selectedTaskID }) {
+                if let index = nativeAssignments.firstIndex(where: { $0.taskID == selectedTaskID }) {
+                    let assignmentID = nativeAssignments[index].id
                     if let newValue {
-                        plan.assignments[index].resourceID = newValue
+                        withGanttAssignment(assignmentID) { assignment in
+                            assignment.resourceLegacyID = newValue
+                        }
                     } else {
-                        plan.assignments.remove(at: index)
+                        fullSyncGanttPlan { workingPlan in
+                            guard let assignmentIndex = workingPlan.assignments.firstIndex(where: { $0.id == assignmentID }) else { return }
+                            workingPlan.assignments.remove(at: assignmentIndex)
+                        }
                     }
                 } else if let newValue {
-                    plan.assignments.append(plan.makeAssignment(taskID: selectedTaskID, resourceID: newValue))
+                    fullSyncGanttPlan { workingPlan in
+                        workingPlan.assignments.append(workingPlan.makeAssignment(taskID: selectedTaskID, resourceID: newValue))
+                    }
                 }
-
-                nativePlan.wrappedValue = plan
             }
         )
     }
@@ -1857,40 +1969,45 @@ struct GanttChartView: View {
         Binding(
             get: {
                 guard let selectedTaskID,
-                      let nativePlan,
                       let index = primaryAssignmentIndex(for: selectedTaskID) else {
                     return ""
                 }
 
-                return String(Int(nativePlan.wrappedValue.assignments[index].units))
+                return String(Int(nativeAssignments[index].units))
             },
             set: { newValue in
-                guard let nativePlan, let selectedTaskID else { return }
+                guard let selectedTaskID else { return }
 
                 let digits = newValue.filter(\.isNumber)
-                var plan = nativePlan.wrappedValue
 
                 if digits.isEmpty {
-                    if let index = plan.assignments.firstIndex(where: { $0.taskID == selectedTaskID }) {
-                        plan.assignments[index].units = 0
-                        nativePlan.wrappedValue = plan
+                    if let index = nativeAssignments.firstIndex(where: { $0.taskID == selectedTaskID }) {
+                        let assignmentID = nativeAssignments[index].id
+                        withGanttAssignment(assignmentID) { assignment in
+                            assignment.units = 0
+                        }
                     }
                     return
                 }
 
                 let parsedUnits = min(300.0, max(0.0, Double(digits) ?? 0))
-                if let index = plan.assignments.firstIndex(where: { $0.taskID == selectedTaskID }) {
-                    plan.assignments[index].units = parsedUnits
+                if let index = nativeAssignments.firstIndex(where: { $0.taskID == selectedTaskID }) {
+                    let assignmentID = nativeAssignments[index].id
+                    withGanttAssignment(assignmentID) { assignment in
+                        assignment.units = parsedUnits
+                    }
+                    return
                 } else {
-                    var assignment = plan.makeAssignment(
-                        taskID: selectedTaskID,
-                        resourceID: plan.resources.first?.id
-                    )
-                    assignment.units = parsedUnits
-                    plan.assignments.append(assignment)
+                    fullSyncGanttPlan { workingPlan in
+                        var assignment = workingPlan.makeAssignment(
+                            taskID: selectedTaskID,
+                            resourceID: workingPlan.resources.first?.id
+                        )
+                        assignment.units = parsedUnits
+                        workingPlan.assignments.append(assignment)
+                    }
+                    return
                 }
-
-                nativePlan.wrappedValue = plan
             }
         )
     }
@@ -1898,9 +2015,9 @@ struct GanttChartView: View {
     private func selectedTaskPrimaryAssignmentWorkBinding() -> Binding<String> {
         Binding(
             get: {
-                guard let selectedTaskID, let nativePlan,
+                guard let selectedTaskID,
                       let index = primaryAssignmentIndex(for: selectedTaskID) else { return "" }
-                return hoursText(nativePlan.wrappedValue.assignments[index].workSeconds)
+                return hoursText(nativeAssignments[index].workSeconds)
             },
             set: { newValue in
                 updatePrimaryAssignmentHours { $0.workSeconds = parseHoursInput(newValue) }
@@ -1911,9 +2028,9 @@ struct GanttChartView: View {
     private func selectedTaskPrimaryAssignmentActualWorkBinding() -> Binding<String> {
         Binding(
             get: {
-                guard let selectedTaskID, let nativePlan,
+                guard let selectedTaskID,
                       let index = primaryAssignmentIndex(for: selectedTaskID) else { return "" }
-                return hoursText(nativePlan.wrappedValue.assignments[index].actualWorkSeconds)
+                return hoursText(nativeAssignments[index].actualWorkSeconds)
             },
             set: { newValue in
                 updatePrimaryAssignmentHours { $0.actualWorkSeconds = parseHoursInput(newValue) }
@@ -1924,9 +2041,9 @@ struct GanttChartView: View {
     private func selectedTaskPrimaryAssignmentRemainingWorkBinding() -> Binding<String> {
         Binding(
             get: {
-                guard let selectedTaskID, let nativePlan,
+                guard let selectedTaskID,
                       let index = primaryAssignmentIndex(for: selectedTaskID) else { return "" }
-                return hoursText(nativePlan.wrappedValue.assignments[index].remainingWorkSeconds)
+                return hoursText(nativeAssignments[index].remainingWorkSeconds)
             },
             set: { newValue in
                 updatePrimaryAssignmentHours { $0.remainingWorkSeconds = parseHoursInput(newValue) }
@@ -1937,9 +2054,9 @@ struct GanttChartView: View {
     private func selectedTaskPrimaryAssignmentOvertimeWorkBinding() -> Binding<String> {
         Binding(
             get: {
-                guard let selectedTaskID, let nativePlan,
+                guard let selectedTaskID,
                       let index = primaryAssignmentIndex(for: selectedTaskID) else { return "" }
-                return hoursText(nativePlan.wrappedValue.assignments[index].overtimeWorkSeconds)
+                return hoursText(nativeAssignments[index].overtimeWorkSeconds)
             },
             set: { newValue in
                 updatePrimaryAssignmentHours { $0.overtimeWorkSeconds = parseHoursInput(newValue) }
@@ -1953,11 +2070,15 @@ struct GanttChartView: View {
     }
 
     private func updatePrimaryAssignmentHours(_ transform: (inout NativePlanAssignment) -> Void) {
-        guard let nativePlan, let selectedTaskID,
+        guard let selectedTaskID,
               let index = primaryAssignmentIndex(for: selectedTaskID) else { return }
-        var plan = nativePlan.wrappedValue
-        transform(&plan.assignments[index])
-        nativePlan.wrappedValue = plan
+        let assignmentID = nativeAssignments[index].id
+        guard let assignment = planModel?.tasks.flatMap(\.assignments).first(where: { $0.legacyID == assignmentID }) else { return }
+        var nativeAssignment = assignment.asNativeAssignment()
+        transform(&nativeAssignment)
+        assignment.update(from: nativeAssignment)
+        persistGanttStoreChanges()
+        refreshDerivedContent()
     }
 
     private func financialSummary(for task: ProjectTask) -> GanttFinancialSummary {
@@ -2007,10 +2128,11 @@ struct GanttChartView: View {
     }
 
     private func currencyText(_ value: Double) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.maximumFractionDigits = value.rounded() == value ? 0 : 2
-        return formatter.string(from: NSNumber(value: value)) ?? String(format: "%.2f", value)
+        CurrencyFormatting.string(
+            from: value,
+            maximumFractionDigits: value.rounded() == value ? 0 : 2,
+            minimumFractionDigits: 0
+        )
     }
 
     private func decimalText(_ value: Double) -> String {
@@ -2055,46 +2177,50 @@ struct GanttChartView: View {
     }
 
     private func moveNativeTask(_ taskID: Int, dayDelta: Int) {
-        guard dayDelta != 0, let nativePlan else { return }
-        guard let taskIndex = nativePlan.wrappedValue.tasks.firstIndex(where: { $0.id == taskID }) else { return }
+        guard dayDelta != 0, planModel != nil else { return }
 
-        var plan = nativePlan.wrappedValue
-        var task = plan.tasks[taskIndex]
-        let calendar = Calendar.current
-        task.startDate = calendar.date(byAdding: .day, value: dayDelta, to: task.startDate) ?? task.startDate
-        task.finishDate = calendar.date(byAdding: .day, value: dayDelta, to: task.finishDate) ?? task.finishDate
-        task.startDate = calendar.startOfDay(for: task.startDate)
-        task.finishDate = task.isMilestone ? task.startDate : calendar.startOfDay(for: task.finishDate)
-        task.manuallyScheduled = true
-        plan.tasks[taskIndex] = task
-        plan.reschedule()
-        nativePlan.wrappedValue = plan
-        selectedTaskID = taskID
+        PerformanceMonitor.measure("Gantt.MoveTask") {
+            fullSyncGanttPlan { workingPlan in
+                guard let taskIndex = workingPlan.tasks.firstIndex(where: { $0.id == taskID }) else { return }
+                var task = workingPlan.tasks[taskIndex]
+                let calendar = Calendar.current
+                task.startDate = calendar.date(byAdding: .day, value: dayDelta, to: task.startDate) ?? task.startDate
+                task.finishDate = calendar.date(byAdding: .day, value: dayDelta, to: task.finishDate) ?? task.finishDate
+                task.startDate = calendar.startOfDay(for: task.startDate)
+                task.finishDate = task.isMilestone ? task.startDate : calendar.startOfDay(for: task.finishDate)
+                task.manuallyScheduled = true
+                workingPlan.tasks[taskIndex] = task
+                workingPlan.reschedule()
+                selectedTaskID = taskID
+            }
+        }
     }
 
     private func resizeNativeTask(_ taskID: Int, edge: GanttResizeEdge, dayDelta: Int) {
-        guard dayDelta != 0, let nativePlan else { return }
-        guard let taskIndex = nativePlan.wrappedValue.tasks.firstIndex(where: { $0.id == taskID }) else { return }
+        guard dayDelta != 0, planModel != nil else { return }
 
-        var plan = nativePlan.wrappedValue
-        var task = plan.tasks[taskIndex]
-        guard !task.isMilestone else { return }
+        PerformanceMonitor.measure("Gantt.ResizeTask") {
+            fullSyncGanttPlan { workingPlan in
+                guard let taskIndex = workingPlan.tasks.firstIndex(where: { $0.id == taskID }) else { return }
+                var task = workingPlan.tasks[taskIndex]
+                guard !task.isMilestone else { return }
 
-        let calendar = Calendar.current
-        switch edge {
-        case .leading:
-            let proposedStart = calendar.date(byAdding: .day, value: dayDelta, to: task.startDate) ?? task.startDate
-            task.startDate = calendar.startOfDay(for: min(proposedStart, task.finishDate))
-        case .trailing:
-            let proposedFinish = calendar.date(byAdding: .day, value: dayDelta, to: task.finishDate) ?? task.finishDate
-            task.finishDate = calendar.startOfDay(for: max(proposedFinish, task.startDate))
+                let calendar = Calendar.current
+                switch edge {
+                case .leading:
+                    let proposedStart = calendar.date(byAdding: .day, value: dayDelta, to: task.startDate) ?? task.startDate
+                    task.startDate = calendar.startOfDay(for: min(proposedStart, task.finishDate))
+                case .trailing:
+                    let proposedFinish = calendar.date(byAdding: .day, value: dayDelta, to: task.finishDate) ?? task.finishDate
+                    task.finishDate = calendar.startOfDay(for: max(proposedFinish, task.startDate))
+                }
+
+                task.manuallyScheduled = true
+                workingPlan.tasks[taskIndex] = task
+                workingPlan.reschedule()
+                selectedTaskID = taskID
+            }
         }
-
-        task.manuallyScheduled = true
-        plan.tasks[taskIndex] = task
-        plan.reschedule()
-        nativePlan.wrappedValue = plan
-        selectedTaskID = taskID
     }
 }
 
@@ -2283,6 +2409,177 @@ struct GanttZoomControls: View {
 
 // MARK: - Single Canvas for Grid + Bars + Dependencies
 
+private struct GanttDependencySegment: Identifiable, Hashable {
+    let predecessorID: Int
+    let successorID: Int
+    let start: CGPoint
+    let end: CGPoint
+    let midX: CGFloat
+
+    var id: String { "\(predecessorID)->\(successorID)" }
+}
+
+private struct GanttTaskGeometry {
+    let rowIndex: Int
+    let rowRect: CGRect
+    let startX: CGFloat?
+    let width: CGFloat?
+    let barRect: CGRect?
+    let baselineStartX: CGFloat?
+    let baselineFinishX: CGFloat?
+    let baselineBarRect: CGRect?
+}
+
+private struct GanttCanvasLayoutInput: Equatable {
+    let taskIDs: [Int]
+    let taskStarts: [String]
+    let taskFinishes: [String]
+    let baselineStarts: [String]
+    let baselineFinishes: [String]
+    let predecessorPairs: [[Int]]
+    let startDate: Date
+    let totalDays: Int
+    let pixelsPerDay: CGFloat
+    let rowHeight: CGFloat
+    let showBaseline: Bool
+}
+
+private struct GanttCanvasLayoutState {
+    let timelineContentWidth: CGFloat
+    let taskGeometryByID: [Int: GanttTaskGeometry]
+    let dependencySegments: [GanttDependencySegment]
+
+    static func build(
+        tasks: [ProjectTask],
+        allTasks: [Int: ProjectTask],
+        rowIndexByTaskID: [Int: Int],
+        startDate: Date,
+        totalDays: Int,
+        pixelsPerDay: CGFloat,
+        rowHeight: CGFloat,
+        showBaseline: Bool
+    ) -> GanttCanvasLayoutState {
+        let calendar = Calendar.current
+        let timelineContentWidth = CGFloat(totalDays) * pixelsPerDay
+        let barInset: CGFloat = 4
+        let barHeight = rowHeight - barInset * 2
+        let baselineBarHeight = barHeight * 0.5
+
+        let taskGeometryByID = Dictionary(nonThrowingUniquePairs: tasks.enumerated().map { index, task in
+            let rowRect = CGRect(
+                x: 0,
+                y: CGFloat(index) * rowHeight,
+                width: timelineContentWidth,
+                height: rowHeight
+            )
+
+            let startX = task.startDate.map { date -> CGFloat in
+                let startDays = calendar.dateComponents([.day], from: startDate, to: date).day ?? 0
+                return CGFloat(startDays) * pixelsPerDay
+            }
+
+            let width: CGFloat? = {
+                guard let taskStart = task.startDate, let taskFinish = task.finishDate else { return nil }
+                let startDays = calendar.dateComponents([.day], from: startDate, to: taskStart).day ?? 0
+                let finishDays = calendar.dateComponents([.day], from: startDate, to: taskFinish).day ?? 0
+                return max(4, CGFloat(max(1, finishDays - startDays)) * pixelsPerDay)
+            }()
+
+            let barRect: CGRect? = {
+                guard let startX else { return nil }
+                if task.milestone == true {
+                    let diamondSize: CGFloat = barHeight * 0.6
+                    return CGRect(
+                        x: startX - (diamondSize / 2),
+                        y: rowRect.minY + (rowHeight - diamondSize) / 2,
+                        width: diamondSize,
+                        height: diamondSize
+                    )
+                }
+
+                guard let width else { return nil }
+                return CGRect(x: startX, y: rowRect.minY + barInset, width: width, height: barHeight)
+            }()
+
+            let baselineStartX = task.baselineStartDate.map { date -> CGFloat in
+                let days = calendar.dateComponents([.day], from: startDate, to: date).day ?? 0
+                return CGFloat(days) * pixelsPerDay
+            }
+
+            let baselineFinishX = task.baselineFinishDate.map { date -> CGFloat in
+                let days = calendar.dateComponents([.day], from: startDate, to: date).day ?? 0
+                return CGFloat(days) * pixelsPerDay
+            }
+
+            let baselineBarRect: CGRect? = {
+                guard showBaseline,
+                      task.hasBaseline,
+                      task.milestone != true,
+                      task.summary != true,
+                      let baselineStartX,
+                      let baselineFinishX
+                else { return nil }
+
+                return CGRect(
+                    x: baselineStartX,
+                    y: rowRect.minY + barInset + barHeight - baselineBarHeight,
+                    width: max(4, baselineFinishX - baselineStartX),
+                    height: baselineBarHeight
+                )
+            }()
+
+            return (
+                task.uniqueID,
+                GanttTaskGeometry(
+                    rowIndex: index,
+                    rowRect: rowRect,
+                    startX: startX,
+                    width: width,
+                    barRect: barRect,
+                    baselineStartX: baselineStartX,
+                    baselineFinishX: baselineFinishX,
+                    baselineBarRect: baselineBarRect
+                )
+            )
+        })
+
+        let dependencySegments = tasks.flatMap { task in
+            guard let predecessors = task.predecessors,
+                  let successorIndex = rowIndexByTaskID[task.uniqueID] else { return [GanttDependencySegment]() }
+
+            return predecessors.compactMap { relation in
+                guard let predecessorIndex = rowIndexByTaskID[relation.targetTaskUniqueID],
+                      let predecessorTask = allTasks[relation.targetTaskUniqueID] else { return nil }
+
+                let predecessorEnd = dayOffsetX(for: predecessorTask.finishDate, startDate: startDate, pixelsPerDay: pixelsPerDay, calendar: calendar)
+                let successorStart = dayOffsetX(for: task.startDate, startDate: startDate, pixelsPerDay: pixelsPerDay, calendar: calendar)
+                let predecessorY = CGFloat(predecessorIndex) * rowHeight + rowHeight / 2
+                let successorY = CGFloat(successorIndex) * rowHeight + rowHeight / 2
+
+                return GanttDependencySegment(
+                    predecessorID: relation.targetTaskUniqueID,
+                    successorID: task.uniqueID,
+                    start: CGPoint(x: predecessorEnd, y: predecessorY),
+                    end: CGPoint(x: successorStart, y: successorY),
+                    midX: predecessorEnd + 6
+                )
+            }
+        }
+
+        return GanttCanvasLayoutState(
+            timelineContentWidth: timelineContentWidth,
+            taskGeometryByID: taskGeometryByID,
+            dependencySegments: dependencySegments
+        )
+    }
+
+    private static func dayOffsetX(for date: Date?, startDate: Date, pixelsPerDay: CGFloat, calendar: Calendar) -> CGFloat {
+        guard let date else { return 0 }
+        let days = calendar.dateComponents([.day], from: startDate, to: date).day ?? 0
+        return CGFloat(days) * pixelsPerDay
+    }
+}
+
 struct GanttCanvasView: View {
     private let canvasCoordinateSpaceName = "GanttCanvasViewSpace"
 
@@ -2293,6 +2590,7 @@ struct GanttCanvasView: View {
     let totalDays: Int
     let pixelsPerDay: CGFloat
     let rowHeight: CGFloat
+    let visibleRect: CGRect
     var criticalPathOnly: Bool = false
     var showBaseline: Bool = false
     var editableTaskIDs: Set<Int> = []
@@ -2307,6 +2605,63 @@ struct GanttCanvasView: View {
     var onRemoveDependency: ((Int, Int) -> Void)? = nil
 
     @Environment(\.colorScheme) var colorScheme
+    @State private var layoutState: GanttCanvasLayoutState
+
+    init(
+        tasks: [ProjectTask],
+        allTasks: [Int: ProjectTask],
+        rowIndexByTaskID: [Int: Int],
+        startDate: Date,
+        totalDays: Int,
+        pixelsPerDay: CGFloat,
+        rowHeight: CGFloat,
+        visibleRect: CGRect = .zero,
+        criticalPathOnly: Bool = false,
+        showBaseline: Bool = false,
+        editableTaskIDs: Set<Int> = [],
+        selectedTaskID: Int? = nil,
+        selectedDependency: GanttDependencySelection? = nil,
+        pendingLinkSourceTaskID: Int? = nil,
+        onMoveTask: ((Int, Int) -> Void)? = nil,
+        onResizeTask: ((Int, GanttResizeEdge, Int) -> Void)? = nil,
+        onSelectTask: ((Int) -> Void)? = nil,
+        onStartLinkingFromTask: ((Int) -> Void)? = nil,
+        onSelectDependency: ((Int, Int) -> Void)? = nil,
+        onRemoveDependency: ((Int, Int) -> Void)? = nil
+    ) {
+        self.tasks = tasks
+        self.allTasks = allTasks
+        self.rowIndexByTaskID = rowIndexByTaskID
+        self.startDate = startDate
+        self.totalDays = totalDays
+        self.pixelsPerDay = pixelsPerDay
+        self.rowHeight = rowHeight
+        self.visibleRect = visibleRect
+        self.criticalPathOnly = criticalPathOnly
+        self.showBaseline = showBaseline
+        self.editableTaskIDs = editableTaskIDs
+        self.selectedTaskID = selectedTaskID
+        self.selectedDependency = selectedDependency
+        self.pendingLinkSourceTaskID = pendingLinkSourceTaskID
+        self.onMoveTask = onMoveTask
+        self.onResizeTask = onResizeTask
+        self.onSelectTask = onSelectTask
+        self.onStartLinkingFromTask = onStartLinkingFromTask
+        self.onSelectDependency = onSelectDependency
+        self.onRemoveDependency = onRemoveDependency
+        self._layoutState = State(
+            initialValue: GanttCanvasLayoutState.build(
+                tasks: tasks,
+                allTasks: allTasks,
+                rowIndexByTaskID: rowIndexByTaskID,
+                startDate: startDate,
+                totalDays: totalDays,
+                pixelsPerDay: pixelsPerDay,
+                rowHeight: rowHeight,
+                showBaseline: showBaseline
+            )
+        )
+    }
 
     private var rowShadingOpacity: Double { colorScheme == .dark ? 0.08 : 0.04 }
     private var gridLineOpacity: Double { colorScheme == .dark ? 0.25 : 0.15 }
@@ -2314,46 +2669,81 @@ struct GanttCanvasView: View {
     private var barBgOpacity: Double { colorScheme == .dark ? 0.35 : 0.25 }
     private var baselineOpacity: Double { colorScheme == .dark ? 0.4 : 0.25 }
 
-    private struct DependencySegment: Identifiable {
-        let predecessorID: Int
-        let successorID: Int
-        let start: CGPoint
-        let end: CGPoint
-        let midX: CGFloat
-
-        var id: String { "\(predecessorID)->\(successorID)" }
+    private var timelineContentWidth: CGFloat {
+        layoutState.timelineContentWidth
     }
 
-    private var dependencySegments: [DependencySegment] {
-        let calendar = Calendar.current
+    private var layoutInput: GanttCanvasLayoutInput {
+        GanttCanvasLayoutInput(
+            taskIDs: tasks.map(\.uniqueID),
+            taskStarts: tasks.map { $0.start ?? "" },
+            taskFinishes: tasks.map { $0.finish ?? "" },
+            baselineStarts: tasks.map { $0.baselineStart ?? "" },
+            baselineFinishes: tasks.map { $0.baselineFinish ?? "" },
+            predecessorPairs: tasks.map { $0.predecessors?.map(\.targetTaskUniqueID) ?? [] },
+            startDate: startDate,
+            totalDays: totalDays,
+            pixelsPerDay: pixelsPerDay,
+            rowHeight: rowHeight,
+            showBaseline: showBaseline
+        )
+    }
 
-        return tasks.flatMap { task in
-            guard let predecessors = task.predecessors,
-                  let successorIndex = rowIndexByTaskID[task.uniqueID] else { return [DependencySegment]() }
+    private var visibleRowRange: Range<Int> {
+        guard !tasks.isEmpty else { return 0..<0 }
+        let overscan = 2
+        let minY = max(0, visibleRect.minY)
+        let maxY = max(minY, visibleRect.maxY > 0 ? visibleRect.maxY : CGFloat(tasks.count) * rowHeight)
+        let lower = max(0, Int(floor(minY / rowHeight)) - overscan)
+        let upper = min(tasks.count, Int(ceil(maxY / rowHeight)) + overscan)
+        return lower..<max(lower, upper)
+    }
 
-            return predecessors.compactMap { relation in
-                guard let predecessorIndex = rowIndexByTaskID[relation.targetTaskUniqueID],
-                      let predecessorTask = allTasks[relation.targetTaskUniqueID] else { return nil }
+    private var visibleDayRange: ClosedRange<Int> {
+        guard totalDays > 0 else { return 0...0 }
+        let overscan = 2
+        let minX = max(0, visibleRect.minX)
+        let maxX = max(minX, visibleRect.maxX > 0 ? visibleRect.maxX : timelineContentWidth)
+        let lower = max(0, Int(floor(minX / max(1, pixelsPerDay))) - overscan)
+        let upper = min(totalDays, Int(ceil(maxX / max(1, pixelsPerDay))) + overscan)
+        return lower...max(lower, upper)
+    }
 
-                let predecessorEnd = dayOffsetX(for: predecessorTask.finishDate, calendar: calendar)
-                let successorStart = dayOffsetX(for: task.startDate, calendar: calendar)
-                let predecessorY = CGFloat(predecessorIndex) * rowHeight + rowHeight / 2
-                let successorY = CGFloat(successorIndex) * rowHeight + rowHeight / 2
-
-                return DependencySegment(
-                    predecessorID: relation.targetTaskUniqueID,
-                    successorID: task.uniqueID,
-                    start: CGPoint(x: predecessorEnd, y: predecessorY),
-                    end: CGPoint(x: successorStart, y: successorY),
-                    midX: predecessorEnd + 6
-                )
-            }
+    private var visibleTaskRows: [(index: Int, task: ProjectTask)] {
+        visibleRowRange.compactMap { index in
+            guard tasks.indices.contains(index) else { return nil }
+            return (index, tasks[index])
         }
+    }
+
+    private var editableTaskRows: [(index: Int, task: ProjectTask)] {
+        visibleTaskRows.filter { editableTaskIDs.contains($0.task.uniqueID) }
+    }
+
+    private var visibleDependencySegments: [GanttDependencySegment] {
+        let expandedRect = visibleRect.insetBy(dx: -40, dy: -rowHeight)
+        return layoutState.dependencySegments.filter { segment in
+            let minX = min(segment.start.x, segment.end.x, segment.midX)
+            let maxX = max(segment.start.x, segment.end.x, segment.midX)
+            let minY = min(segment.start.y, segment.end.y)
+            let maxY = max(segment.start.y, segment.end.y)
+            return maxX >= expandedRect.minX &&
+                minX <= expandedRect.maxX &&
+                maxY >= expandedRect.minY &&
+                minY <= expandedRect.maxY
+        }
+    }
+
+    private var taskGeometryByID: [Int: GanttTaskGeometry] {
+        layoutState.taskGeometryByID
     }
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            canvas
+            gridCanvas
+                .drawingGroup()
+            taskBarsCanvas
+            dependencyCanvas
             tooltipOverlay
             linkSourceHighlightOverlay
             linkTargetHighlightOverlay
@@ -2361,36 +2751,37 @@ struct GanttCanvasView: View {
             editableBarsOverlay
         }
         .coordinateSpace(name: canvasCoordinateSpaceName)
+        .onChange(of: layoutInput) { _, _ in
+            refreshLayoutState()
+        }
     }
 
     private var editableBarsOverlay: some View {
         ZStack(alignment: .topLeading) {
-            ForEach(Array(tasks.enumerated()), id: \.element.uniqueID) { index, task in
-                if editableTaskIDs.contains(task.uniqueID) {
-                    GanttBarView(
-                        task: task,
-                        startDate: startDate,
-                        pixelsPerDay: pixelsPerDay,
-                        rowIndex: index,
-                        rowHeight: rowHeight,
-                        coordinateSpaceName: canvasCoordinateSpaceName,
-                        isEditable: true,
-                        isSelected: selectedTaskID == task.uniqueID,
-                        isLinkSource: pendingLinkSourceTaskID == task.uniqueID,
-                        onMoveTask: { dayDelta in
-                            onMoveTask?(task.uniqueID, dayDelta)
-                        },
-                        onResizeTask: { edge, dayDelta in
-                            onResizeTask?(task.uniqueID, edge, dayDelta)
-                        },
-                        onSelectTask: {
-                            onSelectTask?(task.uniqueID)
-                        },
-                        onStartLinkingFromTask: {
-                            onStartLinkingFromTask?(task.uniqueID)
-                        }
-                    )
-                }
+            ForEach(editableTaskRows, id: \.task.uniqueID) { row in
+                GanttBarView(
+                    task: row.task,
+                    startDate: startDate,
+                    pixelsPerDay: pixelsPerDay,
+                    rowIndex: row.index,
+                    rowHeight: rowHeight,
+                    coordinateSpaceName: canvasCoordinateSpaceName,
+                    isEditable: true,
+                    isSelected: selectedTaskID == row.task.uniqueID,
+                    isLinkSource: pendingLinkSourceTaskID == row.task.uniqueID,
+                    onMoveTask: { dayDelta in
+                        onMoveTask?(row.task.uniqueID, dayDelta)
+                    },
+                    onResizeTask: { edge, dayDelta in
+                        onResizeTask?(row.task.uniqueID, edge, dayDelta)
+                    },
+                    onSelectTask: {
+                        onSelectTask?(row.task.uniqueID)
+                    },
+                    onStartLinkingFromTask: {
+                        onStartLinkingFromTask?(row.task.uniqueID)
+                    }
+                )
             }
         }
     }
@@ -2398,19 +2789,14 @@ struct GanttCanvasView: View {
     private var linkTargetHighlightOverlay: some View {
         ZStack(alignment: .topLeading) {
             if let sourceTaskID = pendingLinkSourceTaskID {
-                ForEach(Array(tasks.enumerated()), id: \.element.uniqueID) { rowIndex, task in
-                    if task.uniqueID != sourceTaskID {
-                        let rowRect = CGRect(
-                            x: 0,
-                            y: CGFloat(rowIndex) * rowHeight,
-                            width: CGFloat(totalDays) * pixelsPerDay,
-                            height: rowHeight
-                        )
-
+                ForEach(visibleTaskRows, id: \.task.uniqueID) { row in
+                    let task = row.task
+                    if task.uniqueID != sourceTaskID,
+                       let geometry = taskGeometryByID[task.uniqueID] {
                         RoundedRectangle(cornerRadius: 4)
                             .fill(Color.green.opacity(0.06))
-                            .frame(width: rowRect.width, height: rowRect.height)
-                            .position(x: rowRect.midX, y: rowRect.midY)
+                            .frame(width: geometry.rowRect.width, height: geometry.rowRect.height)
+                            .position(x: geometry.rowRect.midX, y: geometry.rowRect.midY)
                             .overlay {
                                 Rectangle()
                                     .fill(Color.clear)
@@ -2422,31 +2808,12 @@ struct GanttCanvasView: View {
 
                         if task.summary != true,
                            task.milestone != true,
-                           let taskBarRect = taskBarRect(for: task, rowIndex: rowIndex) {
+                           let taskBarRect = geometry.barRect {
                             RoundedRectangle(cornerRadius: 5)
                                 .stroke(Color.green.opacity(0.45), lineWidth: 1.5)
                                 .frame(width: taskBarRect.width + 6, height: taskBarRect.height + 6)
                                 .position(x: taskBarRect.midX, y: taskBarRect.midY)
                         }
-
-                        HStack(spacing: 4) {
-                            Image(systemName: "arrow.right")
-                                .font(.system(size: 8, weight: .bold))
-                            Text("Click To Link")
-                                .font(.system(size: 10, weight: .semibold))
-                        }
-                        .foregroundStyle(Color.green.opacity(0.95))
-                        .padding(.horizontal, 8)
-                        .frame(height: 22)
-                        .background(
-                            Capsule(style: .continuous)
-                                .fill(Color.white.opacity(0.96))
-                        )
-                        .overlay(
-                            Capsule(style: .continuous)
-                                .stroke(Color.green.opacity(0.6), lineWidth: 1)
-                        )
-                        .position(x: rowRect.maxX - 68, y: rowRect.midY)
                     }
                 }
             }
@@ -2456,13 +2823,8 @@ struct GanttCanvasView: View {
     private var linkSourceHighlightOverlay: some View {
         ZStack(alignment: .topLeading) {
             if let sourceTaskID = pendingLinkSourceTaskID,
-               let rowIndex = rowIndexByTaskID[sourceTaskID] {
-                let rowRect = CGRect(
-                    x: 0,
-                    y: CGFloat(rowIndex) * rowHeight,
-                    width: CGFloat(totalDays) * pixelsPerDay,
-                    height: rowHeight
-                )
+               let geometry = taskGeometryByID[sourceTaskID] {
+                let rowRect = geometry.rowRect
 
                 RoundedRectangle(cornerRadius: 4)
                     .fill(Color.orange.opacity(0.08))
@@ -2474,8 +2836,7 @@ struct GanttCanvasView: View {
                     .frame(width: rowRect.width - 2, height: rowRect.height - 2)
                     .position(x: rowRect.midX, y: rowRect.midY)
 
-                if let sourceTask = allTasks[sourceTaskID],
-                   let taskBarRect = taskBarRect(for: sourceTask, rowIndex: rowIndex) {
+                if let taskBarRect = geometry.barRect {
                     HStack(spacing: 5) {
                         Image(systemName: "link")
                             .font(.system(size: 8, weight: .bold))
@@ -2505,7 +2866,7 @@ struct GanttCanvasView: View {
 
     private var dependencySelectionOverlay: some View {
         ZStack(alignment: .topLeading) {
-            ForEach(dependencySegments) { segment in
+            ForEach(visibleDependencySegments) { segment in
                 let isSelected = selectedDependency?.predecessorID == segment.predecessorID
                     && selectedDependency?.successorID == segment.successorID
 
@@ -2539,16 +2900,16 @@ struct GanttCanvasView: View {
     }
 
     private var tooltipOverlay: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ForEach(Array(tasks.enumerated()), id: \.element.uniqueID) { _, task in
-                ZStack {
-                    if selectedTaskID == task.uniqueID {
-                        Color.accentColor.opacity(0.08)
-                    } else {
-                        Color.clear
-                    }
-                }
-                    .frame(height: rowHeight)
+        ZStack(alignment: .topLeading) {
+            if let selectedTaskID,
+               let geometry = taskGeometryByID[selectedTaskID],
+               let task = allTasks[selectedTaskID] {
+                Color.accentColor.opacity(0.08)
+                    .frame(width: geometry.rowRect.width, height: geometry.rowRect.height)
+                    .position(
+                        x: geometry.rowRect.midX,
+                        y: geometry.rowRect.midY
+                    )
                     .contentShape(Rectangle())
                     .help(tooltipFor(task))
                     .onTapGesture {
@@ -2556,7 +2917,7 @@ struct GanttCanvasView: View {
                     }
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private func tooltipFor(_ task: ProjectTask) -> String {
@@ -2588,7 +2949,7 @@ struct GanttCanvasView: View {
         return parts.joined(separator: "\n")
     }
 
-    private func segmentPath(_ segment: DependencySegment) -> Path {
+    private func segmentPath(_ segment: GanttDependencySegment) -> Path {
         var path = Path()
         path.move(to: segment.start)
         path.addLine(to: CGPoint(x: segment.midX, y: segment.start.y))
@@ -2597,7 +2958,7 @@ struct GanttCanvasView: View {
         return path
     }
 
-    private func arrowHeadPath(_ segment: DependencySegment) -> Path {
+    private func arrowHeadPath(_ segment: GanttDependencySegment) -> Path {
         let size: CGFloat = 4
         var head = Path()
         head.move(to: segment.end)
@@ -2608,43 +2969,17 @@ struct GanttCanvasView: View {
     }
 
     private func taskBarRect(for task: ProjectTask, rowIndex: Int) -> CGRect? {
-        let calendar = Calendar.current
-        guard let taskStart = task.startDate else { return nil }
-        let barInset: CGFloat = 4
-        let barHeight = rowHeight - barInset * 2
-        let startDays = calendar.dateComponents([.day], from: startDate, to: taskStart).day ?? 0
-        let xStart = CGFloat(startDays) * pixelsPerDay
-
-        if task.milestone == true {
-            let dSize: CGFloat = barHeight * 0.6
-            return CGRect(
-                x: xStart - (dSize / 2),
-                y: CGFloat(rowIndex) * rowHeight + (rowHeight - dSize) / 2,
-                width: dSize,
-                height: dSize
-            )
-        }
-
-        guard let taskFinish = task.finishDate else { return nil }
-        let finishDays = calendar.dateComponents([.day], from: startDate, to: taskFinish).day ?? 0
-        let width = max(4, CGFloat(max(1, finishDays - startDays)) * pixelsPerDay)
-        return CGRect(
-            x: xStart,
-            y: CGFloat(rowIndex) * rowHeight + barInset,
-            width: width,
-            height: barHeight
-        )
+        taskGeometryByID[task.uniqueID]?.barRect
     }
 
-    private var canvas: some View {
+    private var gridCanvas: some View {
         Canvas { context, size in
             let calendar = Calendar.current
-            let barInset: CGFloat = 4
-            let barHeight = rowHeight - barInset * 2
-            let dimOpacity: CGFloat = criticalPathOnly ? 0.15 : 1.0
+            let visibleRows = Array(visibleRowRange)
+            let visibleDays = visibleDayRange
 
             // --- Alternate Row Shading ---
-            for row in 0..<tasks.count {
+            for row in visibleRows {
                 if row % 2 == 0 {
                     let rowRect = CGRect(x: 0, y: CGFloat(row) * rowHeight, width: size.width, height: rowHeight)
                     context.fill(Path(rowRect), with: .color(.gray.opacity(rowShadingOpacity)))
@@ -2652,7 +2987,8 @@ struct GanttCanvasView: View {
             }
 
             // --- Grid ---
-            for row in 0...tasks.count {
+            let gridRowUpperBound = min(tasks.count, visibleRowRange.upperBound)
+            for row in visibleRowRange.lowerBound...gridRowUpperBound {
                 let y = CGFloat(row) * rowHeight
                 var path = Path()
                 path.move(to: CGPoint(x: 0, y: y))
@@ -2660,9 +2996,9 @@ struct GanttCanvasView: View {
                 context.stroke(path, with: .color(.gray.opacity(gridLineOpacity)), lineWidth: 0.5)
             }
 
-            for day in 0..<totalDays {
+            for day in visibleDays {
                 let x = CGFloat(day) * pixelsPerDay
-                let date = calendar.date(byAdding: .day, value: day, to: startDate) ?? startDate
+                let date = Calendar.current.date(byAdding: .day, value: day, to: startDate) ?? startDate
                 let weekday = calendar.component(.weekday, from: date)
 
                 if weekday == 1 || weekday == 7 {
@@ -2678,24 +3014,45 @@ struct GanttCanvasView: View {
                 }
             }
 
+            // --- Today Marker ---
+            if let todayOffset = GanttDateHelpers.todayDayOffset(from: startDate) {
+                let todayX = todayOffset * pixelsPerDay
+                if todayX >= visibleRect.minX && todayX <= visibleRect.maxX {
+                    let dashPattern: [CGFloat] = [4, 3]
+                    var todayLine = Path()
+                    todayLine.move(to: CGPoint(x: todayX, y: 0))
+                    todayLine.addLine(to: CGPoint(x: todayX, y: size.height))
+                    context.stroke(
+                        todayLine,
+                        with: .color(.red),
+                        style: StrokeStyle(lineWidth: 1.5, dash: dashPattern)
+                    )
+                }
+            }
+        }
+    }
+
+    private var taskBarsCanvas: some View {
+        Canvas { context, size in
+            let barInset: CGFloat = 4
+            let barHeight = rowHeight - barInset * 2
+            let dimOpacity: CGFloat = criticalPathOnly ? 0.15 : 1.0
+
             // --- Baseline Markers (always visible) ---
             let markerStyle = StrokeStyle(lineWidth: 0.8, dash: [3, 3])
-            for (index, task) in tasks.enumerated() {
-                let y = CGFloat(index) * rowHeight
+            for row in visibleTaskRows {
+                let task = row.task
+                let y = CGFloat(row.index) * rowHeight
                 guard task.hasBaseline else { continue }
 
-                if let bsDate = task.baselineStartDate {
-                    let startDays = calendar.dateComponents([.day], from: startDate, to: bsDate).day ?? 0
-                    let xStart = CGFloat(startDays) * pixelsPerDay
+                if let xStart = taskGeometryByID[task.uniqueID]?.baselineStartX {
                     var line = Path()
                     line.move(to: CGPoint(x: xStart, y: y + 6))
                     line.addLine(to: CGPoint(x: xStart, y: y + rowHeight - 6))
                     context.stroke(line, with: .color(.gray.opacity(0.4)), style: markerStyle)
                 }
 
-                if let bfDate = task.baselineFinishDate {
-                    let finishDays = calendar.dateComponents([.day], from: startDate, to: bfDate).day ?? 0
-                    let xFinish = CGFloat(finishDays) * pixelsPerDay
+                if let xFinish = taskGeometryByID[task.uniqueID]?.baselineFinishX {
                     var line = Path()
                     line.move(to: CGPoint(x: xFinish, y: y + 6))
                     line.addLine(to: CGPoint(x: xFinish, y: y + rowHeight - 6))
@@ -2705,22 +3062,9 @@ struct GanttCanvasView: View {
 
             // --- Baseline Bars (behind actual bars) ---
             if showBaseline {
-                for (index, task) in tasks.enumerated() {
-                    guard task.hasBaseline,
-                          let bsDate = task.baselineStartDate,
-                          let bfDate = task.baselineFinishDate,
-                          task.milestone != true,
-                          task.summary != true else { continue }
-
-                    let y = CGFloat(index) * rowHeight
-                    let bsOffset = calendar.dateComponents([.day], from: startDate, to: bsDate).day ?? 0
-                    let bfOffset = calendar.dateComponents([.day], from: startDate, to: bfDate).day ?? 0
-                    let xStart = CGFloat(bsOffset) * pixelsPerDay
-                    let width = max(4, CGFloat(max(1, bfOffset - bsOffset)) * pixelsPerDay)
-
-                    let baselineBarHeight = barHeight * 0.5
-                    let baselineY = y + barInset + barHeight - baselineBarHeight // bottom-aligned
-                    let baseRect = CGRect(x: xStart, y: baselineY, width: width, height: baselineBarHeight)
+                for row in visibleTaskRows {
+                    let task = row.task
+                    guard let baseRect = taskGeometryByID[task.uniqueID]?.baselineBarRect else { continue }
                     let rr = RoundedRectangle(cornerRadius: 2).path(in: baseRect)
                     context.fill(rr, with: .color(.gray.opacity(baselineOpacity)))
                     context.stroke(rr, with: .color(.gray.opacity(baselineOpacity + 0.15)), lineWidth: 0.5)
@@ -2728,16 +3072,15 @@ struct GanttCanvasView: View {
             }
 
             // --- Task Bars ---
-            var taskIndexMap: [Int: Int] = [:]
-            for (index, task) in tasks.enumerated() {
-                taskIndexMap[task.uniqueID] = index
+            for row in visibleTaskRows {
+                let index = row.index
+                let task = row.task
+                guard let geometry = taskGeometryByID[task.uniqueID] else { continue }
                 let y = CGFloat(index) * rowHeight
                 let isCritical = task.critical == true
                 let taskOpacity = (!criticalPathOnly || isCritical) ? 1.0 : dimOpacity
 
-                guard let taskStart = task.startDate else { continue }
-                let startDays = calendar.dateComponents([.day], from: startDate, to: taskStart).day ?? 0
-                let xStart = CGFloat(startDays) * pixelsPerDay
+                guard let xStart = geometry.startX else { continue }
 
                 if editableTaskIDs.contains(task.uniqueID) {
                     continue
@@ -2766,9 +3109,7 @@ struct GanttCanvasView: View {
                     continue
                 }
 
-                guard let taskFinish = task.finishDate else { continue }
-                let endDays = calendar.dateComponents([.day], from: startDate, to: taskFinish).day ?? 0
-                let width = max(4, CGFloat(max(1, endDays - startDays)) * pixelsPerDay)
+                guard let width = geometry.width else { continue }
 
                 if task.summary == true {
                     // Summary bracket
@@ -2833,66 +3174,35 @@ struct GanttCanvasView: View {
                         opacity: taskOpacity
                     )
                 }
-            }
-        }
-
-            // --- Today Marker ---
-            if let todayOffset = GanttDateHelpers.todayDayOffset(from: startDate) {
-                let todayX = todayOffset * pixelsPerDay
-                if todayX >= 0 && todayX <= size.width {
-                    let dashPattern: [CGFloat] = [4, 3]
-                    var todayLine = Path()
-                    todayLine.move(to: CGPoint(x: todayX, y: 0))
-                    todayLine.addLine(to: CGPoint(x: todayX, y: size.height))
-                    context.stroke(
-                        todayLine,
-                        with: .color(.red),
-                        style: StrokeStyle(lineWidth: 1.5, dash: dashPattern)
-                    )
-                }
-            }
-
-            // --- Dependency Arrows ---
-            for task in tasks {
-                guard let predecessors = task.predecessors else { continue }
-                guard let succIdx = taskIndexMap[task.uniqueID] else { continue }
-
-                for relation in predecessors {
-                    guard let predIdx = taskIndexMap[relation.targetTaskUniqueID] else { continue }
-                    guard let pred = allTasks[relation.targetTaskUniqueID] else { continue }
-
-                    let predEnd = dayOffsetX(for: pred.finishDate, calendar: calendar)
-                    let succStart = dayOffsetX(for: task.startDate, calendar: calendar)
-                    let predY = CGFloat(predIdx) * rowHeight + rowHeight / 2
-                    let succY = CGFloat(succIdx) * rowHeight + rowHeight / 2
-
-                    var arrow = Path()
-                    arrow.move(to: CGPoint(x: predEnd, y: predY))
-
-                    let midX = predEnd + 6
-                    arrow.addLine(to: CGPoint(x: midX, y: predY))
-                    arrow.addLine(to: CGPoint(x: midX, y: succY))
-                    arrow.addLine(to: CGPoint(x: succStart, y: succY))
-
-                    context.stroke(arrow, with: .color(.gray.opacity(0.5)), style: StrokeStyle(lineWidth: 0.8))
-
-                    // Arrowhead
-                    let aSize: CGFloat = 3
-                    var head = Path()
-                    head.move(to: CGPoint(x: succStart, y: succY))
-                    head.addLine(to: CGPoint(x: succStart - aSize, y: succY - aSize))
-                    head.addLine(to: CGPoint(x: succStart - aSize, y: succY + aSize))
-                    head.closeSubpath()
-                    context.fill(head, with: .color(.gray.opacity(0.5)))
                 }
             }
         }
-    } // end canvas
+    }
 
-    private func dayOffsetX(for date: Date?, calendar: Calendar) -> CGFloat {
-        guard let date = date else { return 0 }
-        let days = calendar.dateComponents([.day], from: startDate, to: date).day ?? 0
-        return CGFloat(days) * pixelsPerDay
+    private var dependencyCanvas: some View {
+        Canvas { context, _ in
+            for segment in visibleDependencySegments {
+                context.stroke(
+                    segmentPath(segment),
+                    with: .color(.gray.opacity(0.5)),
+                    style: StrokeStyle(lineWidth: 0.8)
+                )
+                context.fill(arrowHeadPath(segment), with: .color(.gray.opacity(0.5)))
+            }
+        }
+    }
+
+    private func refreshLayoutState() {
+        layoutState = GanttCanvasLayoutState.build(
+            tasks: tasks,
+            allTasks: allTasks,
+            rowIndexByTaskID: rowIndexByTaskID,
+            startDate: startDate,
+            totalDays: totalDays,
+            pixelsPerDay: pixelsPerDay,
+            rowHeight: rowHeight,
+            showBaseline: showBaseline
+        )
     }
 
     private func drawBaselineBadge(

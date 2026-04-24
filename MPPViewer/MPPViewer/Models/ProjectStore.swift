@@ -8,8 +8,6 @@ final class ProjectStore: ObservableObject {
     @Published var error: String?
 
     private let converter = MPPConverterService()
-    private let parser = JSONProjectParser()
-
     func loadFromDocument(_ document: PlanningDocument) async {
         guard let importedMPPData = document.importedMPPData else {
             project = nil
@@ -30,7 +28,7 @@ final class ProjectStore: ObservableObject {
             defer { try? FileManager.default.removeItem(at: tempInput) }
 
             let jsonData = try await converter.convert(mppFileURL: tempInput)
-            let model = try parser.parse(jsonData: jsonData)
+            let model = try await JSONProjectParser.parseDetached(jsonData: jsonData)
             self.project = model
         } catch {
             self.error = error.localizedDescription
@@ -47,7 +45,7 @@ final class ProjectStore: ObservableObject {
 
     func loadProject(from url: URL) async throws -> ProjectModel {
         let jsonData = try await converter.convert(mppFileURL: url)
-        return try parser.parse(jsonData: jsonData)
+        return try await JSONProjectParser.parseDetached(jsonData: jsonData)
     }
 
     func loadFromURL(_ url: URL) async {
@@ -56,7 +54,7 @@ final class ProjectStore: ObservableObject {
 
         do {
             let jsonData = try await converter.convert(mppFileURL: url)
-            let model = try parser.parse(jsonData: jsonData)
+            let model = try await JSONProjectParser.parseDetached(jsonData: jsonData)
             self.project = model
         } catch {
             self.error = error.localizedDescription

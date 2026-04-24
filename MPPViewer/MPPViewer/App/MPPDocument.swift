@@ -10,12 +10,17 @@ struct PlanningDocument: FileDocument {
     static var readableContentTypes: [UTType] { [.mppplan, .mpp] }
     static var writableContentTypes: [UTType] { [.mppplan] }
 
-    var nativePlan: NativeProjectPlan?
+    var editablePortfolioID: UUID?
+    var editablePlanData: Data?
+    var editablePlanSeed: NativeProjectPlan?
     let importedMPPData: Data?
     let fileURL: URL?
 
     init() {
-        nativePlan = .empty()
+        let emptyPlan = NativeProjectPlan.empty()
+        editablePortfolioID = emptyPlan.portfolioID
+        editablePlanData = try? emptyPlan.encodedData()
+        editablePlanSeed = emptyPlan
         importedMPPData = nil
         fileURL = nil
     }
@@ -28,28 +33,54 @@ struct PlanningDocument: FileDocument {
             throw CocoaError(.fileReadCorruptFile)
         }
         self.fileURL = nil
+        let nativePlan = PlanningDocument.decodeNativePlanIfPossible(from: data)
 
-        if configuration.contentType == .mppplan {
-            nativePlan = try NativeProjectPlan.decode(from: data)
+        if let nativePlan {
+            editablePortfolioID = nativePlan.portfolioID
+            editablePlanData = data
+            editablePlanSeed = nativePlan
             importedMPPData = nil
         } else {
-            nativePlan = nil
+            editablePortfolioID = nil
+            editablePlanData = nil
+            editablePlanSeed = nil
             importedMPPData = data
         }
     }
 
+    private static func decodeNativePlanIfPossible(from data: Data) -> NativeProjectPlan? {
+        guard !data.isEmpty else { return nil }
+        let trimmed = data.starts(with: [0xEF, 0xBB, 0xBF]) ? data.dropFirst(3) : data
+        return try? NativeProjectPlan.decode(from: Data(trimmed))
+    }
+
     var isEditablePlan: Bool {
-        nativePlan != nil
+        editablePortfolioID != nil
     }
 
     var projectModel: ProjectModel? {
         nativePlan?.asProjectModel()
     }
 
+    var nativePlan: NativeProjectPlan? {
+        get {
+            if let editablePlanData,
+               let decoded = try? NativeProjectPlan.decode(from: editablePlanData) {
+                return decoded
+            }
+            return editablePlanSeed
+        }
+        set {
+            editablePortfolioID = newValue?.portfolioID
+            editablePlanSeed = newValue
+            editablePlanData = try? newValue?.encodedData()
+        }
+    }
+
     func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
-        guard let nativePlan else {
+        guard let editablePlanData else {
             throw CocoaError(.fileWriteNoPermission)
         }
-        return .init(regularFileWithContents: try nativePlan.encodedData())
+        return .init(regularFileWithContents: editablePlanData)
     }
 }

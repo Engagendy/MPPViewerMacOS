@@ -488,6 +488,11 @@ struct DashboardView: View {
 
     @State private var stats: ProjectStats?
     @State private var projectAnalysis: DashboardProjectAnalysis?
+    @State private var cachedAudienceConfigurations: [String: DashboardAudienceConfiguration] = [:]
+    @State private var cachedSnapshots: [DashboardSnapshot] = []
+    @State private var cachedReviewTemplates: [DashboardReviewTemplate] = []
+    @State private var cachedFlaggedTaskIDs: Set<Int> = []
+    @State private var cachedReviewAnnotations: [Int: TaskReviewAnnotation] = [:]
     @AppStorage("flaggedTaskIDs") private var flaggedTaskIDsData: Data = Data()
     @AppStorage(ReviewNotesStore.key) private var taskReviewNotesData: Data = Data()
     @AppStorage("dashboardAudiencePreset") private var audiencePresetRawValue = DashboardAudiencePreset.projectManager.rawValue
@@ -513,25 +518,15 @@ struct DashboardView: View {
     }
 
     private var currentAudienceConfiguration: DashboardAudienceConfiguration {
-        decodeAudienceConfigurations()[audiencePreset.rawValue] ?? .default(for: audiencePreset)
+        cachedAudienceConfigurations[audiencePreset.rawValue] ?? .default(for: audiencePreset)
     }
 
     private var snapshots: [DashboardSnapshot] {
-        decodeSnapshots().sorted { lhs, rhs in
-            if lhs.isPinned != rhs.isPinned {
-                return lhs.isPinned && !rhs.isPinned
-            }
-            return lhs.createdAt > rhs.createdAt
-        }
+        cachedSnapshots
     }
 
     private var reviewTemplates: [DashboardReviewTemplate] {
-        decodeReviewTemplates().sorted { lhs, rhs in
-            if lhs.isPinned != rhs.isPinned {
-                return lhs.isPinned && !rhs.isPinned
-            }
-            return lhs.createdAt > rhs.createdAt
-        }
+        cachedReviewTemplates
     }
 
     private var appliedReviewTemplate: DashboardReviewTemplate? {
@@ -575,6 +570,7 @@ struct DashboardView: View {
             }
         }
         .task {
+            refreshPersistedState()
             let computed = ProjectStats(project: project)
             stats = computed
             projectAnalysis = DashboardProjectAnalysis.build(project: project)
@@ -593,6 +589,27 @@ struct DashboardView: View {
                 selectedTrendFocus = nil
                 return
             }
+        }
+        .onChange(of: audienceConfigurationData) { _, _ in
+            refreshAudienceConfigurations()
+        }
+        .onChange(of: flaggedTaskIDsData) { _, _ in
+            refreshFlaggedTaskIDs()
+        }
+        .onChange(of: taskReviewNotesData) { _, _ in
+            refreshReviewAnnotations()
+        }
+        .onChange(of: snapshotData) { _, _ in
+            refreshSnapshots()
+            if selectedSnapshotID == nil {
+                selectedSnapshotID = snapshots.first?.id
+            }
+        }
+        .onChange(of: reviewTemplateData) { _, _ in
+            refreshReviewTemplates()
+        }
+        .transaction { transaction in
+            transaction.animation = nil
         }
     }
 
@@ -2207,12 +2224,11 @@ struct DashboardView: View {
     }
 
     private var reviewAnnotations: [Int: TaskReviewAnnotation] {
-        ReviewNotesStore.decodeAnnotations(taskReviewNotesData)
+        cachedReviewAnnotations
     }
 
     private var flaggedTaskIDs: Set<Int> {
-        guard !flaggedTaskIDsData.isEmpty else { return [] }
-        return (try? JSONDecoder().decode(Set<Int>.self, from: flaggedTaskIDsData)) ?? []
+        cachedFlaggedTaskIDs
     }
 
     private var unresolvedIssueCount: Int {
@@ -2581,11 +2597,12 @@ struct DashboardView: View {
     }
 
     private func updateAudienceConfiguration(_ update: (inout DashboardAudienceConfiguration) -> Void) {
-        var configurations = decodeAudienceConfigurations()
+        var configurations = cachedAudienceConfigurations
         var configuration = configurations[audiencePreset.rawValue] ?? .default(for: audiencePreset)
         update(&configuration)
         configurations[audiencePreset.rawValue] = configuration
         audienceConfigurationData = (try? JSONEncoder().encode(configurations)) ?? Data()
+        cachedAudienceConfigurations = configurations
     }
 
     private func decodeReviewTemplates() -> [DashboardReviewTemplate] {
@@ -2595,10 +2612,11 @@ struct DashboardView: View {
 
     private func persistReviewTemplates(_ templates: [DashboardReviewTemplate]) {
         reviewTemplateData = (try? JSONEncoder().encode(templates)) ?? Data()
+        refreshReviewTemplates()
     }
 
     private func updateReviewTemplate(_ id: UUID, update: (inout DashboardReviewTemplate) -> Void) {
-        var storedTemplates = decodeReviewTemplates()
+        var storedTemplates = cachedReviewTemplates
         guard let index = storedTemplates.firstIndex(where: { $0.id == id }) else { return }
         update(&storedTemplates[index])
         persistReviewTemplates(storedTemplates)
@@ -2858,13 +2876,52 @@ struct DashboardView: View {
 
     private func persistSnapshots(_ snapshots: [DashboardSnapshot]) {
         snapshotData = (try? JSONEncoder().encode(snapshots)) ?? Data()
+        refreshSnapshots()
     }
 
     private func updateSnapshot(_ id: UUID, update: (inout DashboardSnapshot) -> Void) {
-        var storedSnapshots = decodeSnapshots()
+        var storedSnapshots = cachedSnapshots
         guard let index = storedSnapshots.firstIndex(where: { $0.id == id }) else { return }
         update(&storedSnapshots[index])
         persistSnapshots(storedSnapshots)
+    }
+
+    private func refreshPersistedState() {
+        refreshFlaggedTaskIDs()
+        refreshReviewAnnotations()
+        refreshAudienceConfigurations()
+        refreshSnapshots()
+        refreshReviewTemplates()
+    }
+
+    private func refreshFlaggedTaskIDs() {
+        cachedFlaggedTaskIDs = (try? JSONDecoder().decode(Set<Int>.self, from: flaggedTaskIDsData)) ?? []
+    }
+
+    private func refreshReviewAnnotations() {
+        cachedReviewAnnotations = ReviewNotesStore.decodeAnnotations(taskReviewNotesData)
+    }
+
+    private func refreshAudienceConfigurations() {
+        cachedAudienceConfigurations = decodeAudienceConfigurations()
+    }
+
+    private func refreshSnapshots() {
+        cachedSnapshots = decodeSnapshots().sorted { lhs, rhs in
+            if lhs.isPinned != rhs.isPinned {
+                return lhs.isPinned && !rhs.isPinned
+            }
+            return lhs.createdAt > rhs.createdAt
+        }
+    }
+
+    private func refreshReviewTemplates() {
+        cachedReviewTemplates = decodeReviewTemplates().sorted { lhs, rhs in
+            if lhs.isPinned != rhs.isPinned {
+                return lhs.isPinned && !rhs.isPinned
+            }
+            return lhs.createdAt > rhs.createdAt
+        }
     }
 
     private func persistFlaggedTaskIDs(_ ids: Set<Int>) {
@@ -3041,7 +3098,7 @@ struct DashboardView: View {
     }
 
     private func exportExecutiveSummary(stats: ProjectStats) {
-        let validationIssues = ProjectValidator.validate(project: project)
+        let validationIssues = projectAnalysis?.validationIssues ?? ProjectValidator.validate(project: project)
         var lines: [String] = [
             "# \(project.properties.projectTitle ?? "Project") Executive Summary",
             "",
@@ -3343,9 +3400,10 @@ struct DashboardView: View {
 
     private func applyTemplate(preset: DashboardAudiencePreset, configuration: DashboardAudienceConfiguration) {
         audiencePreset = preset
-        var configurations = decodeAudienceConfigurations()
+        var configurations = cachedAudienceConfigurations
         configurations[preset.rawValue] = configuration
         audienceConfigurationData = (try? JSONEncoder().encode(configurations)) ?? Data()
+        cachedAudienceConfigurations = configurations
         customTemplateCadence = defaultSnapshotCadence(for: preset)
         customTemplatePreferredExports = Set(preset.defaultTemplateExports)
         isCustomizationExpanded = false
@@ -3422,9 +3480,10 @@ struct DashboardView: View {
 
     private func applySnapshot(_ snapshot: DashboardSnapshot) {
         audiencePresetRawValue = snapshot.preset.rawValue
-        var configurations = decodeAudienceConfigurations()
+        var configurations = cachedAudienceConfigurations
         configurations[snapshot.preset.rawValue] = snapshot.configuration
         audienceConfigurationData = (try? JSONEncoder().encode(configurations)) ?? Data()
+        cachedAudienceConfigurations = configurations
         appliedReviewTemplateID = nil
         customTemplatePreferredExports = Set(snapshot.preset.defaultTemplateExports)
         persistFlaggedTaskIDs(Set(snapshot.flaggedTaskIDs))
@@ -3654,7 +3713,12 @@ struct DashboardView: View {
 
     private func exportReviewPack() {
         guard let stats else { return }
-        exportReviewPackReport(project: project, stats: stats, reviewAnnotations: reviewAnnotations)
+        exportReviewPackReport(
+            project: project,
+            stats: stats,
+            reviewAnnotations: reviewAnnotations,
+            analysis: projectAnalysis
+        )
     }
 
     private func exportOpenIssues() {
@@ -4037,7 +4101,7 @@ struct ExecutiveModeView: View {
     }
 
     private func exportExecutiveSummary(stats: ProjectStats) {
-        let validationIssues = ProjectValidator.validate(project: project)
+        let validationIssues = projectAnalysis?.validationIssues ?? ProjectValidator.validate(project: project)
         var lines: [String] = [
             "# \(project.properties.projectTitle ?? "Project") Executive Summary",
             "",
@@ -4144,10 +4208,15 @@ struct BaselineAlertView: View {
     }
 }
 
-private func exportReviewPackReport(project: ProjectModel, stats: ProjectStats, reviewAnnotations: [Int: TaskReviewAnnotation]) {
-    let validationIssues = ProjectValidator.validate(project: project)
-    let diagnostics = ProjectDiagnostics.analyze(project: project)
-    let resourceIssues = ResourceDiagnostics.analyze(project: project)
+private func exportReviewPackReport(
+    project: ProjectModel,
+    stats: ProjectStats,
+    reviewAnnotations: [Int: TaskReviewAnnotation],
+    analysis: DashboardProjectAnalysis? = nil
+) {
+    let validationIssues = analysis?.validationIssues ?? ProjectValidator.validate(project: project)
+    let diagnostics = analysis?.diagnosticItems ?? ProjectDiagnostics.analyze(project: project)
+    let resourceIssues = analysis?.resourceIssues ?? ResourceDiagnostics.analyze(project: project)
     let milestones = project.tasks.filter { $0.isDisplayMilestone }.prefix(10)
     let annotatedTasks = reviewAnnotations.compactMap { uniqueID, annotation -> (ProjectTask, TaskReviewAnnotation)? in
         guard let task = project.tasksByID[uniqueID] else { return nil }
@@ -4402,10 +4471,7 @@ struct ProjectStats {
 
     var totalCostFormatted: String {
         if totalCost == 0 { return "N/A" }
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.maximumFractionDigits = 0
-        return formatter.string(from: NSNumber(value: totalCost)) ?? "$\(Int(totalCost))"
+        return CurrencyFormatting.string(from: totalCost, maximumFractionDigits: 0, minimumFractionDigits: 0)
     }
 
     var projectDurationText: String {

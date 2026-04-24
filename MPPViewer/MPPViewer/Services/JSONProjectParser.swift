@@ -13,6 +13,12 @@ enum ParserError: LocalizedError {
 
 final class JSONProjectParser {
 
+    static func parseDetached(jsonData: Data) async throws -> ProjectModel {
+        try await Task.detached(priority: .userInitiated) {
+            try JSONProjectParser().parse(jsonData: jsonData)
+        }.value
+    }
+
     func parse(jsonData: Data) throws -> ProjectModel {
         let decoder = JSONDecoder()
 

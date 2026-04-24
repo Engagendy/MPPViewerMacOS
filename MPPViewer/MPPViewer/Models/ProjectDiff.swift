@@ -60,8 +60,8 @@ enum ProjectDiffCalculator {
     }
 
     static func analyze(baseline: ProjectModel, current: ProjectModel) -> ProjectDiffAnalysis {
-        let baselineByUID = Dictionary(uniqueKeysWithValues: baseline.tasks.map { ($0.uniqueID, $0) })
-        let currentByUID = Dictionary(uniqueKeysWithValues: current.tasks.map { ($0.uniqueID, $0) })
+        let baselineByUID = Dictionary(nonThrowingUniquePairs: baseline.tasks.map { ($0.uniqueID, $0) })
+        let currentByUID = Dictionary(nonThrowingUniquePairs: current.tasks.map { ($0.uniqueID, $0) })
 
         var diffs: [TaskDiff] = []
         var finishMovedLaterCount = 0
@@ -169,11 +169,11 @@ enum ProjectDiffCalculator {
             }
         }
 
-        let baselineCritical = Dictionary(uniqueKeysWithValues: baseline.tasks.compactMap { task -> (Int, ProjectTask)? in
+        let baselineCritical = Dictionary(nonThrowingUniquePairs: baseline.tasks.compactMap { task -> (Int, ProjectTask)? in
             guard task.critical == true else { return nil }
             return (task.uniqueID, task)
         })
-        let currentCritical = Dictionary(uniqueKeysWithValues: current.tasks.compactMap { task -> (Int, ProjectTask)? in
+        let currentCritical = Dictionary(nonThrowingUniquePairs: current.tasks.compactMap { task -> (Int, ProjectTask)? in
             guard task.critical == true else { return nil }
             return (task.uniqueID, task)
         })

@@ -8,7 +8,8 @@ enum PrintManager {
         let hostingView = NSHostingView(rootView: view.frame(width: size.width, height: size.height))
         hostingView.frame = CGRect(origin: .zero, size: size)
         hostingView.appearance = NSAppearance(named: .aqua)
-        hostingView.layoutSubtreeIfNeeded()
+        hostingView.needsLayout = true
+        hostingView.displayIfNeeded()
 
         let printInfo = NSPrintInfo.shared.copy() as! NSPrintInfo
         printInfo.orientation = .landscape

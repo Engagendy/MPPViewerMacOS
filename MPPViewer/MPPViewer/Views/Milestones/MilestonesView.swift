@@ -5,16 +5,11 @@ struct MilestonesView: View {
     let allTasks: [Int: ProjectTask]
     let searchText: String
 
+    @State private var preparedItems: [MilestoneItem]
     @State private var sortOrder = [KeyPathComparator(\MilestoneItem.sortDate, order: .forward)]
 
     private var items: [MilestoneItem] {
-        let searched = searchText.isEmpty ? tasks.filter { $0.isDisplayMilestone } : tasks.filter {
-            $0.isDisplayMilestone &&
-            $0.name?.lowercased().contains(searchText.lowercased()) == true
-        }
-
-        return searched.map { MilestoneItem(task: $0, allTasks: allTasks) }
-            .sorted(using: sortOrder)
+        preparedItems.sorted(using: sortOrder)
     }
 
     private var completedCount: Int {
@@ -31,6 +26,13 @@ struct MilestonesView: View {
 
     private var atRiskCount: Int {
         items.filter { $0.healthLevel == .high || $0.healthLevel == .medium }.count
+    }
+
+    init(tasks: [ProjectTask], allTasks: [Int: ProjectTask], searchText: String) {
+        self.tasks = tasks
+        self.allTasks = allTasks
+        self.searchText = searchText
+        self._preparedItems = State(initialValue: Self.buildItems(tasks: tasks, allTasks: allTasks, searchText: searchText))
     }
 
     var body: some View {
@@ -141,6 +143,22 @@ struct MilestonesView: View {
                 }
             }
         }
+        .onAppear {
+            preparedItems = Self.buildItems(tasks: tasks, allTasks: allTasks, searchText: searchText)
+        }
+        .onChange(of: searchText) { _, newValue in
+            preparedItems = Self.buildItems(tasks: tasks, allTasks: allTasks, searchText: newValue)
+        }
+    }
+
+    private static func buildItems(tasks: [ProjectTask], allTasks: [Int: ProjectTask], searchText: String) -> [MilestoneItem] {
+        let normalizedSearch = searchText.lowercased()
+        let searched = searchText.isEmpty ? tasks.filter { $0.isDisplayMilestone } : tasks.filter {
+            $0.isDisplayMilestone &&
+            $0.name?.lowercased().contains(normalizedSearch) == true
+        }
+
+        return searched.map { MilestoneItem(task: $0, allTasks: allTasks) }
     }
 
     private func statusChip(count: Int, label: String, color: Color) -> some View {

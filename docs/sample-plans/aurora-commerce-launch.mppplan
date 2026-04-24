@@ -6,6 +6,7 @@
       "notes" : "Facilitates kickoff and stakeholder alignment.",
       "resourceID" : 1,
       "taskID" : 2,
+      "uniqueID" : "11517A0D-3F2E-4C52-9E4C-5C42F9E757BC",
       "units" : 100,
       "workSeconds" : 14400
     },
@@ -15,6 +16,7 @@
       "notes" : "Validates existing process and reporting.",
       "resourceID" : 5,
       "taskID" : 3,
+      "uniqueID" : "C2D75CE9-6CCB-4941-8478-350207BC468F",
       "units" : 100,
       "workSeconds" : 43200
     },
@@ -24,6 +26,7 @@
       "notes" : "Steering pack and decision memo.",
       "resourceID" : 1,
       "taskID" : 4,
+      "uniqueID" : "EE5A59F5-71F1-4F84-ABF3-4E9B95CCA68F",
       "units" : 100,
       "workSeconds" : 10800
     },
@@ -33,6 +36,7 @@
       "notes" : "Journey mapping workshops completed.",
       "resourceID" : 2,
       "taskID" : 6,
+      "uniqueID" : "FD1AC202-F279-4266-8003-32450FFA1E0D",
       "units" : 100,
       "workSeconds" : 43200
     },
@@ -43,6 +47,7 @@
       "remainingWorkSeconds" : 25200,
       "resourceID" : 2,
       "taskID" : 7,
+      "uniqueID" : "5063B1D7-20F3-4FF3-9F37-93B05C420090",
       "units" : 100,
       "workSeconds" : 68400
     },
@@ -53,6 +58,7 @@
       "remainingWorkSeconds" : 7200,
       "resourceID" : 1,
       "taskID" : 7,
+      "uniqueID" : "D2B8E9A1-7732-40FA-A4EC-C361C7916FE5",
       "units" : 40,
       "workSeconds" : 25200
     },
@@ -61,6 +67,7 @@
       "notes" : "Design sign-off meeting.",
       "resourceID" : 1,
       "taskID" : 8,
+      "uniqueID" : "DDF8709D-0E6C-46F7-91AF-742A845163DA",
       "units" : 100,
       "workSeconds" : 7200
     },
@@ -72,6 +79,7 @@
       "remainingWorkSeconds" : 7200,
       "resourceID" : 3,
       "taskID" : 10,
+      "uniqueID" : "EDEF362A-4EB9-41DB-943D-EF1CEFFC115A",
       "units" : 100,
       "workSeconds" : 93600
     },
@@ -82,6 +90,7 @@
       "remainingWorkSeconds" : 3600,
       "resourceID" : 1,
       "taskID" : 10,
+      "uniqueID" : "6D93B086-BDDC-401D-8B02-4FE525C57311",
       "units" : 35,
       "workSeconds" : 21600
     },
@@ -93,6 +102,7 @@
       "remainingWorkSeconds" : 43200,
       "resourceID" : 3,
       "taskID" : 11,
+      "uniqueID" : "FBD6B325-0299-4F43-8731-AA3E92417EFE",
       "units" : 100,
       "workSeconds" : 104400
     },
@@ -103,6 +113,7 @@
       "remainingWorkSeconds" : 10800,
       "resourceID" : 2,
       "taskID" : 11,
+      "uniqueID" : "E58C5D7E-2053-437E-AB93-9D7650AC7A5A",
       "units" : 25,
       "workSeconds" : 21600
     },
@@ -113,6 +124,7 @@
       "remainingWorkSeconds" : 43200,
       "resourceID" : 3,
       "taskID" : 12,
+      "uniqueID" : "4C91DE00-0922-4EF2-9983-0A0203EB766E",
       "units" : 90,
       "workSeconds" : 79200
     },
@@ -123,6 +135,7 @@
       "remainingWorkSeconds" : 18000,
       "resourceID" : 5,
       "taskID" : 12,
+      "uniqueID" : "00F268CC-989F-4AB1-8372-86C679CC4B6B",
       "units" : 45,
       "workSeconds" : 28800
     },
@@ -133,6 +146,7 @@
       "remainingWorkSeconds" : 46800,
       "resourceID" : 5,
       "taskID" : 13,
+      "uniqueID" : "04171BAF-264B-41A8-BC2F-9147FC518054",
       "units" : 80,
       "workSeconds" : 72000
     },
@@ -143,6 +157,7 @@
       "remainingWorkSeconds" : 14400,
       "resourceID" : 1,
       "taskID" : 13,
+      "uniqueID" : "CFBCA801-C2A1-4DAA-89F3-A177FB89C958",
       "units" : 30,
       "workSeconds" : 25200
     },
@@ -153,6 +168,7 @@
       "remainingWorkSeconds" : 43200,
       "resourceID" : 3,
       "taskID" : 15,
+      "uniqueID" : "3E3221D9-9885-4115-8D5B-B69040718711",
       "units" : 70,
       "workSeconds" : 57600
     },
@@ -163,6 +179,7 @@
       "remainingWorkSeconds" : 21600,
       "resourceID" : 4,
       "taskID" : 15,
+      "uniqueID" : "9915A09C-532B-4DD9-839E-5A8BE56B263A",
       "units" : 45,
       "workSeconds" : 32400
     },
@@ -171,6 +188,7 @@
       "notes" : "User acceptance walkthrough.",
       "resourceID" : 4,
       "taskID" : 16,
+      "uniqueID" : "E7D1C9AA-DDB7-4961-BD7F-4AEB6D18A7B4",
       "units" : 100,
       "workSeconds" : 43200
     },
@@ -179,6 +197,7 @@
       "notes" : "Executive readiness review.",
       "resourceID" : 1,
       "taskID" : 16,
+      "uniqueID" : "C0C695B4-40CF-4C1C-8C07-9F495E95205A",
       "units" : 35,
       "workSeconds" : 21600
     },
@@ -187,6 +206,7 @@
       "notes" : "Release checklist and cutover planning.",
       "resourceID" : 1,
       "taskID" : 17,
+      "uniqueID" : "32316DC3-C172-45C4-B130-16C837EE06DB",
       "units" : 40,
       "workSeconds" : 28800
     },
@@ -195,6 +215,7 @@
       "notes" : "Launch readiness validation.",
       "resourceID" : 4,
       "taskID" : 17,
+      "uniqueID" : "FF59C102-07BF-49C0-AE57-D7C7FF2A5B38",
       "units" : 30,
       "workSeconds" : 18000
     },
@@ -203,9 +224,17 @@
       "notes" : "Go-live command center.",
       "resourceID" : 1,
       "taskID" : 18,
+      "uniqueID" : "C013093E-5FCD-435B-AF3A-302D491710A7",
       "units" : 100,
       "workSeconds" : 14400
     }
+  ],
+  "boardColumns" : [
+    "Backlog",
+    "Ready",
+    "In Progress",
+    "Review",
+    "Done"
   ],
   "calendars" : [
     {
@@ -237,7 +266,6 @@
         "type" : "working"
       },
       "name" : "Standard",
-      "parentUniqueID" : null,
       "personal" : false,
       "saturday" : {
         "from" : "",
@@ -267,7 +295,9 @@
       }
     },
     {
-      "exceptions" : [],
+      "exceptions" : [
+
+      ],
       "friday" : {
         "from" : "",
         "to" : "",
@@ -280,7 +310,6 @@
         "type" : "working"
       },
       "name" : "Creative Studio",
-      "parentUniqueID" : null,
       "personal" : false,
       "saturday" : {
         "from" : "",
@@ -310,7 +339,9 @@
       }
     },
     {
-      "exceptions" : [],
+      "exceptions" : [
+
+      ],
       "friday" : {
         "from" : "08:00",
         "to" : "17:00",
@@ -323,7 +354,6 @@
         "type" : "working"
       },
       "name" : "Release Window",
-      "parentUniqueID" : null,
       "personal" : false,
       "saturday" : {
         "from" : "09:00",
@@ -356,6 +386,7 @@
   "company" : "Aurora Commerce",
   "defaultCalendarUniqueID" : 1,
   "manager" : "Maya Patel",
+  "portfolioID" : "8416094B-95BD-4485-B04E-8F089646A3CE",
   "resources" : [
     {
       "accrueAt" : "start",
@@ -371,7 +402,8 @@
       "notes" : "Program manager for rollout and stakeholder control.",
       "overtimeRate" : 135,
       "standardRate" : 95,
-      "type" : "Work"
+      "type" : "Work",
+      "uniqueID" : "13CAD4B7-0288-41C6-BD82-B8805A60224D"
     },
     {
       "accrueAt" : "prorated",
@@ -387,7 +419,8 @@
       "notes" : "Lead product designer for flows and wireframes.",
       "overtimeRate" : 160,
       "standardRate" : 110,
-      "type" : "Work"
+      "type" : "Work",
+      "uniqueID" : "1DD2D0E1-6F50-4C72-B068-6AA27C8E26EF"
     },
     {
       "accrueAt" : "prorated",
@@ -403,7 +436,8 @@
       "notes" : "macOS lead engineer for planning workspace and Gantt.",
       "overtimeRate" : 220,
       "standardRate" : 145,
-      "type" : "Work"
+      "type" : "Work",
+      "uniqueID" : "4B68DEB5-5EAC-475C-AFCB-F63F61D7892F"
     },
     {
       "accrueAt" : "end",
@@ -419,7 +453,8 @@
       "notes" : "QA lead for performance, UAT, and release validation.",
       "overtimeRate" : 130,
       "standardRate" : 90,
-      "type" : "Work"
+      "type" : "Work",
+      "uniqueID" : "AA1DC235-9326-422A-B3E2-C45C0976DDFA"
     },
     {
       "accrueAt" : "prorated",
@@ -435,24 +470,24 @@
       "notes" : "Controls analyst for baselines, EVM, and reporting.",
       "overtimeRate" : 180,
       "standardRate" : 125,
-      "type" : "Work"
+      "type" : "Work",
+      "uniqueID" : "6B621EDA-E365-4FC9-994E-23B434408EB6"
     }
   ],
+  "sprints" : [
+
+  ],
   "statusDate" : "2026-06-24T00:00:00Z",
+  "statusSnapshots" : [
+
+  ],
   "tasks" : [
     {
-      "actualCost" : null,
-      "actualFinishDate" : null,
-      "actualStartDate" : null,
-      "baselineCost" : null,
-      "baselineDurationDays" : null,
-      "baselineFinishDate" : null,
-      "baselineStartDate" : null,
-      "calendarUniqueID" : null,
-      "constraintDate" : null,
-      "constraintType" : null,
+      "agileType" : "Story",
+      "boardStatus" : "Backlog",
       "durationDays" : 9,
-      "finishDate" : "2026-05-14T00:00:00Z",
+      "epicName" : "",
+      "finishDate" : "2026-05-13T20:00:00Z",
       "fixedCost" : 0,
       "id" : 1,
       "isActive" : true,
@@ -462,23 +497,29 @@
       "notes" : "Early framing, audit, and approval.",
       "outlineLevel" : 1,
       "percentComplete" : 100,
-      "predecessorTaskIDs" : [],
+      "predecessorTaskIDs" : [
+
+      ],
       "priority" : 650,
-      "startDate" : "2026-05-04T00:00:00Z"
+      "startDate" : "2026-05-03T20:00:00Z",
+      "tags" : [
+
+      ],
+      "uniqueID" : "42DCDCBC-0080-4882-8279-088A485760AB"
     },
     {
-      "actualCost" : null,
-      "actualFinishDate" : "2026-05-06T00:00:00Z",
-      "actualStartDate" : "2026-05-04T00:00:00Z",
+      "actualFinishDate" : "2026-05-05T20:00:00Z",
+      "actualStartDate" : "2026-05-03T20:00:00Z",
+      "agileType" : "Story",
       "baselineCost" : 500,
       "baselineDurationDays" : 3,
-      "baselineFinishDate" : "2026-05-06T00:00:00Z",
-      "baselineStartDate" : "2026-05-04T00:00:00Z",
+      "baselineFinishDate" : "2026-05-05T20:00:00Z",
+      "baselineStartDate" : "2026-05-03T20:00:00Z",
+      "boardStatus" : "Ready",
       "calendarUniqueID" : 1,
-      "constraintDate" : null,
-      "constraintType" : null,
       "durationDays" : 3,
-      "finishDate" : "2026-05-06T00:00:00Z",
+      "epicName" : "",
+      "finishDate" : "2026-05-05T20:00:00Z",
       "fixedCost" : 250,
       "id" : 2,
       "isActive" : true,
@@ -488,23 +529,29 @@
       "notes" : "Executive kickoff, decision log, and scope framing.",
       "outlineLevel" : 2,
       "percentComplete" : 100,
-      "predecessorTaskIDs" : [],
+      "predecessorTaskIDs" : [
+
+      ],
       "priority" : 600,
-      "startDate" : "2026-05-04T00:00:00Z"
+      "startDate" : "2026-05-03T20:00:00Z",
+      "tags" : [
+
+      ],
+      "uniqueID" : "96DEDED1-6963-458F-893D-E5951F59B8B9"
     },
     {
-      "actualCost" : null,
-      "actualFinishDate" : "2026-05-13T00:00:00Z",
-      "actualStartDate" : "2026-05-07T00:00:00Z",
+      "actualFinishDate" : "2026-05-12T20:00:00Z",
+      "actualStartDate" : "2026-05-06T20:00:00Z",
+      "agileType" : "Story",
       "baselineCost" : 1800,
       "baselineDurationDays" : 5,
-      "baselineFinishDate" : "2026-05-13T00:00:00Z",
-      "baselineStartDate" : "2026-05-07T00:00:00Z",
+      "baselineFinishDate" : "2026-05-12T20:00:00Z",
+      "baselineStartDate" : "2026-05-06T20:00:00Z",
+      "boardStatus" : "Backlog",
       "calendarUniqueID" : 1,
-      "constraintDate" : null,
-      "constraintType" : null,
       "durationDays" : 5,
-      "finishDate" : "2026-05-13T00:00:00Z",
+      "epicName" : "",
+      "finishDate" : "2026-05-12T20:00:00Z",
       "fixedCost" : 0,
       "id" : 3,
       "isActive" : true,
@@ -514,23 +561,32 @@
       "notes" : "Baseline current workflows, controls, and pain points.",
       "outlineLevel" : 2,
       "percentComplete" : 100,
-      "predecessorTaskIDs" : [ 2 ],
+      "predecessorTaskIDs" : [
+        2
+      ],
       "priority" : 650,
-      "startDate" : "2026-05-07T00:00:00Z"
+      "startDate" : "2026-05-06T20:00:00Z",
+      "tags" : [
+
+      ],
+      "uniqueID" : "07C9DC17-130E-4792-A73B-4B4BBA8382D4"
     },
     {
       "actualCost" : 1950,
-      "actualFinishDate" : "2026-05-14T00:00:00Z",
-      "actualStartDate" : "2026-05-14T00:00:00Z",
+      "actualFinishDate" : "2026-05-13T20:00:00Z",
+      "actualStartDate" : "2026-05-13T20:00:00Z",
+      "agileType" : "Story",
       "baselineCost" : 1800,
       "baselineDurationDays" : 1,
-      "baselineFinishDate" : "2026-05-14T00:00:00Z",
-      "baselineStartDate" : "2026-05-14T00:00:00Z",
+      "baselineFinishDate" : "2026-05-13T20:00:00Z",
+      "baselineStartDate" : "2026-05-13T20:00:00Z",
+      "boardStatus" : "Ready",
       "calendarUniqueID" : 1,
-      "constraintDate" : "2026-05-14T00:00:00Z",
+      "constraintDate" : "2026-05-13T20:00:00Z",
       "constraintType" : "MSO",
       "durationDays" : 1,
-      "finishDate" : "2026-05-14T00:00:00Z",
+      "epicName" : "",
+      "finishDate" : "2026-05-13T20:00:00Z",
       "fixedCost" : 1500,
       "id" : 4,
       "isActive" : true,
@@ -540,23 +596,47 @@
       "notes" : "Formal go-ahead to continue into design and build.",
       "outlineLevel" : 2,
       "percentComplete" : 100,
-      "predecessorTaskIDs" : [ 3 ],
+      "predecessorTaskIDs" : [
+        3
+      ],
       "priority" : 700,
-      "startDate" : "2026-05-14T00:00:00Z"
+      "startDate" : "2026-05-13T20:00:00Z",
+      "tags" : [
+
+      ],
+      "uniqueID" : "46169E5E-8E2D-4DED-940C-CDD6DF7DF3EC"
     },
     {
-      "actualCost" : null,
-      "actualFinishDate" : null,
-      "actualStartDate" : null,
-      "baselineCost" : null,
-      "baselineDurationDays" : null,
-      "baselineFinishDate" : null,
-      "baselineStartDate" : null,
-      "calendarUniqueID" : null,
-      "constraintDate" : null,
-      "constraintType" : null,
+      "agileType" : "Task",
+      "boardStatus" : "Ready",
+      "durationDays" : 1,
+      "epicName" : "",
+      "finishDate" : "2026-05-13T20:00:00Z",
+      "fixedCost" : 0,
+      "id" : 19,
+      "isActive" : true,
+      "isMilestone" : false,
+      "manuallyScheduled" : false,
+      "name" : "Do the next ",
+      "notes" : "",
+      "outlineLevel" : 3,
+      "percentComplete" : 0,
+      "predecessorTaskIDs" : [
+
+      ],
+      "priority" : 700,
+      "startDate" : "2026-05-13T20:00:00Z",
+      "tags" : [
+
+      ],
+      "uniqueID" : "C5A4F171-926A-4249-89AB-1CB6870B2982"
+    },
+    {
+      "agileType" : "Story",
+      "boardStatus" : "Backlog",
       "durationDays" : 16,
-      "finishDate" : "2026-06-06T00:00:00Z",
+      "epicName" : "",
+      "finishDate" : "2026-06-05T20:00:00Z",
       "fixedCost" : 0,
       "id" : 5,
       "isActive" : true,
@@ -566,23 +646,29 @@
       "notes" : "User flow, wireframes, and design sign-off.",
       "outlineLevel" : 1,
       "percentComplete" : 55,
-      "predecessorTaskIDs" : [ 4 ],
+      "predecessorTaskIDs" : [
+        4
+      ],
       "priority" : 620,
-      "startDate" : "2026-05-15T00:00:00Z"
+      "startDate" : "2026-05-14T20:00:00Z",
+      "tags" : [
+
+      ],
+      "uniqueID" : "1F2571CF-74DA-4FBC-AC27-B33D9E2E7ADD"
     },
     {
-      "actualCost" : null,
-      "actualFinishDate" : "2026-05-21T00:00:00Z",
-      "actualStartDate" : "2026-05-15T00:00:00Z",
+      "actualFinishDate" : "2026-05-20T20:00:00Z",
+      "actualStartDate" : "2026-05-14T20:00:00Z",
+      "agileType" : "Story",
       "baselineCost" : 5500,
       "baselineDurationDays" : 5,
-      "baselineFinishDate" : "2026-05-21T00:00:00Z",
-      "baselineStartDate" : "2026-05-15T00:00:00Z",
+      "baselineFinishDate" : "2026-05-20T20:00:00Z",
+      "baselineStartDate" : "2026-05-14T20:00:00Z",
+      "boardStatus" : "Backlog",
       "calendarUniqueID" : 2,
-      "constraintDate" : null,
-      "constraintType" : null,
       "durationDays" : 5,
-      "finishDate" : "2026-05-21T00:00:00Z",
+      "epicName" : "",
+      "finishDate" : "2026-05-20T20:00:00Z",
       "fixedCost" : 1200,
       "id" : 6,
       "isActive" : true,
@@ -592,23 +678,29 @@
       "notes" : "Map critical user scenarios and key decision points.",
       "outlineLevel" : 2,
       "percentComplete" : 100,
-      "predecessorTaskIDs" : [ 4 ],
+      "predecessorTaskIDs" : [
+        4
+      ],
       "priority" : 580,
-      "startDate" : "2026-05-15T00:00:00Z"
+      "startDate" : "2026-05-14T20:00:00Z",
+      "tags" : [
+
+      ],
+      "uniqueID" : "61380AD7-F147-437B-88B8-CFFB7E5D92F7"
     },
     {
       "actualCost" : 9800,
-      "actualFinishDate" : null,
-      "actualStartDate" : "2026-05-22T00:00:00Z",
+      "actualStartDate" : "2026-05-21T20:00:00Z",
+      "agileType" : "Story",
       "baselineCost" : 8200,
       "baselineDurationDays" : 8,
-      "baselineFinishDate" : "2026-05-31T00:00:00Z",
-      "baselineStartDate" : "2026-05-22T00:00:00Z",
+      "baselineFinishDate" : "2026-05-30T20:00:00Z",
+      "baselineStartDate" : "2026-05-21T20:00:00Z",
+      "boardStatus" : "Backlog",
       "calendarUniqueID" : 2,
-      "constraintDate" : null,
-      "constraintType" : null,
       "durationDays" : 8,
-      "finishDate" : "2026-06-02T00:00:00Z",
+      "epicName" : "",
+      "finishDate" : "2026-06-01T20:00:00Z",
       "fixedCost" : 1500,
       "id" : 7,
       "isActive" : true,
@@ -618,23 +710,29 @@
       "notes" : "High-fidelity wireframes with content states and empty cases.",
       "outlineLevel" : 2,
       "percentComplete" : 75,
-      "predecessorTaskIDs" : [ 6 ],
+      "predecessorTaskIDs" : [
+        6
+      ],
       "priority" : 640,
-      "startDate" : "2026-05-22T00:00:00Z"
+      "startDate" : "2026-05-21T20:00:00Z",
+      "tags" : [
+
+      ],
+      "uniqueID" : "3E72742A-CEFF-48EF-A386-5002B036C0D1"
     },
     {
-      "actualCost" : null,
-      "actualFinishDate" : null,
-      "actualStartDate" : null,
+      "agileType" : "Story",
       "baselineCost" : 1600,
       "baselineDurationDays" : 1,
-      "baselineFinishDate" : "2026-06-03T00:00:00Z",
-      "baselineStartDate" : "2026-06-03T00:00:00Z",
+      "baselineFinishDate" : "2026-06-02T20:00:00Z",
+      "baselineStartDate" : "2026-06-02T20:00:00Z",
+      "boardStatus" : "Backlog",
       "calendarUniqueID" : 1,
-      "constraintDate" : "2026-06-05T00:00:00Z",
+      "constraintDate" : "2026-06-04T20:00:00Z",
       "constraintType" : "FNET",
       "durationDays" : 1,
-      "finishDate" : "2026-06-05T00:00:00Z",
+      "epicName" : "",
+      "finishDate" : "2026-06-04T20:00:00Z",
       "fixedCost" : 1200,
       "id" : 8,
       "isActive" : true,
@@ -644,23 +742,22 @@
       "notes" : "Approval checkpoint before engineering handoff.",
       "outlineLevel" : 2,
       "percentComplete" : 0,
-      "predecessorTaskIDs" : [ 7 ],
+      "predecessorTaskIDs" : [
+        7
+      ],
       "priority" : 700,
-      "startDate" : "2026-06-05T00:00:00Z"
+      "startDate" : "2026-06-04T20:00:00Z",
+      "tags" : [
+
+      ],
+      "uniqueID" : "9026835C-4B34-406F-98CB-E512C2B921DB"
     },
     {
-      "actualCost" : null,
-      "actualFinishDate" : null,
-      "actualStartDate" : null,
-      "baselineCost" : null,
-      "baselineDurationDays" : null,
-      "baselineFinishDate" : null,
-      "baselineStartDate" : null,
-      "calendarUniqueID" : null,
-      "constraintDate" : null,
-      "constraintType" : null,
+      "agileType" : "Story",
+      "boardStatus" : "Backlog",
       "durationDays" : 31,
-      "finishDate" : "2026-07-17T00:00:00Z",
+      "epicName" : "",
+      "finishDate" : "2026-07-16T20:00:00Z",
       "fixedCost" : 0,
       "id" : 9,
       "isActive" : true,
@@ -670,23 +767,28 @@
       "notes" : "Native planning experience, imports, and finance controls.",
       "outlineLevel" : 1,
       "percentComplete" : 42,
-      "predecessorTaskIDs" : [ 8 ],
+      "predecessorTaskIDs" : [
+        8
+      ],
       "priority" : 680,
-      "startDate" : "2026-06-08T00:00:00Z"
+      "startDate" : "2026-06-07T20:00:00Z",
+      "tags" : [
+
+      ],
+      "uniqueID" : "5CBB8856-7E82-4634-9CB3-87E7C2F46376"
     },
     {
-      "actualCost" : null,
-      "actualFinishDate" : null,
-      "actualStartDate" : "2026-06-08T00:00:00Z",
+      "actualStartDate" : "2026-06-07T20:00:00Z",
+      "agileType" : "Story",
       "baselineCost" : 15500,
       "baselineDurationDays" : 9,
-      "baselineFinishDate" : "2026-06-18T00:00:00Z",
-      "baselineStartDate" : "2026-06-08T00:00:00Z",
+      "baselineFinishDate" : "2026-06-17T20:00:00Z",
+      "baselineStartDate" : "2026-06-07T20:00:00Z",
+      "boardStatus" : "Backlog",
       "calendarUniqueID" : 1,
-      "constraintDate" : null,
-      "constraintType" : null,
       "durationDays" : 10,
-      "finishDate" : "2026-06-19T00:00:00Z",
+      "epicName" : "",
+      "finishDate" : "2026-06-18T20:00:00Z",
       "fixedCost" : 0,
       "id" : 10,
       "isActive" : true,
@@ -696,23 +798,28 @@
       "notes" : "Document model, planner shell, and scheduling core.",
       "outlineLevel" : 2,
       "percentComplete" : 90,
-      "predecessorTaskIDs" : [ 8 ],
+      "predecessorTaskIDs" : [
+        8
+      ],
       "priority" : 690,
-      "startDate" : "2026-06-08T00:00:00Z"
+      "startDate" : "2026-06-07T20:00:00Z",
+      "tags" : [
+
+      ],
+      "uniqueID" : "1926B1A9-F8E1-4CDC-B076-EA6B1ED10DF2"
     },
     {
-      "actualCost" : null,
-      "actualFinishDate" : null,
-      "actualStartDate" : "2026-06-22T00:00:00Z",
+      "actualStartDate" : "2026-06-21T20:00:00Z",
+      "agileType" : "Story",
       "baselineCost" : 18500,
       "baselineDurationDays" : 11,
-      "baselineFinishDate" : "2026-07-06T00:00:00Z",
-      "baselineStartDate" : "2026-06-22T00:00:00Z",
+      "baselineFinishDate" : "2026-07-05T20:00:00Z",
+      "baselineStartDate" : "2026-06-21T20:00:00Z",
+      "boardStatus" : "Backlog",
       "calendarUniqueID" : 1,
-      "constraintDate" : null,
-      "constraintType" : null,
       "durationDays" : 13,
-      "finishDate" : "2026-07-08T00:00:00Z",
+      "epicName" : "",
+      "finishDate" : "2026-07-07T20:00:00Z",
       "fixedCost" : 0,
       "id" : 11,
       "isActive" : true,
@@ -722,23 +829,28 @@
       "notes" : "Direct manipulation, linking, and docked inspector.",
       "outlineLevel" : 2,
       "percentComplete" : 60,
-      "predecessorTaskIDs" : [ 10 ],
+      "predecessorTaskIDs" : [
+        10
+      ],
       "priority" : 700,
-      "startDate" : "2026-06-22T00:00:00Z"
+      "startDate" : "2026-06-21T20:00:00Z",
+      "tags" : [
+
+      ],
+      "uniqueID" : "0523EED3-1A70-4E1E-BCFA-E8198E5C7169"
     },
     {
-      "actualCost" : null,
-      "actualFinishDate" : null,
-      "actualStartDate" : "2026-07-01T00:00:00Z",
+      "actualStartDate" : "2026-06-30T20:00:00Z",
+      "agileType" : "Story",
       "baselineCost" : 14200,
       "baselineDurationDays" : 8,
-      "baselineFinishDate" : "2026-07-10T00:00:00Z",
-      "baselineStartDate" : "2026-07-01T00:00:00Z",
+      "baselineFinishDate" : "2026-07-09T20:00:00Z",
+      "baselineStartDate" : "2026-06-30T20:00:00Z",
+      "boardStatus" : "Backlog",
       "calendarUniqueID" : 1,
-      "constraintDate" : null,
-      "constraintType" : null,
       "durationDays" : 10,
-      "finishDate" : "2026-07-14T00:00:00Z",
+      "epicName" : "",
+      "finishDate" : "2026-07-13T20:00:00Z",
       "fixedCost" : 0,
       "id" : 12,
       "isActive" : true,
@@ -748,23 +860,29 @@
       "notes" : "Mapped import sessions, templates, and reports.",
       "outlineLevel" : 2,
       "percentComplete" : 45,
-      "predecessorTaskIDs" : [ 10 ],
+      "predecessorTaskIDs" : [
+        10
+      ],
       "priority" : 675,
-      "startDate" : "2026-07-01T00:00:00Z"
+      "startDate" : "2026-06-30T20:00:00Z",
+      "tags" : [
+
+      ],
+      "uniqueID" : "1B492A3C-DAF4-47C7-8265-8778C069C680"
     },
     {
       "actualCost" : 11250,
-      "actualFinishDate" : null,
-      "actualStartDate" : "2026-07-06T00:00:00Z",
+      "actualStartDate" : "2026-07-05T20:00:00Z",
+      "agileType" : "Story",
       "baselineCost" : 12800,
       "baselineDurationDays" : 8,
-      "baselineFinishDate" : "2026-07-15T00:00:00Z",
-      "baselineStartDate" : "2026-07-06T00:00:00Z",
+      "baselineFinishDate" : "2026-07-14T20:00:00Z",
+      "baselineStartDate" : "2026-07-05T20:00:00Z",
+      "boardStatus" : "Backlog",
       "calendarUniqueID" : 1,
-      "constraintDate" : null,
-      "constraintType" : null,
       "durationDays" : 10,
-      "finishDate" : "2026-07-17T00:00:00Z",
+      "epicName" : "",
+      "finishDate" : "2026-07-16T20:00:00Z",
       "fixedCost" : 2500,
       "id" : 13,
       "isActive" : true,
@@ -774,23 +892,23 @@
       "notes" : "Status center, earned value analysis, and cost authoring.",
       "outlineLevel" : 2,
       "percentComplete" : 35,
-      "predecessorTaskIDs" : [ 11, 12 ],
+      "predecessorTaskIDs" : [
+        11,
+        12
+      ],
       "priority" : 680,
-      "startDate" : "2026-07-06T00:00:00Z"
+      "startDate" : "2026-07-05T20:00:00Z",
+      "tags" : [
+
+      ],
+      "uniqueID" : "5538605F-6456-4C9C-9CD8-7E3727AFDB24"
     },
     {
-      "actualCost" : null,
-      "actualFinishDate" : null,
-      "actualStartDate" : null,
-      "baselineCost" : null,
-      "baselineDurationDays" : null,
-      "baselineFinishDate" : null,
-      "baselineStartDate" : null,
-      "calendarUniqueID" : null,
-      "constraintDate" : null,
-      "constraintType" : null,
+      "agileType" : "Story",
+      "boardStatus" : "Backlog",
       "durationDays" : 19,
-      "finishDate" : "2026-08-13T00:00:00Z",
+      "epicName" : "",
+      "finishDate" : "2026-08-12T20:00:00Z",
       "fixedCost" : 0,
       "id" : 14,
       "isActive" : true,
@@ -800,23 +918,28 @@
       "notes" : "Performance, UAT, and launch execution.",
       "outlineLevel" : 1,
       "percentComplete" : 10,
-      "predecessorTaskIDs" : [ 13 ],
+      "predecessorTaskIDs" : [
+        13
+      ],
       "priority" : 690,
-      "startDate" : "2026-07-20T00:00:00Z"
+      "startDate" : "2026-07-19T20:00:00Z",
+      "tags" : [
+
+      ],
+      "uniqueID" : "FCBA04B9-BDB8-4DBD-BD05-5D693470E8BC"
     },
     {
-      "actualCost" : null,
-      "actualFinishDate" : null,
-      "actualStartDate" : "2026-07-20T00:00:00Z",
+      "actualStartDate" : "2026-07-19T20:00:00Z",
+      "agileType" : "Story",
       "baselineCost" : 9800,
       "baselineDurationDays" : 7,
-      "baselineFinishDate" : "2026-07-27T00:00:00Z",
-      "baselineStartDate" : "2026-07-20T00:00:00Z",
+      "baselineFinishDate" : "2026-07-26T20:00:00Z",
+      "baselineStartDate" : "2026-07-19T20:00:00Z",
+      "boardStatus" : "Backlog",
       "calendarUniqueID" : 3,
-      "constraintDate" : null,
-      "constraintType" : null,
       "durationDays" : 7,
-      "finishDate" : "2026-07-28T00:00:00Z",
+      "epicName" : "",
+      "finishDate" : "2026-07-27T20:00:00Z",
       "fixedCost" : 0,
       "id" : 15,
       "isActive" : true,
@@ -826,23 +949,27 @@
       "notes" : "Measure and remove lag across planner and Gantt.",
       "outlineLevel" : 2,
       "percentComplete" : 20,
-      "predecessorTaskIDs" : [ 11 ],
+      "predecessorTaskIDs" : [
+        11
+      ],
       "priority" : 700,
-      "startDate" : "2026-07-20T00:00:00Z"
+      "startDate" : "2026-07-19T20:00:00Z",
+      "tags" : [
+
+      ],
+      "uniqueID" : "86410BCC-7B65-4690-9394-E7D229D8F3CF"
     },
     {
-      "actualCost" : null,
-      "actualFinishDate" : null,
-      "actualStartDate" : null,
+      "agileType" : "Story",
       "baselineCost" : 7600,
       "baselineDurationDays" : 7,
-      "baselineFinishDate" : "2026-08-04T00:00:00Z",
-      "baselineStartDate" : "2026-07-29T00:00:00Z",
+      "baselineFinishDate" : "2026-08-03T20:00:00Z",
+      "baselineStartDate" : "2026-07-28T20:00:00Z",
+      "boardStatus" : "Backlog",
       "calendarUniqueID" : 3,
-      "constraintDate" : null,
-      "constraintType" : null,
       "durationDays" : 7,
-      "finishDate" : "2026-08-06T00:00:00Z",
+      "epicName" : "",
+      "finishDate" : "2026-08-05T20:00:00Z",
       "fixedCost" : 0,
       "id" : 16,
       "isActive" : true,
@@ -852,23 +979,28 @@
       "notes" : "Executive walkthrough and end-user acceptance sign-off.",
       "outlineLevel" : 2,
       "percentComplete" : 0,
-      "predecessorTaskIDs" : [ 13, 15 ],
+      "predecessorTaskIDs" : [
+        13,
+        15
+      ],
       "priority" : 660,
-      "startDate" : "2026-07-29T00:00:00Z"
+      "startDate" : "2026-07-28T20:00:00Z",
+      "tags" : [
+
+      ],
+      "uniqueID" : "B02B91BB-7B84-4414-BC6B-2B66050985C3"
     },
     {
-      "actualCost" : null,
-      "actualFinishDate" : null,
-      "actualStartDate" : null,
+      "agileType" : "Story",
       "baselineCost" : 5200,
       "baselineDurationDays" : 4,
-      "baselineFinishDate" : "2026-08-10T00:00:00Z",
-      "baselineStartDate" : "2026-08-07T00:00:00Z",
+      "baselineFinishDate" : "2026-08-09T20:00:00Z",
+      "baselineStartDate" : "2026-08-06T20:00:00Z",
+      "boardStatus" : "Backlog",
       "calendarUniqueID" : 3,
-      "constraintDate" : null,
-      "constraintType" : null,
       "durationDays" : 4,
-      "finishDate" : "2026-08-12T00:00:00Z",
+      "epicName" : "",
+      "finishDate" : "2026-08-11T20:00:00Z",
       "fixedCost" : 900,
       "id" : 17,
       "isActive" : true,
@@ -878,23 +1010,29 @@
       "notes" : "Final cutover checklist and communications.",
       "outlineLevel" : 2,
       "percentComplete" : 0,
-      "predecessorTaskIDs" : [ 16 ],
+      "predecessorTaskIDs" : [
+        16
+      ],
       "priority" : 690,
-      "startDate" : "2026-08-07T00:00:00Z"
+      "startDate" : "2026-08-06T20:00:00Z",
+      "tags" : [
+
+      ],
+      "uniqueID" : "86C37E49-5D75-4956-A7B2-C948A1ABEC2A"
     },
     {
-      "actualCost" : null,
-      "actualFinishDate" : null,
-      "actualStartDate" : null,
+      "agileType" : "Story",
       "baselineCost" : 2400,
       "baselineDurationDays" : 1,
-      "baselineFinishDate" : "2026-08-13T00:00:00Z",
-      "baselineStartDate" : "2026-08-13T00:00:00Z",
+      "baselineFinishDate" : "2026-08-12T20:00:00Z",
+      "baselineStartDate" : "2026-08-12T20:00:00Z",
+      "boardStatus" : "Backlog",
       "calendarUniqueID" : 3,
-      "constraintDate" : "2026-08-13T00:00:00Z",
+      "constraintDate" : "2026-08-12T20:00:00Z",
       "constraintType" : "MSO",
       "durationDays" : 1,
-      "finishDate" : "2026-08-13T00:00:00Z",
+      "epicName" : "",
+      "finishDate" : "2026-08-12T20:00:00Z",
       "fixedCost" : 1800,
       "id" : 18,
       "isActive" : true,
@@ -904,10 +1042,151 @@
       "notes" : "Production launch and command-center support.",
       "outlineLevel" : 2,
       "percentComplete" : 0,
-      "predecessorTaskIDs" : [ 17 ],
+      "predecessorTaskIDs" : [
+        17
+      ],
       "priority" : 750,
-      "startDate" : "2026-08-13T00:00:00Z"
+      "startDate" : "2026-08-12T20:00:00Z",
+      "tags" : [
+
+      ],
+      "uniqueID" : "BF9E8D9F-84E0-44A3-8CAD-8E67648AAD5F"
     }
   ],
-  "title" : "Aurora Commerce Launch Workspace"
+  "title" : "Aurora Commerce Launch Workspace",
+  "typeWorkflowOverrides" : [
+    {
+      "columns" : [
+        {
+          "allowedTransitions" : [
+            "Ready"
+          ],
+          "id" : "FAD47B24-CDB3-496E-AA58-20AE173EAD36",
+          "name" : "Backlog"
+        },
+        {
+          "allowedTransitions" : [
+            "Backlog",
+            "In Progress"
+          ],
+          "id" : "5359FE82-A096-4321-97AB-D92C3B22B00D",
+          "name" : "Ready",
+          "wipLimit" : 12
+        },
+        {
+          "allowedTransitions" : [
+            "Ready"
+          ],
+          "id" : "92FD5624-1F73-47AA-A685-B8CC6D64157C",
+          "name" : "In Progress",
+          "wipLimit" : 8
+        },
+        {
+          "allowedTransitions" : [
+
+          ],
+          "id" : "ABA601A3-A1C9-4BF8-B2BC-3885AF462AB2",
+          "name" : "Review",
+          "wipLimit" : 6
+        },
+        {
+          "allowedTransitions" : [
+
+          ],
+          "id" : "EC850EBC-BCB9-427A-ADA3-9404D021F4EF",
+          "name" : "Done"
+        }
+      ],
+      "id" : "AFB806C4-6475-44FE-B237-A16CF889F7F7",
+      "itemType" : "Bug"
+    },
+    {
+      "columns" : [
+        {
+          "allowedTransitions" : [
+            "Ready"
+          ],
+          "id" : "E07EF6D3-FEAA-49D4-9EB7-75022BB5AC26",
+          "name" : "Backlog"
+        },
+        {
+          "allowedTransitions" : [
+            "Backlog",
+            "Done"
+          ],
+          "id" : "5467ACAA-BB34-4E67-B653-C45FBD3C4579",
+          "name" : "Ready",
+          "wipLimit" : 12
+        },
+        {
+          "allowedTransitions" : [
+
+          ],
+          "id" : "EF744845-69D6-4697-AA63-F43B5ED3284A",
+          "name" : "In Progress",
+          "wipLimit" : 8
+        },
+        {
+          "allowedTransitions" : [
+
+          ],
+          "id" : "0F5D88C2-76BE-4EFE-BB7C-189908B91805",
+          "name" : "Review",
+          "wipLimit" : 6
+        },
+        {
+          "allowedTransitions" : [
+            "Ready"
+          ],
+          "id" : "0EFCA665-76CA-447B-8382-D9DCA795F652",
+          "name" : "Done"
+        }
+      ],
+      "id" : "318F1247-6FFC-41F8-906F-EB8EADA575CE",
+      "itemType" : "Milestone"
+    }
+  ],
+  "workflowColumns" : [
+    {
+      "allowedTransitions" : [
+        "Ready"
+      ],
+      "id" : "6A282982-A1A6-49B1-9B67-E430C739807A",
+      "name" : "Backlog"
+    },
+    {
+      "allowedTransitions" : [
+        "Backlog",
+        "In Progress"
+      ],
+      "id" : "329CF545-C658-4292-9C52-39193132DFEC",
+      "name" : "Ready",
+      "wipLimit" : 12
+    },
+    {
+      "allowedTransitions" : [
+        "Ready",
+        "Review"
+      ],
+      "id" : "CE0AD9B1-5A7A-4FD9-9706-441380FDF125",
+      "name" : "In Progress",
+      "wipLimit" : 8
+    },
+    {
+      "allowedTransitions" : [
+        "In Progress",
+        "Done"
+      ],
+      "id" : "22582D2D-8B33-4816-BE2A-067D680A079D",
+      "name" : "Review",
+      "wipLimit" : 6
+    },
+    {
+      "allowedTransitions" : [
+        "Review"
+      ],
+      "id" : "1B8F2B81-480B-4444-9216-CD9FEA83FCAA",
+      "name" : "Done"
+    }
+  ]
 }
