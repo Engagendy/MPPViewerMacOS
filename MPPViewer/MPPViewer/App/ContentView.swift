@@ -3102,36 +3102,50 @@ struct ContentView: View {
     }
 
     private var searchSuggestionsConfiguredView: some View {
-        toolbarConfiguredView
-        .searchSuggestions {
-            ForEach(searchSuggestionTasks) { task in
-                Button {
-                    selectedNav = .tasks
-                    navigateToTaskID = task.uniqueID
-                    searchText = ""
-                } label: {
-                    HStack {
-                        if task.milestone == true {
-                            Image(systemName: "diamond.fill")
-                                .font(.caption2)
-                                .foregroundStyle(.orange)
-                        } else if task.summary == true {
-                            Image(systemName: "folder.fill")
-                                .font(.caption2)
-                                .foregroundStyle(.blue)
-                        }
-                        VStack(alignment: .leading) {
-                            Text(task.displayName)
-                                .font(.caption)
-                            if let wbs = task.wbs {
-                                Text(wbs)
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
+        let baseView = toolbarConfiguredView
+        return baseView.searchSuggestions {
+            searchSuggestionsMenuContent
+        }
+    }
+
+    @ViewBuilder
+    private var searchSuggestionsMenuContent: some View {
+        ForEach(searchSuggestionTasks) { task in
+            searchSuggestionButton(for: task)
+        }
+    }
+
+    private func searchSuggestionButton(for task: ProjectTask) -> some View {
+        Button {
+            selectedNav = .tasks
+            navigateToTaskID = task.uniqueID
+            searchText = ""
+        } label: {
+            HStack {
+                searchSuggestionIcon(for: task)
+                VStack(alignment: .leading) {
+                    Text(task.displayName)
+                        .font(.caption)
+                    if let wbs = task.wbs {
+                        Text(wbs)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
                     }
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func searchSuggestionIcon(for task: ProjectTask) -> some View {
+        if task.milestone == true {
+            Image(systemName: "diamond.fill")
+                .font(.caption2)
+                .foregroundStyle(.orange)
+        } else if task.summary == true {
+            Image(systemName: "folder.fill")
+                .font(.caption2)
+                .foregroundStyle(.blue)
         }
     }
 
@@ -11362,7 +11376,7 @@ struct PortfolioDashboardView: View {
     private func searchMatches(_ plan: PortfolioProjectPlan) -> Bool {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !query.isEmpty else { return true }
-        let haystack = [
+        let textFields: [String] = [
             plan.title,
             plan.company,
             plan.manager,
@@ -11374,12 +11388,17 @@ struct PortfolioDashboardView: View {
             plan.portfolioPriorityBand ?? "",
             plan.portfolioApprovalState ?? "",
             plan.portfolioArchiveReason ?? "",
-            plan.portfolioObjective ?? "",
+            plan.portfolioObjective ?? ""
+        ]
+        let numericFields: [String] = [
             String(plan.portfolioStrategicAlignment ?? 0),
             String(plan.portfolioRiskScore ?? 0),
-            String(plan.portfolioReviewCadenceDays ?? 0),
-            plan.boardColumns.joined(separator: " ")
-        ].joined(separator: " ").lowercased()
+            String(plan.portfolioReviewCadenceDays ?? 0)
+        ]
+        let boardColumns = plan.boardColumns.joined(separator: " ")
+        let haystack = (textFields + numericFields + [boardColumns])
+            .joined(separator: " ")
+            .lowercased()
         return haystack.contains(query)
     }
 
