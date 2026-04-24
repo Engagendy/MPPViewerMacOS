@@ -13,6 +13,19 @@ struct NativeProjectPlan: Codable, Hashable {
     var manager: String
     var company: String
     var statusDate: Date
+    var portfolioWorkspace: String?
+    var portfolioProgram: String?
+    var portfolioSponsor: String?
+    var portfolioStage: String?
+    var portfolioHealth: String?
+    var portfolioPriorityBand: String?
+    var portfolioApprovalState: String?
+    var portfolioStrategicAlignment: Int?
+    var portfolioRiskScore: Int?
+    var portfolioObjective: String?
+    var portfolioReviewDate: Date?
+    var portfolioReviewCadenceDays: Int?
+    var portfolioArchiveReason: String?
     var defaultCalendarUniqueID: Int?
     var tasks: [NativePlanTask]
     var resources: [NativePlanResource]
@@ -30,6 +43,19 @@ struct NativeProjectPlan: Codable, Hashable {
         case manager
         case company
         case statusDate
+        case portfolioWorkspace
+        case portfolioProgram
+        case portfolioSponsor
+        case portfolioStage
+        case portfolioHealth
+        case portfolioPriorityBand
+        case portfolioApprovalState
+        case portfolioStrategicAlignment
+        case portfolioRiskScore
+        case portfolioObjective
+        case portfolioReviewDate
+        case portfolioReviewCadenceDays
+        case portfolioArchiveReason
         case defaultCalendarUniqueID
         case tasks
         case resources
@@ -52,6 +78,19 @@ struct NativeProjectPlan: Codable, Hashable {
             manager: "",
             company: "",
             statusDate: Calendar.current.startOfDay(for: Date()),
+            portfolioWorkspace: "Default Workspace",
+            portfolioProgram: nil,
+            portfolioSponsor: nil,
+            portfolioStage: "Planning",
+            portfolioHealth: "Green",
+            portfolioPriorityBand: "Medium",
+            portfolioApprovalState: "Proposed",
+            portfolioStrategicAlignment: 50,
+            portfolioRiskScore: 25,
+            portfolioObjective: nil,
+            portfolioReviewDate: nil,
+            portfolioReviewCadenceDays: 14,
+            portfolioArchiveReason: nil,
             defaultCalendarUniqueID: standardCalendar.id,
             tasks: [],
             resources: [],
@@ -71,6 +110,19 @@ struct NativeProjectPlan: Codable, Hashable {
         manager: String,
         company: String,
         statusDate: Date,
+        portfolioWorkspace: String? = nil,
+        portfolioProgram: String? = nil,
+        portfolioSponsor: String? = nil,
+        portfolioStage: String? = nil,
+        portfolioHealth: String? = nil,
+        portfolioPriorityBand: String? = nil,
+        portfolioApprovalState: String? = nil,
+        portfolioStrategicAlignment: Int? = nil,
+        portfolioRiskScore: Int? = nil,
+        portfolioObjective: String? = nil,
+        portfolioReviewDate: Date? = nil,
+        portfolioReviewCadenceDays: Int? = nil,
+        portfolioArchiveReason: String? = nil,
         defaultCalendarUniqueID: Int?,
         tasks: [NativePlanTask],
         resources: [NativePlanResource],
@@ -87,6 +139,19 @@ struct NativeProjectPlan: Codable, Hashable {
         self.manager = manager
         self.company = company
         self.statusDate = statusDate
+        self.portfolioWorkspace = portfolioWorkspace
+        self.portfolioProgram = portfolioProgram
+        self.portfolioSponsor = portfolioSponsor
+        self.portfolioStage = portfolioStage
+        self.portfolioHealth = portfolioHealth
+        self.portfolioPriorityBand = portfolioPriorityBand
+        self.portfolioApprovalState = portfolioApprovalState
+        self.portfolioStrategicAlignment = portfolioStrategicAlignment
+        self.portfolioRiskScore = portfolioRiskScore
+        self.portfolioObjective = portfolioObjective
+        self.portfolioReviewDate = portfolioReviewDate
+        self.portfolioReviewCadenceDays = portfolioReviewCadenceDays
+        self.portfolioArchiveReason = portfolioArchiveReason
         self.defaultCalendarUniqueID = defaultCalendarUniqueID
         self.tasks = tasks
         self.resources = resources
@@ -112,6 +177,19 @@ struct NativeProjectPlan: Codable, Hashable {
         manager = try container.decodeIfPresent(String.self, forKey: .manager) ?? ""
         company = try container.decodeIfPresent(String.self, forKey: .company) ?? ""
         statusDate = try container.decodeIfPresent(Date.self, forKey: .statusDate) ?? Calendar.current.startOfDay(for: Date())
+        portfolioWorkspace = try container.decodeIfPresent(String.self, forKey: .portfolioWorkspace)
+        portfolioProgram = try container.decodeIfPresent(String.self, forKey: .portfolioProgram)
+        portfolioSponsor = try container.decodeIfPresent(String.self, forKey: .portfolioSponsor)
+        portfolioStage = try container.decodeIfPresent(String.self, forKey: .portfolioStage)
+        portfolioHealth = try container.decodeIfPresent(String.self, forKey: .portfolioHealth)
+        portfolioPriorityBand = try container.decodeIfPresent(String.self, forKey: .portfolioPriorityBand)
+        portfolioApprovalState = try container.decodeIfPresent(String.self, forKey: .portfolioApprovalState)
+        portfolioStrategicAlignment = try container.decodeIfPresent(Int.self, forKey: .portfolioStrategicAlignment)
+        portfolioRiskScore = try container.decodeIfPresent(Int.self, forKey: .portfolioRiskScore)
+        portfolioObjective = try container.decodeIfPresent(String.self, forKey: .portfolioObjective)
+        portfolioReviewDate = try container.decodeIfPresent(Date.self, forKey: .portfolioReviewDate)
+        portfolioReviewCadenceDays = try container.decodeIfPresent(Int.self, forKey: .portfolioReviewCadenceDays)
+        portfolioArchiveReason = try container.decodeIfPresent(String.self, forKey: .portfolioArchiveReason)
         defaultCalendarUniqueID = try container.decodeIfPresent(Int.self, forKey: .defaultCalendarUniqueID)
         tasks = try container.decodeIfPresent([NativePlanTask].self, forKey: .tasks) ?? []
         resources = try container.decodeIfPresent([NativePlanResource].self, forKey: .resources) ?? []
@@ -550,6 +628,14 @@ struct NativeProjectPlan: Codable, Hashable {
             manager: projectModel.properties.manager?.nonEmpty ?? "",
             company: projectModel.properties.company?.nonEmpty ?? "",
             statusDate: statusDate,
+            portfolioWorkspace: nil,
+            portfolioProgram: nil,
+            portfolioSponsor: nil,
+            portfolioStage: nil,
+            portfolioHealth: nil,
+            portfolioPriorityBand: nil,
+            portfolioObjective: nil,
+            portfolioReviewDate: nil,
             defaultCalendarUniqueID: defaultCalendarUniqueID,
             tasks: nativeTasks,
             resources: nativeResources,
@@ -2158,6 +2244,19 @@ final class PortfolioProjectPlan {
     var manager: String
     var company: String
     var statusDate: Date
+    var portfolioWorkspace: String?
+    var portfolioProgram: String?
+    var portfolioSponsor: String?
+    var portfolioStage: String?
+    var portfolioHealth: String?
+    var portfolioPriorityBand: String?
+    var portfolioApprovalState: String?
+    var portfolioStrategicAlignment: Int?
+    var portfolioRiskScore: Int?
+    var portfolioObjective: String?
+    var portfolioReviewDate: Date?
+    var portfolioReviewCadenceDays: Int?
+    var portfolioArchiveReason: String?
     var defaultCalendarUniqueID: Int?
     var boardColumns: [String]
     var portfolioBudget: Double
@@ -2197,6 +2296,19 @@ final class PortfolioProjectPlan {
         self.manager = nativePlan.manager
         self.company = nativePlan.company
         self.statusDate = nativePlan.statusDate
+        self.portfolioWorkspace = nativePlan.portfolioWorkspace
+        self.portfolioProgram = nativePlan.portfolioProgram
+        self.portfolioSponsor = nativePlan.portfolioSponsor
+        self.portfolioStage = nativePlan.portfolioStage
+        self.portfolioHealth = nativePlan.portfolioHealth
+        self.portfolioPriorityBand = nativePlan.portfolioPriorityBand
+        self.portfolioApprovalState = nativePlan.portfolioApprovalState
+        self.portfolioStrategicAlignment = nativePlan.portfolioStrategicAlignment
+        self.portfolioRiskScore = nativePlan.portfolioRiskScore
+        self.portfolioObjective = nativePlan.portfolioObjective
+        self.portfolioReviewDate = nativePlan.portfolioReviewDate
+        self.portfolioReviewCadenceDays = nativePlan.portfolioReviewCadenceDays
+        self.portfolioArchiveReason = nativePlan.portfolioArchiveReason
         self.defaultCalendarUniqueID = nativePlan.defaultCalendarUniqueID
         self.boardColumns = NativeProjectPlan.normalizedBoardColumns(nativePlan.boardColumns)
         self.portfolioBudget = 0
@@ -2219,6 +2331,19 @@ final class PortfolioProjectPlan {
         manager = nativePlan.manager
         company = nativePlan.company
         statusDate = nativePlan.statusDate
+        portfolioWorkspace = nativePlan.portfolioWorkspace
+        portfolioProgram = nativePlan.portfolioProgram
+        portfolioSponsor = nativePlan.portfolioSponsor
+        portfolioStage = nativePlan.portfolioStage
+        portfolioHealth = nativePlan.portfolioHealth
+        portfolioPriorityBand = nativePlan.portfolioPriorityBand
+        portfolioApprovalState = nativePlan.portfolioApprovalState
+        portfolioStrategicAlignment = nativePlan.portfolioStrategicAlignment
+        portfolioRiskScore = nativePlan.portfolioRiskScore
+        portfolioObjective = nativePlan.portfolioObjective
+        portfolioReviewDate = nativePlan.portfolioReviewDate
+        portfolioReviewCadenceDays = nativePlan.portfolioReviewCadenceDays
+        portfolioArchiveReason = nativePlan.portfolioArchiveReason
         defaultCalendarUniqueID = nativePlan.defaultCalendarUniqueID
         boardColumns = NativeProjectPlan.normalizedBoardColumns(nativePlan.boardColumns)
         updatedAt = Date()
@@ -2307,6 +2432,19 @@ final class PortfolioProjectPlan {
             manager: manager,
             company: company,
             statusDate: statusDate,
+            portfolioWorkspace: portfolioWorkspace,
+            portfolioProgram: portfolioProgram,
+            portfolioSponsor: portfolioSponsor,
+            portfolioStage: portfolioStage,
+            portfolioHealth: portfolioHealth,
+            portfolioPriorityBand: portfolioPriorityBand,
+            portfolioApprovalState: portfolioApprovalState,
+            portfolioStrategicAlignment: portfolioStrategicAlignment,
+            portfolioRiskScore: portfolioRiskScore,
+            portfolioObjective: portfolioObjective,
+            portfolioReviewDate: portfolioReviewDate,
+            portfolioReviewCadenceDays: portfolioReviewCadenceDays,
+            portfolioArchiveReason: portfolioArchiveReason,
             defaultCalendarUniqueID: defaultCalendarUniqueID,
             tasks: nativeTasks,
             resources: nativeResources,
@@ -3298,6 +3436,440 @@ final class PortfolioPlanAssignment {
     }
 }
 
+@Model
+final class PortfolioCrossProjectDependency {
+    @Attribute(.unique) var uniqueID: UUID
+    var sourcePlanID: UUID
+    var sourcePlanTitle: String
+    var sourceTaskUniqueID: UUID
+    var sourceTaskLegacyID: Int
+    var sourceTaskName: String
+    var targetPlanID: UUID
+    var targetPlanTitle: String
+    var targetTaskUniqueID: UUID
+    var targetTaskLegacyID: Int
+    var targetTaskName: String
+    var relationType: String
+    var lagDays: Int
+    var note: String
+    var updatedAt: Date
+
+    init(
+        sourcePlan: PortfolioProjectPlan,
+        sourceTask: PortfolioPlanTask,
+        targetPlan: PortfolioProjectPlan,
+        targetTask: PortfolioPlanTask,
+        relationType: String,
+        lagDays: Int,
+        note: String
+    ) {
+        uniqueID = UUID()
+        sourcePlanID = sourcePlan.portfolioID
+        sourcePlanTitle = Self.trimmedOrFallback(sourcePlan.title, fallback: "Untitled Plan")
+        sourceTaskUniqueID = sourceTask.uniqueID
+        sourceTaskLegacyID = sourceTask.legacyID
+        sourceTaskName = Self.trimmedOrFallback(sourceTask.name, fallback: "Untitled Task")
+        targetPlanID = targetPlan.portfolioID
+        targetPlanTitle = Self.trimmedOrFallback(targetPlan.title, fallback: "Untitled Plan")
+        targetTaskUniqueID = targetTask.uniqueID
+        targetTaskLegacyID = targetTask.legacyID
+        targetTaskName = Self.trimmedOrFallback(targetTask.name, fallback: "Untitled Task")
+        self.relationType = Self.normalizedRelationType(relationType)
+        self.lagDays = lagDays
+        self.note = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        updatedAt = Date()
+    }
+
+    @discardableResult
+    func refresh(
+        sourcePlan: PortfolioProjectPlan?,
+        sourceTask: PortfolioPlanTask?,
+        targetPlan: PortfolioProjectPlan?,
+        targetTask: PortfolioPlanTask?
+    ) -> Bool {
+        var didChange = false
+
+        if let sourcePlan {
+            let normalizedPlanTitle = Self.trimmedOrFallback(sourcePlan.title, fallback: "Untitled Plan")
+            if sourcePlanID != sourcePlan.portfolioID {
+                sourcePlanID = sourcePlan.portfolioID
+                didChange = true
+            }
+            if sourcePlanTitle != normalizedPlanTitle {
+                sourcePlanTitle = normalizedPlanTitle
+                didChange = true
+            }
+        }
+        if let sourceTask {
+            let normalizedTaskName = Self.trimmedOrFallback(sourceTask.name, fallback: "Untitled Task")
+            if sourceTaskUniqueID != sourceTask.uniqueID {
+                sourceTaskUniqueID = sourceTask.uniqueID
+                didChange = true
+            }
+            if sourceTaskLegacyID != sourceTask.legacyID {
+                sourceTaskLegacyID = sourceTask.legacyID
+                didChange = true
+            }
+            if sourceTaskName != normalizedTaskName {
+                sourceTaskName = normalizedTaskName
+                didChange = true
+            }
+        }
+        if let targetPlan {
+            let normalizedPlanTitle = Self.trimmedOrFallback(targetPlan.title, fallback: "Untitled Plan")
+            if targetPlanID != targetPlan.portfolioID {
+                targetPlanID = targetPlan.portfolioID
+                didChange = true
+            }
+            if targetPlanTitle != normalizedPlanTitle {
+                targetPlanTitle = normalizedPlanTitle
+                didChange = true
+            }
+        }
+        if let targetTask {
+            let normalizedTaskName = Self.trimmedOrFallback(targetTask.name, fallback: "Untitled Task")
+            if targetTaskUniqueID != targetTask.uniqueID {
+                targetTaskUniqueID = targetTask.uniqueID
+                didChange = true
+            }
+            if targetTaskLegacyID != targetTask.legacyID {
+                targetTaskLegacyID = targetTask.legacyID
+                didChange = true
+            }
+            if targetTaskName != normalizedTaskName {
+                targetTaskName = normalizedTaskName
+                didChange = true
+            }
+        }
+        let normalizedRelation = Self.normalizedRelationType(relationType)
+        if relationType != normalizedRelation {
+            relationType = normalizedRelation
+            didChange = true
+        }
+
+        let normalizedNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        if note != normalizedNote {
+            note = normalizedNote
+            didChange = true
+        }
+
+        if didChange {
+            updatedAt = Date()
+        }
+        return didChange
+    }
+
+    private static func normalizedRelationType(_ value: String) -> String {
+        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        return ["FS", "SS", "FF", "SF"].contains(normalized) ? normalized : "FS"
+    }
+
+    private static func trimmedOrFallback(_ value: String, fallback: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? fallback : trimmed
+    }
+}
+
+struct PortfolioReviewViewSettings: Codable, Hashable {
+    var registryScope: String
+    var healthScope: String
+    var approvalScope: String
+    var grouping: String
+    var searchText: String
+    var cadenceDays: Int
+}
+
+struct PortfolioReviewSnapshotPayload: Codable, Hashable {
+    struct ProjectSummary: Codable, Hashable, Identifiable {
+        let id: String
+        let title: String
+        let riskBand: String
+        let score: Int
+        let workspace: String
+        let program: String
+        let overdueTaskCount: Int
+        let slippedMilestoneCount: Int
+        let costOverrun: Double
+        let completionPercent: Double
+    }
+
+    struct AttentionItem: Codable, Hashable, Identifiable {
+        let id: String
+        let severity: String
+        let headline: String
+        let planTitle: String
+        let detail: String
+    }
+
+    struct ProgramSummary: Codable, Hashable, Identifiable {
+        let id: String
+        let program: String
+        let projectCount: Int
+        let atRiskProjectCount: Int
+        let reviewDueCount: Int
+        let slippedMilestoneCount: Int
+        let totalBudget: Double
+        let totalActualCost: Double
+        let nextMilestoneDate: Date?
+    }
+
+    struct DependencySummary: Codable, Hashable, Identifiable {
+        let id: String
+        let severity: String
+        let sourcePlanTitle: String
+        let sourceTaskName: String
+        let targetPlanTitle: String
+        let targetTaskName: String
+        let relationType: String
+        let lagDays: Int
+        let blockerReason: String
+        let targetDate: Date
+    }
+
+    let title: String
+    let presetName: String?
+    let capturedAt: Date
+    let viewSettings: PortfolioReviewViewSettings
+    let visibleProjectCount: Int
+    let activeProjectCount: Int
+    let archivedProjectCount: Int
+    let workspaceCount: Int
+    let programCount: Int
+    let atRiskProjectCount: Int
+    let approvedCount: Int
+    let intakeCount: Int
+    let onHoldCount: Int
+    let reviewDueCount: Int
+    let overdueTaskCount: Int
+    let blockedDependencyCount: Int
+    let highDependencyCount: Int
+    let crossProgramDependencyCount: Int
+    let slippedMilestoneCount: Int
+    let roadmapProgramCount: Int
+    let overloadedResourceCount: Int
+    let budgetTotal: Double
+    let actualCostTotal: Double
+    let projectSummaries: [ProjectSummary]
+    let attentionItems: [AttentionItem]
+    let programItems: [ProgramSummary]
+    let dependencyItems: [DependencySummary]
+}
+
+struct PortfolioReviewDelta: Hashable {
+    let current: PortfolioReviewSnapshotPayload
+    let baseline: PortfolioReviewSnapshotPayload
+    let visibleProjectDelta: Int
+    let atRiskProjectDelta: Int
+    let blockedDependencyDelta: Int
+    let highDependencyDelta: Int
+    let reviewDueDelta: Int
+    let slippedMilestoneDelta: Int
+    let overloadedResourceDelta: Int
+    let overdueTaskDelta: Int
+    let budgetDelta: Double
+    let actualCostDelta: Double
+    let newAttentionHeadlines: [String]
+    let resolvedAttentionHeadlines: [String]
+    let newBlockedDependencies: [String]
+}
+
+@Model
+final class PortfolioReviewPreset {
+    @Attribute(.unique) var uniqueID: UUID
+    var name: String
+    var registryScope: String
+    var healthScope: String
+    var approvalScope: String
+    var grouping: String
+    var searchText: String
+    var cadenceDays: Int
+    var updatedAt: Date
+
+    init(name: String, viewSettings: PortfolioReviewViewSettings) {
+        uniqueID = UUID()
+        self.name = Self.trimmedOrFallback(name, fallback: "Portfolio Review")
+        registryScope = viewSettings.registryScope
+        healthScope = viewSettings.healthScope
+        approvalScope = viewSettings.approvalScope
+        grouping = viewSettings.grouping
+        searchText = viewSettings.searchText
+        cadenceDays = max(7, viewSettings.cadenceDays)
+        updatedAt = Date()
+    }
+
+    var viewSettings: PortfolioReviewViewSettings {
+        PortfolioReviewViewSettings(
+            registryScope: registryScope,
+            healthScope: healthScope,
+            approvalScope: approvalScope,
+            grouping: grouping,
+            searchText: searchText,
+            cadenceDays: max(7, cadenceDays)
+        )
+    }
+
+    func update(name: String, viewSettings: PortfolioReviewViewSettings) {
+        self.name = Self.trimmedOrFallback(name, fallback: "Portfolio Review")
+        registryScope = viewSettings.registryScope
+        healthScope = viewSettings.healthScope
+        approvalScope = viewSettings.approvalScope
+        grouping = viewSettings.grouping
+        searchText = viewSettings.searchText
+        cadenceDays = max(7, viewSettings.cadenceDays)
+        updatedAt = Date()
+    }
+
+    private static func trimmedOrFallback(_ value: String, fallback: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? fallback : trimmed
+    }
+}
+
+@Model
+final class PortfolioReviewSnapshot {
+    @Attribute(.unique) var uniqueID: UUID
+    var title: String
+    var presetID: UUID?
+    var presetName: String?
+    var createdAt: Date
+    var registryScope: String
+    var healthScope: String
+    var approvalScope: String
+    var grouping: String
+    var searchText: String
+    var cadenceDays: Int
+    var visibleProjectCount: Int
+    var atRiskProjectCount: Int
+    var blockedDependencyCount: Int
+    var slippedMilestoneCount: Int
+    var overloadedResourceCount: Int
+    var budgetTotal: Double
+    var actualCostTotal: Double
+    var payloadData: Data
+
+    init(title: String, preset: PortfolioReviewPreset?, payload: PortfolioReviewSnapshotPayload) {
+        uniqueID = UUID()
+        self.title = Self.trimmedOrFallback(title, fallback: payload.title)
+        presetID = preset?.uniqueID
+        presetName = preset?.name ?? payload.presetName
+        createdAt = payload.capturedAt
+        registryScope = payload.viewSettings.registryScope
+        healthScope = payload.viewSettings.healthScope
+        approvalScope = payload.viewSettings.approvalScope
+        grouping = payload.viewSettings.grouping
+        searchText = payload.viewSettings.searchText
+        cadenceDays = max(7, payload.viewSettings.cadenceDays)
+        visibleProjectCount = payload.visibleProjectCount
+        atRiskProjectCount = payload.atRiskProjectCount
+        blockedDependencyCount = payload.blockedDependencyCount
+        slippedMilestoneCount = payload.slippedMilestoneCount
+        overloadedResourceCount = payload.overloadedResourceCount
+        budgetTotal = payload.budgetTotal
+        actualCostTotal = payload.actualCostTotal
+        payloadData = Self.encodePayload(payload)
+    }
+
+    var viewSettings: PortfolioReviewViewSettings {
+        PortfolioReviewViewSettings(
+            registryScope: registryScope,
+            healthScope: healthScope,
+            approvalScope: approvalScope,
+            grouping: grouping,
+            searchText: searchText,
+            cadenceDays: max(7, cadenceDays)
+        )
+    }
+
+    var payload: PortfolioReviewSnapshotPayload {
+        get {
+            Self.decodePayload(
+                payloadData,
+                fallback: PortfolioReviewSnapshotPayload(
+                    title: title,
+                    presetName: presetName,
+                    capturedAt: createdAt,
+                    viewSettings: viewSettings,
+                    visibleProjectCount: visibleProjectCount,
+                    activeProjectCount: visibleProjectCount,
+                    archivedProjectCount: 0,
+                    workspaceCount: 0,
+                    programCount: 0,
+                    atRiskProjectCount: atRiskProjectCount,
+                    approvedCount: 0,
+                    intakeCount: 0,
+                    onHoldCount: 0,
+                    reviewDueCount: 0,
+                    overdueTaskCount: 0,
+                    blockedDependencyCount: blockedDependencyCount,
+                    highDependencyCount: 0,
+                    crossProgramDependencyCount: 0,
+                    slippedMilestoneCount: slippedMilestoneCount,
+                    roadmapProgramCount: 0,
+                    overloadedResourceCount: overloadedResourceCount,
+                    budgetTotal: budgetTotal,
+                    actualCostTotal: actualCostTotal,
+                    projectSummaries: [],
+                    attentionItems: [],
+                    programItems: [],
+                    dependencyItems: []
+                )
+            )
+        }
+        set {
+            title = Self.trimmedOrFallback(title, fallback: newValue.title)
+            presetName = presetName ?? newValue.presetName
+            createdAt = newValue.capturedAt
+            registryScope = newValue.viewSettings.registryScope
+            healthScope = newValue.viewSettings.healthScope
+            approvalScope = newValue.viewSettings.approvalScope
+            grouping = newValue.viewSettings.grouping
+            searchText = newValue.viewSettings.searchText
+            cadenceDays = max(7, newValue.viewSettings.cadenceDays)
+            visibleProjectCount = newValue.visibleProjectCount
+            atRiskProjectCount = newValue.atRiskProjectCount
+            blockedDependencyCount = newValue.blockedDependencyCount
+            slippedMilestoneCount = newValue.slippedMilestoneCount
+            overloadedResourceCount = newValue.overloadedResourceCount
+            budgetTotal = newValue.budgetTotal
+            actualCostTotal = newValue.actualCostTotal
+            payloadData = Self.encodePayload(newValue)
+        }
+    }
+
+    func update(title: String, preset: PortfolioReviewPreset?, payload: PortfolioReviewSnapshotPayload) {
+        self.title = Self.trimmedOrFallback(title, fallback: payload.title)
+        presetID = preset?.uniqueID
+        presetName = preset?.name ?? payload.presetName
+        self.payload = payload
+    }
+
+    private static func encoder() -> JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        return encoder
+    }
+
+    private static func decoder() -> JSONDecoder {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
+    }
+
+    private static func encodePayload<T: Encodable>(_ value: T) -> Data {
+        (try? encoder().encode(value)) ?? Data()
+    }
+
+    private static func decodePayload<T: Decodable>(_ data: Data, fallback: T) -> T {
+        guard !data.isEmpty, let decoded = try? decoder().decode(T.self, from: data) else { return fallback }
+        return decoded
+    }
+
+    private static func trimmedOrFallback(_ value: String, fallback: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? fallback : trimmed
+    }
+}
+
 enum PortfolioProjectSynchronizer {
     @MainActor
     @discardableResult
@@ -3375,6 +3947,9 @@ enum PortfolioProjectSynchronizer {
         deleteAll(PortfolioPlanTask.self, in: context)
         deleteAll(PortfolioPlanResource.self, in: context)
         deleteAll(PortfolioPlanAssignment.self, in: context)
+        deleteAll(PortfolioCrossProjectDependency.self, in: context)
+        deleteAll(PortfolioReviewPreset.self, in: context)
+        deleteAll(PortfolioReviewSnapshot.self, in: context)
         deleteAll(PortfolioPlanCalendar.self, in: context)
         deleteAll(PortfolioPlanSprint.self, in: context)
         deleteAll(PortfolioWorkflowColumn.self, in: context)
