@@ -1652,6 +1652,7 @@ struct AgileBoardDerivedContent {
     let backlogTasks: [NativePlanTask]
     let boardColumns: [String]
     let tasksByLane: [AgileLaneTasks]
+    let normalizedStatusByTaskID: [Int: String]
     let sprintNamesByID: [Int: String]
     let taskByID: [Int: NativePlanTask]
     let taskOrderByID: [Int: Int]
@@ -1659,8 +1660,16 @@ struct AgileBoardDerivedContent {
     let parentTaskNameByTaskID: [Int: String]
     let rootParentTaskIDByTaskID: [Int: Int]
     let hierarchyDepthByTaskID: [Int: Int]
+    let assignmentSummaryByTaskID: [Int: String]
+    let primaryAssigneeNameByTaskID: [Int: String]
+    let teamTitleByTaskID: [Int: String]
+    let tasksBySprintID: [Int: [NativePlanTask]]
+    let committedPointsBySprintID: [Int: Int]
+    let completedPointsBySprintID: [Int: Int]
+    let agileTypeCounts: [String: Int]
     let latestSnapshot: NativeStatusSnapshot?
     let totalStoryPoints: Int
+    let totalSprintCapacityPoints: Int
     let doneCount: Int
     let readyCount: Int
     let inProgressCount: Int
@@ -1745,22 +1754,89 @@ struct AgileBoardDerivedContent {
         }
 
         let boardColumns = ordered.isEmpty ? NativeProjectPlan.defaultBoardColumns : ordered
+        var normalizedStatusByTaskID: [Int: String] = [:]
+        for task in agileTasks {
+            normalizedStatusByTaskID[task.id] = normalizedBoardStatus(task.boardStatus, boardColumns: boardColumns)
+        }
         let grouped = Dictionary(grouping: agileTasks) { task in
-            normalizedBoardStatus(task.boardStatus, boardColumns: boardColumns)
+            normalizedStatusByTaskID[task.id] ?? (boardColumns.first ?? "Backlog")
         }
 
         let laneColumns = boardColumns.enumerated().map { index, lane in
             (lane: lane, id: "\(index)|\(lane)")
         }
         let sprintNamesByID = Dictionary(nonThrowingUniquePairs: sprints.map { ($0.id, $0.name) })
+        let resourceByID = Dictionary(nonThrowingUniquePairs: resources.map { ($0.id, $0) })
+        let sprintTeamByID = Dictionary(
+            uniqueKeysWithValues: sprints.compactMap { sprint -> (Int, String)? in
+                let trimmed = sprint.teamName.trimmingCharacters(in: .whitespacesAndNewlines)
+                return trimmed.isEmpty ? nil : (sprint.id, trimmed)
+            }
+        )
+        var assignmentResourceIDsByTaskID: [Int: [Int]] = [:]
+        for assignment in assignments {
+            guard let resourceID = assignment.resourceID else { continue }
+            assignmentResourceIDsByTaskID[assignment.taskID, default: []].append(resourceID)
+        }
+
+        var assignmentSummaryByTaskID: [Int: String] = [:]
+        var primaryAssigneeNameByTaskID: [Int: String] = [:]
+        var teamTitleByTaskID: [Int: String] = [:]
+        var tasksBySprintID: [Int: [NativePlanTask]] = [:]
+        var committedPointsBySprintID: [Int: Int] = [:]
+        var completedPointsBySprintID: [Int: Int] = [:]
+        var agileTypeCounts: [String: Int] = [:]
+
+        for task in agileTasks {
+            let resourceIDs = assignmentResourceIDsByTaskID[task.id] ?? []
+            let assigneeNames = resourceIDs.compactMap { resourceID -> String? in
+                guard let resource = resourceByID[resourceID] else { return nil }
+                let trimmed = resource.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                return trimmed.isEmpty ? nil : trimmed
+            }
+            if let firstAssignee = assigneeNames.first {
+                primaryAssigneeNameByTaskID[task.id] = firstAssignee
+                assignmentSummaryByTaskID[task.id] = assigneeNames.count == 1 ? firstAssignee : "\(firstAssignee) +\(assigneeNames.count - 1)"
+            }
+
+            let teamTitle = resourceIDs.compactMap { resourceID -> String? in
+                guard let resource = resourceByID[resourceID] else { return nil }
+                let trimmed = resource.group.trimmingCharacters(in: .whitespacesAndNewlines)
+                return trimmed.isEmpty ? nil : trimmed
+            }.first
+            ?? task.sprintID.flatMap { sprintTeamByID[$0] }
+            ?? "No Team"
+            teamTitleByTaskID[task.id] = teamTitle
+
+            if let sprintID = task.sprintID {
+                tasksBySprintID[sprintID, default: []].append(task)
+                committedPointsBySprintID[sprintID, default: 0] += max(0, task.storyPoints ?? 0)
+                if normalizedStatusByTaskID[task.id]?.compare("Done", options: .caseInsensitive) == .orderedSame || task.percentComplete >= 100 {
+                    completedPointsBySprintID[sprintID, default: 0] += max(0, task.storyPoints ?? 0)
+                }
+            }
+
+            let typeKey = task.agileType.trimmingCharacters(in: .whitespacesAndNewlines)
+            agileTypeCounts[typeKey.isEmpty ? "Task" : typeKey, default: 0] += 1
+        }
+
+        for sprintID in tasksBySprintID.keys {
+            tasksBySprintID[sprintID]?.sort { lhs, rhs in
+                if lhs.startDate == rhs.startDate {
+                    return lhs.id < rhs.id
+                }
+                return lhs.startDate < rhs.startDate
+            }
+        }
+
         let readyCount = agileTasks.reduce(0) { partial, task in
-            partial + (normalizedBoardStatus(task.boardStatus, boardColumns: boardColumns) == "Ready" ? 1 : 0)
+            partial + (normalizedStatusByTaskID[task.id] == "Ready" ? 1 : 0)
         }
         let inProgressCount = agileTasks.reduce(0) { partial, task in
-            partial + (normalizedBoardStatus(task.boardStatus, boardColumns: boardColumns) == "In Progress" ? 1 : 0)
+            partial + (normalizedStatusByTaskID[task.id] == "In Progress" ? 1 : 0)
         }
         let completedCount = agileTasks.reduce(0) { partial, task in
-            partial + ((normalizedBoardStatus(task.boardStatus, boardColumns: boardColumns) == "Done" || task.percentComplete >= 100) ? 1 : 0)
+            partial + (((normalizedStatusByTaskID[task.id] == "Done") || task.percentComplete >= 100) ? 1 : 0)
         }
 
         return AgileBoardDerivedContent(
@@ -1774,6 +1850,7 @@ struct AgileBoardDerivedContent {
                     id: laneDescriptor.id
                 )
             },
+            normalizedStatusByTaskID: normalizedStatusByTaskID,
             sprintNamesByID: sprintNamesByID,
             taskByID: taskByID,
             taskOrderByID: taskOrderByID,
@@ -1781,8 +1858,16 @@ struct AgileBoardDerivedContent {
             parentTaskNameByTaskID: parentTaskNameByTaskID,
             rootParentTaskIDByTaskID: rootParentTaskIDByTaskID,
             hierarchyDepthByTaskID: hierarchyDepthByTaskID,
+            assignmentSummaryByTaskID: assignmentSummaryByTaskID,
+            primaryAssigneeNameByTaskID: primaryAssigneeNameByTaskID,
+            teamTitleByTaskID: teamTitleByTaskID,
+            tasksBySprintID: tasksBySprintID,
+            committedPointsBySprintID: committedPointsBySprintID,
+            completedPointsBySprintID: completedPointsBySprintID,
+            agileTypeCounts: agileTypeCounts,
             latestSnapshot: statusSnapshots.sorted { $0.statusDate < $1.statusDate }.last,
             totalStoryPoints: agileTasks.reduce(0) { $0 + max(0, $1.storyPoints ?? 0) },
+            totalSprintCapacityPoints: sprints.reduce(0) { $0 + max(0, $1.capacityPoints) },
             doneCount: completedCount,
             readyCount: readyCount,
             inProgressCount: inProgressCount,
@@ -2024,6 +2109,11 @@ enum AppHelpCatalog {
         (
             "Core Screens",
             [
+                AppFeatureGuide(title: "Portfolio", icon: NavigationItem.portfolio.icon, availability: "MPP + Native Plan Registry", summary: "Multi-project workspace for registering plans, opening a live workspace, and reviewing PMO-level signals across the portfolio.", details: [
+                    "Registers imported `.mpp` and native `.mppplan` plans in one portfolio workspace.",
+                    "Tracks workspace, program, sponsor, stage, approval, review cadence, strategic alignment, risk score, and archive state per plan.",
+                    "Surfaces executive rollups, governance ranking, resource capacity, roadmap milestones, cross-project links, and review snapshots for portfolio oversight."
+                ]),
                 AppFeatureGuide(title: "Dashboard", icon: NavigationItem.dashboard.icon, availability: "MPP + Native Plan", summary: "Audience-focused review dashboard for project managers, executives, schedulers, and resource managers.", details: [
                     "Shows KPI cards, baseline alerts, schedule health, resource summary, milestones, and open review signals.",
                     "Supports snapshots, review templates, reminder cadence, and export-oriented review flows.",
@@ -2049,9 +2139,9 @@ enum AppHelpCatalog {
                     "Supports CSV/Excel-compatible imports for tasks, assignments, dependencies, constraints, baselines, plus starter templates and import reports."
                 ]),
                 AppFeatureGuide(title: "Agile Board", icon: NavigationItem.agileBoard.icon, availability: "Native Plan Only", summary: "Hybrid planning surface for backlog, sprint, and agile reporting on the same native plan data.", details: [
-                    "Organizes native tasks into backlog and board lanes with status, sprint, epic, and story-point metadata.",
-                    "Includes sprint planning, capacity review, and simple hybrid-agile reporting from saved status snapshots.",
-                    "Keeps agile execution tied to the same dates, resources, calendars, and financial model used elsewhere in the app."
+                    "Organizes native tasks into backlog and board lanes with status, sprint, epic, story-point, parent, and tag metadata.",
+                    "Includes sprint planner, capacity review, bucket ordering, workflow controls, reports, focus mode, and an optional details pane.",
+                    "Keeps agile execution tied to the same dates, resources, calendars, assignments, baselines, and financial model used elsewhere in the app."
                 ]),
                 AppFeatureGuide(title: "Gantt Chart", icon: NavigationItem.gantt.icon, availability: "MPP Review + Native Edit", summary: "Timeline chart for visual schedule review and native plan editing.", details: [
                     "View mode keeps the chart clean for review; Edit mode unlocks task creation and visual schedule changes.",
@@ -2140,7 +2230,8 @@ enum AppHelpCatalog {
                 ]),
                 AppFeatureGuide(title: "Guide & Help", icon: NavigationItem.helpCenter.icon, availability: "App-Wide", summary: "Built-in documentation, feature reference, workflow guide, glossary, and shortcuts.", details: [
                     "Available from the sidebar and the macOS Help menu.",
-                    "Explains feature purpose, availability, and common workflow paths."
+                    "Documents document modes, screen-by-screen features, portfolio workflows, imports, keyboard shortcuts, and financial glossary terms.",
+                    "Use it as the in-app reference when moving between portfolio oversight, native editing, schedule control, and agile delivery."
                 ])
             ]
         )
@@ -2153,6 +2244,7 @@ enum AppHelpCatalog {
             editing: "Read-only review and analysis",
             notes: [
                 "Use imported MPP files for dashboard review, schedule analysis, workload, diagnostics, and exports.",
+                "Imported MPP files can still be registered in Portfolio for multi-project rollups, even though editing screens remain read-only.",
                 "Imported MPP files keep original project data and do not unlock native editing screens like Plan Builder or Status Center."
             ]
         ),
@@ -2161,6 +2253,7 @@ enum AppHelpCatalog {
             bestFor: "Building and updating plans directly in the app",
             editing: "Full native editing",
             notes: [
+                "Native plans can be opened into the live workspace from Portfolio and edited directly across planning, statusing, resource, calendar, agile, and finance workflows.",
                 "Native plans unlock Plan Builder, Gantt editing, Resources, Calendar, Status Center, finance entry, imports, and native save/open later.",
                 "Use `.mppplan` when the app is the working system for planning, statusing, and project controls."
             ]
@@ -2174,8 +2267,18 @@ enum AppHelpCatalog {
             summary: "Recommended first-run path for understanding the app quickly.",
             steps: [
                 "Open the included showcase `.mppplan` to see a fully populated native schedule with resources, calendars, status, and finance already filled in.",
-                "Visit `Dashboard` for overall health, then `Plan Builder` and `Gantt Chart` to see the two main editing surfaces.",
-                "Continue to `Status Center`, `Earned Value`, `Resources`, and `Calendar` to see project controls and staffing workflows."
+                "Visit `Portfolio` for workspace context, then `Dashboard` for overall health, followed by `Plan Builder` and `Gantt Chart` for the two main editing surfaces.",
+                "Continue to `Agile Board`, `Status Center`, `Earned Value`, `Resources`, and `Calendar` to see delivery, controls, and staffing workflows."
+            ]
+        ),
+        AppWorkflowGuide(
+            title: "Portfolio Review Cadence",
+            icon: "square.stack.3d.up",
+            summary: "Use this path for multi-project PMO review, governance, and recurring portfolio checkpoints.",
+            steps: [
+                "Import multiple `.mpp` or `.mppplan` documents into `Portfolio` and group them by workspace, program, health, or approval state.",
+                "Enrich each plan with metadata such as sponsor, objective, stage, review cadence, strategic alignment, and risk score.",
+                "Use executive, governance, roadmap, dependency, and capacity signals to identify issues, then capture a review snapshot or export a review pack."
             ]
         ),
         AppWorkflowGuide(
@@ -2297,7 +2400,7 @@ struct AppGuideView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Guide & Help")
                         .font(.largeTitle.weight(.semibold))
-                    Text("A quick reference for building plans, updating status, and reading financial and earned value signals.")
+                    Text("A quick reference for portfolio review, building plans, updating status, and reading financial and earned value signals.")
                         .foregroundStyle(.secondary)
                 }
 
@@ -2306,8 +2409,9 @@ struct AppGuideView: View {
                     icon: "square.text.square",
                     lines: [
                         "Open imported `.mpp` schedules for review and analysis.",
+                        "Register multiple `.mpp` and `.mppplan` documents in `Portfolio` for portfolio-level review, governance, and capacity analysis.",
                         isEditablePlan ? "Create and edit native `.mppplan` schedules directly in the app." : "Create a new `.mppplan` document from File > New to edit plans directly in the app.",
-                        "Review schedule, workload, resources, calendars, status, financials, and earned value from the same project model."
+                        "Review schedule, workload, resources, calendars, status, financials, agile delivery, and earned value from the same project model."
                     ]
                 )
 
@@ -2321,7 +2425,7 @@ struct AppGuideView: View {
                         HStack(spacing: 12) {
                             Label("Native sample plan included", systemImage: "doc.badge.plus")
                                 .font(.caption.weight(.semibold))
-                            Label("Best viewed with Dashboard → Plan Builder → Gantt → Status Center", systemImage: "arrow.right.circle")
+                            Label("Best viewed with Portfolio → Dashboard → Plan Builder → Agile Board → Status Center", systemImage: "arrow.right.circle")
                                 .font(.caption.weight(.semibold))
                         }
                     }
@@ -2380,6 +2484,16 @@ struct AppGuideView: View {
                 }
 
                 guideSection(
+                    title: "Portfolio & Governance",
+                    icon: "square.stack.3d.up",
+                    lines: [
+                        "Use `Portfolio` to register multiple plans, open one into the live workspace, and filter by health, approval, and archive state.",
+                        "Populate workspace, program, sponsor, objective, stage, review date, review cadence, strategic alignment, and risk score so governance views are meaningful.",
+                        "Use the portfolio summaries for executive ranking, roadmap milestones, cross-project dependencies, resource capacity, and recurring review snapshots."
+                    ]
+                )
+
+                guideSection(
                     title: "Build a Plan",
                     icon: "square.and.pencil",
                     lines: [
@@ -2412,7 +2526,7 @@ struct AppGuideView: View {
                     lines: [
                         "Use `Status Center` to set status date, actual dates, progress, actual cost, assignment actual/remaining/overtime work, and capture reporting snapshots.",
                         "Use `Earned Value` for CPI, SPI, EAC, VAC, S-curve, and task-level EVM.",
-                        "Use `Dashboard`, `Validation`, and `Diagnostics` to spot schedule-quality and resource-risk issues, then use `Agile Board` reports for sprint-specific trend review."
+                        "Use `Dashboard`, `Validation`, and `Diagnostics` to spot schedule-quality and resource-risk issues, then use `Agile Board` reports and `Portfolio` review snapshots for broader delivery and governance follow-up."
                     ]
                 )
 
@@ -2430,8 +2544,8 @@ struct AppGuideView: View {
                     title: "Document Types",
                     icon: "doc.on.doc",
                     lines: [
-                        "Imported `.mpp` files are review-first documents. They feed analysis, dashboards, schedule views, and read-only inspection screens.",
-                        isEditablePlan ? "This document is a native `.mppplan`, so plan creation, statusing, finance entry, resource editing, and calendar editing are available." : "Create a native `.mppplan` from `File > New` when you want in-app editing, imports, status updates, and native save/open later.",
+                        "Imported `.mpp` files are review-first documents. They feed analysis, dashboards, schedule views, read-only inspection screens, and portfolio rollups.",
+                        isEditablePlan ? "This document is a native `.mppplan`, so plan creation, statusing, finance entry, resource editing, calendar editing, and agile workflows are available." : "Create a native `.mppplan` from `File > New` when you want in-app editing, imports, status updates, agile workflows, and native save/open later.",
                         "Many screens work for both document types, but native plans unlock editing workflows."
                     ]
                 )
@@ -5594,37 +5708,13 @@ private enum AgileBoardSwimlaneMode: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
-private struct AgileBoardTaskRefreshSignature: Equatable {
-    let id: Int
-    let name: String
-    let agileType: String
-    let boardStatus: String
-    let sprintID: Int?
-    let storyPoints: Int?
-    let percentComplete: Double
-    let epicName: String
-    let outlineLevel: Int
-}
+private struct AgileBoardLaneDisplay: Identifiable {
+    let lane: String
+    let tasks: [NativePlanTask]
+    let groups: [AgileSwimlaneGroup]
+    let activeTaskCount: Int
 
-private struct AgileBoardAssignmentRefreshSignature: Equatable {
-    let taskID: Int
-    let resourceID: Int?
-}
-
-private struct AgileBoardResourceRefreshSignature: Equatable {
-    let id: Int
-    let name: String
-    let group: String
-}
-
-private struct AgileBoardRefreshSignature: Equatable {
-    let boardColumns: [String]
-    let tasks: [AgileBoardTaskRefreshSignature]
-    let assignments: [AgileBoardAssignmentRefreshSignature]
-    let resources: [AgileBoardResourceRefreshSignature]
-    let sprintIDs: [Int]
-    let sprintNames: [String]
-    let snapshotIDs: [UUID]
+    var id: String { lane }
 }
 
 private enum AgileWorkflowDesignerScope: Hashable, Identifiable {
@@ -5658,7 +5748,7 @@ struct AgileBoardView: View {
     @Binding var splitViewVisibility: NavigationSplitViewVisibility
 
     @State private var derivedContent: AgileBoardDerivedContent
-    @State private var derivedRefreshWorkItem: DispatchWorkItem?
+    @State private var laneDisplays: [AgileBoardLaneDisplay] = []
     @State private var selectedTab: AgileBoardTab = .board
     @State private var selectedTaskID: Int?
     @State private var selectedSprintID: Int?
@@ -5734,58 +5824,9 @@ struct AgileBoardView: View {
         )
     }
 
-    private var refreshSignature: AgileBoardRefreshSignature {
-        AgileBoardRefreshSignature(
-            boardColumns: planModel.boardColumns,
-            tasks: nativeTasks.map {
-                AgileBoardTaskRefreshSignature(
-                    id: $0.id,
-                    name: $0.name,
-                    agileType: $0.agileType,
-                    boardStatus: $0.boardStatus,
-                    sprintID: $0.sprintID,
-                    storyPoints: $0.storyPoints,
-                    percentComplete: $0.percentComplete,
-                    epicName: $0.epicName,
-                    outlineLevel: $0.outlineLevel
-                )
-            },
-            assignments: nativeAssignments.map {
-                AgileBoardAssignmentRefreshSignature(taskID: $0.taskID, resourceID: $0.resourceID)
-            },
-            resources: nativeResources.map {
-                AgileBoardResourceRefreshSignature(id: $0.id, name: $0.name, group: $0.group)
-            },
-            sprintIDs: nativeSprints.map(\.id),
-            sprintNames: nativeSprints.map(\.name),
-            snapshotIDs: nativeStatusSnapshots.map(\.id)
-        )
-    }
-
-    private var tasksByLane: [AgileLaneTasks] {
-        derivedContent.tasksByLane
-    }
-
-    private var filteredTasksByLane: [AgileLaneTasks] {
-        tasksByLane.map { laneGroup in
-            AgileLaneTasks(
-                lane: laneGroup.lane,
-                tasks: filterTasksForBoardScope(laneGroup.tasks),
-                id: laneGroup.id
-            )
-        }
-    }
-
     private var selectedSprintTasks: [NativePlanTask] {
         guard let selectedSprintID else { return [] }
-        return agileTasks
-            .filter { $0.sprintID == selectedSprintID }
-            .sorted { lhs, rhs in
-                if lhs.startDate == rhs.startDate {
-                    return lhs.id < rhs.id
-                }
-                return lhs.startDate < rhs.startDate
-            }
+        return derivedContent.tasksBySprintID[selectedSprintID] ?? []
     }
 
     private var boardSprintScopeTitle: String {
@@ -5903,14 +5944,11 @@ struct AgileBoardView: View {
             if mode == .parent {
                 collapsedSwimlaneKeys.removeAll()
             }
+            refreshLaneDisplays()
         }
         .onChange(of: planModel.updatedAt) { _, _ in
             refreshDerivedContent()
             syncAgileInspectorDraft(force: true)
-        }
-        .onChange(of: refreshSignature) { _, _ in
-            scheduleDerivedContentRefresh()
-            syncAgileInspectorDraft()
         }
         .onChange(of: selectedTab) { _, newValue in
             guard newValue != .board, isFocusMode else { return }
@@ -5925,6 +5963,9 @@ struct AgileBoardView: View {
             if selectedTab != .board, isFocusMode {
                 toggleFocusMode()
             }
+        }
+        .onChange(of: boardSprintScope) { _, _ in
+            refreshLaneDisplays()
         }
         .transaction { transaction in
             transaction.animation = nil
@@ -5943,14 +5984,12 @@ struct AgileBoardView: View {
         guard let task = planModel.tasks.first(where: { $0.legacyID == taskID }) else { return }
         update(task)
         persistAgileStoreChanges()
-        refreshDerivedContent()
     }
 
     private func withAgileSprint(_ sprintID: Int, _ update: (PortfolioPlanSprint) -> Void) {
         guard let sprint = planModel.sprints.first(where: { $0.legacyID == sprintID }) else { return }
         update(sprint)
         persistAgileStoreChanges()
-        refreshDerivedContent()
     }
 
     private func fullSyncAgilePlan(_ update: (inout NativeProjectPlan) -> Void) {
@@ -5958,7 +5997,6 @@ struct AgileBoardView: View {
         update(&snapshot)
         planModel.update(from: snapshot)
         persistAgileStoreChanges(refreshMetrics: true)
-        refreshDerivedContent()
         syncAgileInspectorDraft(force: true)
     }
 
@@ -6088,9 +6126,7 @@ struct AgileBoardView: View {
                 .controlSize(.small)
 
                 Button("Collapse All") {
-                    collapsedSwimlaneKeys = Set(filteredTasksByLane.flatMap { laneGroup in
-                        swimlaneGroups(for: laneGroup.tasks, lane: laneGroup.lane).map(\.key)
-                    })
+                    collapsedSwimlaneKeys = Set(laneDisplays.flatMap { $0.groups.map(\.key) })
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
@@ -6148,8 +6184,8 @@ struct AgileBoardView: View {
         HStack(spacing: 0) {
             ScrollView(.horizontal) {
                 LazyHStack(alignment: .top, spacing: 14) {
-                    ForEach(filteredTasksByLane) { laneGroup in
-                        laneColumn(laneGroup.lane, tasks: laneGroup.tasks)
+                    ForEach(laneDisplays) { laneDisplay in
+                        laneColumn(laneDisplay)
                     }
                 }
                 .padding()
@@ -6313,17 +6349,17 @@ struct AgileBoardView: View {
         .frame(width: 620, height: 560)
     }
 
-    private func laneColumn(_ lane: String, tasks laneTasks: [NativePlanTask]) -> some View {
+    private func laneColumn(_ laneDisplay: AgileBoardLaneDisplay) -> some View {
+        let lane = laneDisplay.lane
         let tint = laneColor(for: lane)
         let laneIndex = boardColumns.firstIndex(of: lane)
-        let activeTaskCount = laneTasks.filter { ($0.percentComplete < 100) && normalizedBoardStatus(for: $0).compare("Done", options: .caseInsensitive) != .orderedSame }.count
         let laneWIP = wipLimit(for: lane)
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(lane)
                         .font(.headline)
-                    Text(laneWIP.map { "\(activeTaskCount) / \($0) active" } ?? "\(laneTasks.count) items")
+                    Text(laneWIP.map { "\(laneDisplay.activeTaskCount) / \($0) active" } ?? "\(laneDisplay.tasks.count) items")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -6363,7 +6399,7 @@ struct AgileBoardView: View {
 
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 10) {
-                    ForEach(swimlaneGroups(for: laneTasks, lane: lane)) { group in
+                    ForEach(laneDisplay.groups) { group in
                         swimlaneGroupView(group, tint: tint)
                     }
                 }
@@ -7018,7 +7054,7 @@ struct AgileBoardView: View {
                         agileReportCard(
                             title: "Sprint Capacity",
                             subtitle: nativeSprints.isEmpty ? "No sprints" : "\(nativeSprints.count) active definitions",
-                            value: "\(nativeSprints.reduce(0) { $0 + max(0, $1.capacityPoints) })",
+                            value: "\(derivedContent.totalSprintCapacityPoints)",
                             footnote: "Capacity points",
                             tone: .purple
                         )
@@ -7054,7 +7090,7 @@ struct AgileBoardView: View {
                         ForEach(["Epic", "Feature", "Story", "Bug", "Task", "Milestone"], id: \.self) { type in
                             agileDistributionRow(
                                 title: type,
-                                count: agileTasks.filter { $0.agileType == type }.count,
+                                count: derivedContent.agileTypeCounts[type] ?? 0,
                                 total: max(agileTasks.count, 1),
                                 tint: distributionTint(for: type)
                             )
@@ -7414,7 +7450,7 @@ struct AgileBoardView: View {
             commitAgileInspectorDraft()
         }
         inspectorTaskDraftWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18, execute: workItem)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.42, execute: workItem)
     }
 
     private func commitAgileInspectorDraft() {
@@ -7431,7 +7467,6 @@ struct AgileBoardView: View {
             inspectorTaskDraftIsDirty = false
             task.update(from: draft, orderIndex: task.orderIndex)
             persistAgileStoreChanges()
-            refreshDerivedContent()
         }
     }
 
@@ -7552,7 +7587,6 @@ struct AgileBoardView: View {
     private func moveTaskToLane(taskID: Int, lane: String) {
         PerformanceMonitor.measure("AgileBoard.MoveTaskToLane") {
             setBoardStatus(taskID: taskID, to: lane)
-            refreshDerivedContent()
             selectedTaskID = taskID
             draggingTaskID = nil
             dropTargetLane = nil
@@ -7779,8 +7813,11 @@ struct AgileBoardView: View {
     }
 
     private func normalizedBoardStatus(for task: NativePlanTask) -> String {
-        let normalized = task.boardStatus.trimmingCharacters(in: .whitespacesAndNewlines)
-        return boardColumns.first(where: { $0.compare(normalized, options: .caseInsensitive) == .orderedSame }) ?? boardColumns.first ?? "Backlog"
+        derivedContent.normalizedStatusByTaskID[task.id]
+            ?? {
+                let normalized = task.boardStatus.trimmingCharacters(in: .whitespacesAndNewlines)
+                return boardColumns.first(where: { $0.compare(normalized, options: .caseInsensitive) == .orderedSame }) ?? boardColumns.first ?? "Backlog"
+            }()
     }
 
     private func canMoveTask(_ task: NativePlanTask, to lane: String) -> Bool {
@@ -7800,7 +7837,7 @@ struct AgileBoardView: View {
 
         if let wipLimit = wipLimit(for: lane, itemType: task.agileType), currentLane != lane {
             let hasTypeSpecificLimit = hasTypeSpecificWIPLimit(for: lane, itemType: task.agileType)
-            let currentCount = tasksByLane.first(where: { $0.lane == lane })?.tasks.filter {
+            let currentCount = derivedContent.tasksByLane.first(where: { $0.lane == lane })?.tasks.filter {
                 $0.id != task.id &&
                 ($0.percentComplete < 100) &&
                 (!hasTypeSpecificLimit || $0.agileType.compare(task.agileType, options: .caseInsensitive) == .orderedSame)
@@ -8070,15 +8107,11 @@ struct AgileBoardView: View {
     }
 
     private func committedPoints(for sprintID: Int) -> Int {
-        agileTasks
-            .filter { $0.sprintID == sprintID }
-            .reduce(0) { $0 + max(0, $1.storyPoints ?? 0) }
+        derivedContent.committedPointsBySprintID[sprintID] ?? 0
     }
 
     private func completedPoints(for sprintID: Int) -> Int {
-        agileTasks
-            .filter { $0.sprintID == sprintID && (normalizedBoardStatus(for: $0) == "Done" || $0.percentComplete >= 100) }
-            .reduce(0) { $0 + max(0, $1.storyPoints ?? 0) }
+        derivedContent.completedPointsBySprintID[sprintID] ?? 0
     }
 
     private func capacityFillRatio(for sprintID: Int) -> Double {
@@ -8306,47 +8339,16 @@ struct AgileBoardView: View {
         }
     }
 
-    private func primaryAssignedResource(for task: NativePlanTask) -> NativePlanResource? {
-        guard let resourceID = nativeAssignments.first(where: { $0.taskID == task.id })?.resourceID else {
-            return nil
-        }
-        return nativeResources.first(where: { $0.id == resourceID })
-    }
-
     private func primaryAssigneeName(for task: NativePlanTask) -> String? {
-        guard let name = primaryAssignedResource(for: task)?.name.trimmingCharacters(in: .whitespacesAndNewlines),
-              !name.isEmpty else {
-            return nil
-        }
-        return name
+        derivedContent.primaryAssigneeNameByTaskID[task.id]
     }
 
     private func teamSwimlaneTitle(for task: NativePlanTask) -> String {
-        if let group = primaryAssignedResource(for: task)?.group.trimmingCharacters(in: .whitespacesAndNewlines),
-           !group.isEmpty {
-            return group
-        }
-        if let sprintID = task.sprintID,
-           let sprintTeam = nativeSprints.first(where: { $0.id == sprintID })?.teamName.trimmingCharacters(in: .whitespacesAndNewlines),
-           !sprintTeam.isEmpty {
-            return sprintTeam
-        }
-        return "No Team"
+        derivedContent.teamTitleByTaskID[task.id] ?? "No Team"
     }
 
     private func boardTaskAssignmentSummary(_ task: NativePlanTask) -> String? {
-        let resourceIDs = nativeAssignments
-            .filter { $0.taskID == task.id }
-            .compactMap(\.resourceID)
-
-        guard !resourceIDs.isEmpty else { return nil }
-
-        let names = resourceIDs.compactMap { resourceID in
-            nativeResources.first(where: { $0.id == resourceID })?.name
-        }
-
-        guard let first = names.first else { return nil }
-        return names.count == 1 ? first : "\(first) +\(names.count - 1)"
+        derivedContent.assignmentSummaryByTaskID[task.id]
     }
     private func miniMetric(_ title: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -8394,9 +8396,25 @@ struct AgileBoardView: View {
         return String(format: "%.2f", value)
     }
 
+    private func refreshLaneDisplays() {
+        laneDisplays = derivedContent.tasksByLane.map { laneGroup in
+            let scopedTasks = filterTasksForBoardScope(laneGroup.tasks)
+            let activeTaskCount = scopedTasks.filter {
+                $0.percentComplete < 100
+                    && (derivedContent.normalizedStatusByTaskID[$0.id]?.compare("Done", options: .caseInsensitive) != .orderedSame)
+            }.count
+            return AgileBoardLaneDisplay(
+                lane: laneGroup.lane,
+                tasks: scopedTasks,
+                groups: swimlaneGroups(for: scopedTasks, lane: laneGroup.lane),
+                activeTaskCount: activeTaskCount
+            )
+        }
+    }
+
     private func refreshDerivedContent() {
         PerformanceMonitor.measure("AgileBoard.RefreshDerived") {
-            derivedContent = AgileBoardDerivedContent.build(
+            let nextDerivedContent = AgileBoardDerivedContent.build(
                 tasks: nativeTasks,
                 assignments: nativeAssignments,
                 resources: nativeResources,
@@ -8406,16 +8424,9 @@ struct AgileBoardView: View {
                 typeWorkflowOverrides: typeWorkflowOverrides,
                 statusSnapshots: nativeStatusSnapshots
             )
+            derivedContent = nextDerivedContent
+            refreshLaneDisplays()
         }
-    }
-
-    private func scheduleDerivedContentRefresh() {
-        derivedRefreshWorkItem?.cancel()
-        let workItem = DispatchWorkItem {
-            refreshDerivedContent()
-        }
-        derivedRefreshWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08, execute: workItem)
     }
 }
 
@@ -8541,6 +8552,86 @@ struct PortfolioDashboardView: View {
         var id: String { title }
     }
 
+    private struct PortfolioDerivedContent {
+        let visiblePlans: [PortfolioProjectPlan]
+        let groupedVisiblePlans: [PlanGroup]
+        let archivedCount: Int
+        let activeCount: Int
+        let workspaceCount: Int
+        let programCount: Int
+        let atRiskProjectCount: Int
+        let totalPortfolioBudget: Double
+        let totalPortfolioActualCost: Double
+        let activeTasks: [TaskSnapshot]
+        let overdueTaskCount: Int
+        let executiveSummary: PortfolioExecutiveSummary
+        let governanceSummary: PortfolioGovernanceSummary
+        let programRoadmapSummary: PortfolioProgramRoadmapSummary
+        let dependencySummary: PortfolioDependencySummary
+        let executiveInsightsByPlanID: [UUID: PortfolioExecutiveSummary.ProjectInsight]
+        let governanceInsightsByPlanID: [UUID: PortfolioGovernanceSummary.ProjectInsight]
+
+        var budgetVariance: Double {
+            totalPortfolioBudget - totalPortfolioActualCost
+        }
+
+        static let empty = PortfolioDerivedContent(
+            visiblePlans: [],
+            groupedVisiblePlans: [],
+            archivedCount: 0,
+            activeCount: 0,
+            workspaceCount: 0,
+            programCount: 0,
+            atRiskProjectCount: 0,
+            totalPortfolioBudget: 0,
+            totalPortfolioActualCost: 0,
+            activeTasks: [],
+            overdueTaskCount: 0,
+            executiveSummary: PortfolioExecutiveSummary(
+                projectInsights: [],
+                rankedProjects: [],
+                topCostVarianceProjects: [],
+                topScheduleSlipProjects: [],
+                attentionFeed: [],
+                upcomingMilestones: [],
+                slippedMilestones: [],
+                healthyCount: 0,
+                watchCount: 0,
+                atRiskCount: 0,
+                reviewDueCount: 0,
+                slippedMilestoneCount: 0,
+                upcomingMilestoneCount: 0
+            ),
+            governanceSummary: PortfolioGovernanceSummary(
+                projectInsights: [],
+                rankedProjects: [],
+                approvedCount: 0,
+                intakeCount: 0,
+                onHoldCount: 0,
+                cancelledCount: 0,
+                reviewDueCount: 0,
+                averageGovernanceScore: 0,
+                averageStrategicAlignment: 0,
+                averageRiskScore: 0
+            ),
+            programRoadmapSummary: PortfolioProgramRoadmapSummary(
+                programs: [],
+                timelineEvents: [],
+                slippedMilestoneCount: 0,
+                overdueReviewCount: 0
+            ),
+            dependencySummary: PortfolioDependencySummary(
+                dependencies: [],
+                blockedCount: 0,
+                highSeverityCount: 0,
+                dueSoonCount: 0,
+                crossProgramCount: 0
+            ),
+            executiveInsightsByPlanID: [:],
+            governanceInsightsByPlanID: [:]
+        )
+    }
+
     private static let portfolioStageOptions = [
         "Planning",
         "Proposed",
@@ -8608,60 +8699,27 @@ struct PortfolioDashboardView: View {
     @State private var reviewPresetName = ""
     @State private var reviewPresetCadenceDays = 14
     @State private var reviewSnapshotTitle = ""
+    @State private var derivedContent = PortfolioDerivedContent.empty
+    @State private var resourceCapacitySummary = PortfolioResourceCapacitySummary(
+        resources: [],
+        overloadedResources: [],
+        sharedResources: [],
+        alerts: [],
+        uniqueResourceCount: 0,
+        overloadedResourceCount: 0,
+        sharedResourceCount: 0,
+        overloadedWeekCount: 0,
+        doubleBookedWeekCount: 0
+    )
+    @State private var isPortfolioDerivedContentLoading = true
+    @State private var isResourceCapacityLoading = true
+    @State private var portfolioDerivedRefreshWorkItem: DispatchWorkItem?
+    @State private var resourceCapacityRefreshWorkItem: DispatchWorkItem?
 
-    private var visiblePlans: [PortfolioProjectPlan] {
+    private var filteredPlans: [PortfolioProjectPlan] {
         plans.filter { plan in
             scopeMatches(plan) && healthMatches(plan) && approvalMatches(plan) && searchMatches(plan)
         }
-    }
-
-    private var archivedCount: Int {
-        plans.filter(\.isArchivedValue).count
-    }
-
-    private var activeCount: Int {
-        plans.count - archivedCount
-    }
-
-    private var workspaceCount: Int {
-        Set(visiblePlans.compactMap { normalizedMetadata($0.portfolioWorkspace) }).count
-    }
-
-    private var programCount: Int {
-        Set(visiblePlans.compactMap { normalizedMetadata($0.portfolioProgram) }).count
-    }
-
-    private var atRiskProjectCount: Int {
-        visiblePlans.filter(isAtRisk).count
-    }
-
-    private var totalPortfolioBudget: Double {
-        visiblePlans.reduce(0) { $0 + $1.portfolioBudget }
-    }
-
-    private var totalPortfolioActualCost: Double {
-        visiblePlans.reduce(0) { $0 + $1.portfolioActualCost }
-    }
-
-    private var budgetVariance: Double {
-        totalPortfolioBudget - totalPortfolioActualCost
-    }
-
-    private var overdueTaskCount: Int {
-        let today = Calendar.current.startOfDay(for: Date())
-        return activeTasks.filter { Calendar.current.startOfDay(for: $0.finishDate) < today }.count
-    }
-
-    private var activeTasks: [TaskSnapshot] {
-        visiblePlans
-            .flatMap(taskSnapshots(for:))
-            .filter { $0.isActive && $0.percentComplete < 100 }
-            .sorted {
-                if $0.finishDate != $1.finishDate {
-                    return $0.finishDate < $1.finishDate
-                }
-                return $0.id < $1.id
-            }
     }
 
     private var selectedPlan: PortfolioProjectPlan? {
@@ -8671,7 +8729,7 @@ struct PortfolioDashboardView: View {
         if let activePortfolioID, let plan = plans.first(where: { $0.portfolioID == activePortfolioID }) {
             return plan
         }
-        return visiblePlans.first ?? plans.first
+        return derivedContent.visiblePlans.first ?? filteredPlans.first ?? plans.first
     }
 
     private var selectedPlanTitle: String {
@@ -8684,40 +8742,51 @@ struct PortfolioDashboardView: View {
     }
 
     private var watchlistTasks: [TaskSnapshot] {
-        activeTasks
+        derivedContent.activeTasks
+    }
+
+    private var visiblePlans: [PortfolioProjectPlan] {
+        derivedContent.visiblePlans
     }
 
     private var groupedVisiblePlans: [PlanGroup] {
-        guard registryGrouping != .none else { return [] }
+        derivedContent.groupedVisiblePlans
+    }
 
-        let grouped = Dictionary(grouping: visiblePlans) { plan in
-            switch registryGrouping {
-            case .none:
-                return ""
-            case .workspace:
-                return normalizedMetadata(plan.portfolioWorkspace) ?? "Unassigned Workspace"
-            case .program:
-                return normalizedMetadata(plan.portfolioProgram) ?? "Unassigned Program"
-            case .health:
-                return normalizedMetadata(plan.portfolioHealth) ?? "Health Not Set"
-            case .approval:
-                return normalizedMetadata(plan.portfolioApprovalState) ?? "Intake Review"
-            }
-        }
+    private var archivedCount: Int {
+        derivedContent.archivedCount
+    }
 
-        return grouped
-            .map { key, plans in
-                PlanGroup(
-                    title: key,
-                    plans: plans.sorted { lhs, rhs in
-                        trimmedOrFallback(lhs.title, fallback: "Untitled Plan")
-                            .localizedCaseInsensitiveCompare(trimmedOrFallback(rhs.title, fallback: "Untitled Plan")) == .orderedAscending
-                    }
-                )
-            }
-            .sorted { lhs, rhs in
-                lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
-            }
+    private var activeCount: Int {
+        derivedContent.activeCount
+    }
+
+    private var workspaceCount: Int {
+        derivedContent.workspaceCount
+    }
+
+    private var programCount: Int {
+        derivedContent.programCount
+    }
+
+    private var atRiskProjectCount: Int {
+        derivedContent.atRiskProjectCount
+    }
+
+    private var totalPortfolioBudget: Double {
+        derivedContent.totalPortfolioBudget
+    }
+
+    private var totalPortfolioActualCost: Double {
+        derivedContent.totalPortfolioActualCost
+    }
+
+    private var budgetVariance: Double {
+        derivedContent.budgetVariance
+    }
+
+    private var overdueTaskCount: Int {
+        derivedContent.overdueTaskCount
     }
 
     private var selectedPlanTasks: [TaskSnapshot] {
@@ -8737,19 +8806,19 @@ struct PortfolioDashboardView: View {
     }
 
     private var executiveSummary: PortfolioExecutiveSummary {
-        PortfolioExecutiveSummary.build(plans: visiblePlans)
+        derivedContent.executiveSummary
     }
 
     private var governanceSummary: PortfolioGovernanceSummary {
-        PortfolioGovernanceSummary.build(plans: visiblePlans)
+        derivedContent.governanceSummary
     }
 
     private var programRoadmapSummary: PortfolioProgramRoadmapSummary {
-        PortfolioProgramRoadmapSummary.build(plans: visiblePlans)
+        derivedContent.programRoadmapSummary
     }
 
     private var dependencySummary: PortfolioDependencySummary {
-        PortfolioDependencySummary.build(plans: visiblePlans, dependencies: crossProjectDependencies)
+        derivedContent.dependencySummary
     }
 
     private var currentReviewViewSettings: PortfolioReviewViewSettings {
@@ -8806,25 +8875,19 @@ struct PortfolioDashboardView: View {
     private var selectedProgramRoadmapInsight: PortfolioProgramRoadmapSummary.ProgramInsight? {
         guard let selectedPlan else { return nil }
         let selectedProgram = trimmedOrFallback(selectedPlan.portfolioProgram ?? "", fallback: "Unassigned Program")
-        return PortfolioProgramRoadmapSummary.build(plans: [selectedPlan] + plans.filter {
-            $0.portfolioID != selectedPlan.portfolioID
-                && trimmedOrFallback($0.portfolioProgram ?? "", fallback: "Unassigned Program")
-                    .caseInsensitiveCompare(selectedProgram) == .orderedSame
-        }).programs.first
+        return programRoadmapSummary.programs.first {
+            $0.program.caseInsensitiveCompare(selectedProgram) == .orderedSame
+        }
     }
 
     private var selectedPlanInsight: PortfolioExecutiveSummary.ProjectInsight? {
         guard let selectedPlan else { return nil }
-        return PortfolioExecutiveSummary.build(plans: [selectedPlan]).projectInsights.first
+        return derivedContent.executiveInsightsByPlanID[selectedPlan.portfolioID]
     }
 
     private var selectedPlanGovernanceInsight: PortfolioGovernanceSummary.ProjectInsight? {
         guard let selectedPlan else { return nil }
-        return PortfolioGovernanceSummary.build(plans: [selectedPlan]).projectInsights.first
-    }
-
-    private var resourceCapacitySummary: PortfolioResourceCapacitySummary {
-        PortfolioResourceCapacitySummary.build(plans: visiblePlans)
+        return derivedContent.governanceInsightsByPlanID[selectedPlan.portfolioID]
     }
 
     private var dependencySourceTaskOptions: [PortfolioPlanTask] {
@@ -8875,6 +8938,16 @@ struct PortfolioDashboardView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     header
+
+                    if isPortfolioDerivedContentLoading || isResourceCapacityLoading {
+                        HStack(spacing: 10) {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text(isPortfolioDerivedContentLoading ? "Refreshing portfolio analytics…" : "Refreshing cross-project capacity…")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
 
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 12)], spacing: 12) {
                         metricCard(title: "Visible", value: "\(visiblePlans.count)", tint: .blue)
@@ -8952,17 +9025,27 @@ struct PortfolioDashboardView: View {
                             }
 
                             if visiblePlans.isEmpty {
+                                if isPortfolioDerivedContentLoading && !plans.isEmpty {
+                                    VStack(spacing: 10) {
+                                        ProgressView()
+                                        Text("Preparing the portfolio registry.")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    .frame(maxWidth: .infinity, minHeight: 220)
+                                } else {
                                 ContentUnavailableView(
                                     "No Matching Projects",
                                     systemImage: "tray",
                                     description: Text("Import `.mpp` or `.mppplan` files, create a blank plan, or change the registry scope.")
                                 )
                                 .frame(maxWidth: .infinity, minHeight: 220)
+                                }
                             } else {
                                 LazyVStack(alignment: .leading, spacing: 14) {
                                     if registryGrouping == .none {
                                         ForEach(visiblePlans) { plan in
-                                            portfolioRow(for: plan, governance: governance.projectInsights.first { $0.planID == plan.portfolioID })
+                                            portfolioRow(for: plan, governance: derivedContent.governanceInsightsByPlanID[plan.portfolioID])
                                         }
                                     } else {
                                         ForEach(groupedVisiblePlans) { group in
@@ -8977,7 +9060,7 @@ struct PortfolioDashboardView: View {
                                                 }
 
                                                 ForEach(group.plans) { plan in
-                                                    portfolioRow(for: plan, governance: governance.projectInsights.first { $0.planID == plan.portfolioID })
+                                                    portfolioRow(for: plan, governance: derivedContent.governanceInsightsByPlanID[plan.portfolioID])
                                                 }
                                             }
                                             .padding(14)
@@ -9074,24 +9157,39 @@ struct PortfolioDashboardView: View {
             normalizeCrossProjectDependencies()
             syncDependencySelections()
             syncReviewSelections()
+            schedulePortfolioDerivedContentRefresh(delay: 0)
+            scheduleResourceCapacityRefresh(delay: 0.08)
         }
-        .onChange(of: plans.map(\.portfolioID)) { _, _ in
+        .onChange(of: plans.map(\.updatedAt)) { _, _ in
             syncSelectedPlan()
             normalizeCrossProjectDependencies()
             syncDependencySelections()
             syncReviewSelections()
+            schedulePortfolioDerivedContentRefresh(delay: 0.02)
+            scheduleResourceCapacityRefresh(delay: 0.12)
         }
         .onChange(of: registryScope) { _, _ in
             syncSelectedPlan()
+            schedulePortfolioDerivedContentRefresh(delay: 0.12)
+            scheduleResourceCapacityRefresh(delay: 0.18)
         }
         .onChange(of: searchText) { _, _ in
             syncSelectedPlan()
+            schedulePortfolioDerivedContentRefresh(delay: 0.16)
+            scheduleResourceCapacityRefresh(delay: 0.22)
         }
         .onChange(of: healthScope) { _, _ in
             syncSelectedPlan()
+            schedulePortfolioDerivedContentRefresh(delay: 0.12)
+            scheduleResourceCapacityRefresh(delay: 0.18)
         }
         .onChange(of: approvalScope) { _, _ in
             syncSelectedPlan()
+            schedulePortfolioDerivedContentRefresh(delay: 0.12)
+            scheduleResourceCapacityRefresh(delay: 0.18)
+        }
+        .onChange(of: registryGrouping) { _, _ in
+            schedulePortfolioDerivedContentRefresh(delay: 0.04)
         }
         .onChange(of: activePortfolioID) { _, newValue in
             if selectedPlanID != newValue {
@@ -9106,6 +9204,7 @@ struct PortfolioDashboardView: View {
         }
         .onChange(of: crossProjectDependencies.map(\.uniqueID)) { _, _ in
             syncDependencySelections()
+            schedulePortfolioDerivedContentRefresh(delay: 0.02)
         }
         .onChange(of: reviewPresets.map(\.uniqueID)) { _, _ in
             syncReviewSelections()
@@ -11284,6 +11383,104 @@ struct PortfolioDashboardView: View {
         return haystack.contains(query)
     }
 
+    private func buildGroupedVisiblePlans(from visiblePlans: [PortfolioProjectPlan]) -> [PlanGroup] {
+        guard registryGrouping != .none else { return [] }
+
+        let grouped = Dictionary(grouping: visiblePlans) { plan in
+            switch registryGrouping {
+            case .none:
+                return ""
+            case .workspace:
+                return normalizedMetadata(plan.portfolioWorkspace) ?? "Unassigned Workspace"
+            case .program:
+                return normalizedMetadata(plan.portfolioProgram) ?? "Unassigned Program"
+            case .health:
+                return normalizedMetadata(plan.portfolioHealth) ?? "Health Not Set"
+            case .approval:
+                return normalizedMetadata(plan.portfolioApprovalState) ?? "Intake Review"
+            }
+        }
+
+        return grouped
+            .map { key, plans in
+                PlanGroup(
+                    title: key,
+                    plans: plans.sorted { lhs, rhs in
+                        trimmedOrFallback(lhs.title, fallback: "Untitled Plan")
+                            .localizedCaseInsensitiveCompare(trimmedOrFallback(rhs.title, fallback: "Untitled Plan")) == .orderedAscending
+                    }
+                )
+            }
+            .sorted { lhs, rhs in
+                lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+            }
+    }
+
+    private func refreshPortfolioDerivedContent() {
+        let visiblePlans = filteredPlans
+        let executive = PortfolioExecutiveSummary.build(plans: visiblePlans)
+        let governance = PortfolioGovernanceSummary.build(plans: visiblePlans)
+        let roadmap = PortfolioProgramRoadmapSummary.build(plans: visiblePlans)
+        let dependencies = PortfolioDependencySummary.build(plans: visiblePlans, dependencies: crossProjectDependencies)
+        let activeTasks = visiblePlans
+            .flatMap(taskSnapshots(for:))
+            .filter { $0.isActive && $0.percentComplete < 100 }
+            .sorted {
+                if $0.finishDate != $1.finishDate {
+                    return $0.finishDate < $1.finishDate
+                }
+                return $0.id < $1.id
+            }
+        let today = Calendar.current.startOfDay(for: Date())
+        let archivedCount = plans.filter(\.isArchivedValue).count
+
+        derivedContent = PortfolioDerivedContent(
+            visiblePlans: visiblePlans,
+            groupedVisiblePlans: buildGroupedVisiblePlans(from: visiblePlans),
+            archivedCount: archivedCount,
+            activeCount: plans.count - archivedCount,
+            workspaceCount: Set(visiblePlans.compactMap { normalizedMetadata($0.portfolioWorkspace) }).count,
+            programCount: Set(visiblePlans.compactMap { normalizedMetadata($0.portfolioProgram) }).count,
+            atRiskProjectCount: visiblePlans.filter(isAtRisk).count,
+            totalPortfolioBudget: visiblePlans.reduce(0) { $0 + $1.portfolioBudget },
+            totalPortfolioActualCost: visiblePlans.reduce(0) { $0 + $1.portfolioActualCost },
+            activeTasks: activeTasks,
+            overdueTaskCount: activeTasks.filter { Calendar.current.startOfDay(for: $0.finishDate) < today }.count,
+            executiveSummary: executive,
+            governanceSummary: governance,
+            programRoadmapSummary: roadmap,
+            dependencySummary: dependencies,
+            executiveInsightsByPlanID: Dictionary(uniqueKeysWithValues: executive.projectInsights.map { ($0.planID, $0) }),
+            governanceInsightsByPlanID: Dictionary(uniqueKeysWithValues: governance.projectInsights.map { ($0.planID, $0) })
+        )
+        isPortfolioDerivedContentLoading = false
+    }
+
+    private func schedulePortfolioDerivedContentRefresh(delay: TimeInterval = 0.08) {
+        portfolioDerivedRefreshWorkItem?.cancel()
+        isPortfolioDerivedContentLoading = true
+        let workItem = DispatchWorkItem {
+            refreshPortfolioDerivedContent()
+        }
+        portfolioDerivedRefreshWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
+    }
+
+    private func refreshResourceCapacitySummary() {
+        resourceCapacitySummary = PortfolioResourceCapacitySummary.build(plans: filteredPlans)
+        isResourceCapacityLoading = false
+    }
+
+    private func scheduleResourceCapacityRefresh(delay: TimeInterval = 0.12) {
+        resourceCapacityRefreshWorkItem?.cancel()
+        isResourceCapacityLoading = true
+        let workItem = DispatchWorkItem {
+            refreshResourceCapacitySummary()
+        }
+        resourceCapacityRefreshWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
+    }
+
     private func syncSelectedPlan() {
         if let activePortfolioID, plans.contains(where: { $0.portfolioID == activePortfolioID }) {
             selectedPlanID = activePortfolioID
@@ -11294,7 +11491,7 @@ struct PortfolioDashboardView: View {
             return
         }
 
-        selectedPlanID = visiblePlans.first?.portfolioID ?? plans.first?.portfolioID
+        selectedPlanID = filteredPlans.first?.portfolioID ?? plans.first?.portfolioID
     }
 
     private func openPlanInWorkspace(_ plan: PortfolioProjectPlan) {
@@ -11307,7 +11504,7 @@ struct PortfolioDashboardView: View {
         plan.updatedAt = Date()
         try? modelContext.save()
         if plan.isArchivedValue, activePortfolioID == plan.portfolioID {
-            activePortfolioID = visiblePlans.first?.portfolioID
+            activePortfolioID = filteredPlans.first?.portfolioID
         }
         syncSelectedPlan()
     }
@@ -11318,9 +11515,9 @@ struct PortfolioDashboardView: View {
         modelContext.delete(plan)
         try? modelContext.save()
         if activePortfolioID == deletedID {
-            activePortfolioID = visiblePlans.first(where: { $0.portfolioID != deletedID })?.portfolioID
+            activePortfolioID = filteredPlans.first(where: { $0.portfolioID != deletedID })?.portfolioID
         }
-        selectedPlanID = visiblePlans.first?.portfolioID
+        selectedPlanID = filteredPlans.first?.portfolioID
         syncDependencySelections()
     }
 

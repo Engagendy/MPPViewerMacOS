@@ -5,7 +5,7 @@
 <h1 align="center">MPP Viewer</h1>
 
 <p align="center">
-  <strong>A free, native macOS app for reviewing, creating, and updating project plans</strong><br>
+  <strong>A free, native macOS app for reviewing, creating, and updating project and portfolio plans</strong><br>
   No Windows. No MS Project license. No subscriptions.<br>
   Open `.mpp` files &bull; Create native `.mppplan` files &bull; Built with SwiftUI &bull; Powered by MPXJ
 </p>
@@ -24,6 +24,7 @@
 
 - Review Microsoft Project schedules on macOS without opening Windows or buying Microsoft Project.
 - Build native plans directly in the app with grid editing, Gantt editing, resources, calendars, statusing, and finance.
+- Register multiple plans in a portfolio workspace with governance metadata, roadmap signals, resource capacity, and review snapshots.
 - Run analysis, workload, validation, and earned value from the same project model instead of jumping between tools.
 - Import operational spreadsheets, update status centrally, and export governance-ready outputs from the same workspace.
 
@@ -31,7 +32,9 @@
 
 - Open `.mpp` files for review, diagnostics, reporting, and schedule analysis.
 - Create `.mppplan` files for fully native planning and ongoing project control.
+- Track multiple plans in `Portfolio` for PMO-style oversight, governance, review cadence, and cross-project signals.
 - Edit tasks in a grid, in Gantt, or through focused status and resource workflows.
+- Manage backlog, sprints, workflow buckets, and hybrid delivery reporting in `Agile Board`.
 - Track baselines, actuals, costs, overtime, CPI/SPI/EAC/VAC, and workload in one app.
 - Import tasks, resources, calendars, assignments, dependencies, constraints, and baselines from mapped spreadsheets.
 
@@ -39,7 +42,7 @@
 
 1. Download the latest release from [GitHub Releases](https://github.com/Engagendy/MPPViewerMacOS/releases) or install with Homebrew.
 2. Open the included [aurora-commerce-launch.mppplan](docs/sample-plans/aurora-commerce-launch.mppplan) to explore a fully populated native project.
-3. Start in `Plan Builder` to edit, `Dashboard` to review, or `Status Center` / `Earned Value` for controls work.
+3. Start in `Portfolio` for workspace context, `Plan Builder` to edit, or `Status Center` / `Earned Value` for controls work.
 
 ## Performance Engineering
 
@@ -56,7 +59,7 @@
 
 ## Screenshots
 
-All screenshots below were captured from the included showcase native plan:
+All screenshots below were captured from the app using the included showcase native plan as the primary workspace sample:
 [aurora-commerce-launch.mppplan](docs/sample-plans/aurora-commerce-launch.mppplan)
 
 ### Core Review Views
@@ -64,6 +67,18 @@ All screenshots below were captured from the included showcase native plan:
 <p align="center">
   <img src="docs/screenshots/dashboard.png" width="800" alt="Dashboard — project health at a glance">
   <br><em>Dashboard — project health overview with KPIs, milestones, and schedule status</em>
+</p>
+
+### Portfolio & Delivery Views
+
+<p align="center">
+  <img src="docs/screenshots/portfolio.png" width="800" alt="Portfolio Workspace — multi-project registry and governance workspace">
+  <br><em>Portfolio Workspace — multi-project registry with executive metrics, governance metadata, and live workspace opening</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/agile-board.png" width="800" alt="Agile Board — backlog, workflow lanes, and sprint delivery">
+  <br><em>Agile Board — hybrid backlog and workflow board with sprint planning, bucket controls, and delivery reporting</em>
 </p>
 
 <p align="center">
@@ -120,21 +135,22 @@ All screenshots below were captured from the included showcase native plan:
 
 <p align="center">
   <img src="docs/screenshots/help-guide.png" width="800" alt="Guide and Help — built-in workflow reference">
-  <br><em>Guide &amp; Help — built-in onboarding, workflow guidance, glossary, document types, and shortcuts</em>
+  <br><em>Guide &amp; Help — built-in onboarding, portfolio workflows, feature reference, glossary, document types, and shortcuts</em>
 </p>
 
 ## Showcase Sample Plan
 
-- Open [aurora-commerce-launch.mppplan](docs/sample-plans/aurora-commerce-launch.mppplan) to explore the native planning workflow with tasks, hierarchy, resources, calendars, assignments, earned value, and workload already populated.
+- Open [aurora-commerce-launch.mppplan](docs/sample-plans/aurora-commerce-launch.mppplan) to explore the native planning workflow with tasks, hierarchy, resources, calendars, assignments, agile metadata, earned value, and workload already populated.
 - The sample is intended for demos, screenshots, and first-run exploration of the app’s editing and analysis features.
 
 ## Recommended Tour
 
 1. Open the included [aurora-commerce-launch.mppplan](docs/sample-plans/aurora-commerce-launch.mppplan) to see a fully populated native plan.
-2. Start in `Plan Builder` or `Gantt Chart` if you want to edit, or `Dashboard` / `Earned Value` if you want to review.
-3. Open `Resources` and `Calendar` to see native staffing and working-time setup.
-4. Use `Status Center` to apply actual dates, progress, cost, and overtime updates against a status date.
-5. Finish in `Workload`, `Validation`, `Diagnostics`, and `Compare` for review and follow-up.
+2. Start in `Portfolio` to see the workspace registry and governance fields, then open `Dashboard` for project health.
+3. Move into `Plan Builder`, `Agile Board`, and `Gantt Chart` to see the three main native editing and delivery surfaces.
+4. Open `Resources` and `Calendar` to see native staffing and working-time setup.
+5. Use `Status Center` and `Earned Value` to apply actual dates, progress, cost, overtime, and controls review against a status date.
+6. Finish in `Workload`, `Validation`, `Diagnostics`, `Timeline`, and `Compare` for review and follow-up.
 
 ---
 
@@ -185,6 +201,17 @@ Go to **System Settings → Privacy & Security**, scroll down, and click **Open 
 - Edit task dates, duration, milestones, predecessors, constraints, baselines, actual dates, and financial overrides.
 - Grid-first editing designed to feel closer to Microsoft Project for rapid task entry.
 
+### Portfolio & PPM
+- `Portfolio` registers multiple imported or native plans in one workspace.
+- Track workspace, program, sponsor, objective, stage, approval state, review date, review cadence, strategic alignment, and risk score per plan.
+- Review executive health rollups, governance ranking, roadmap milestones, cross-project dependency signals, and portfolio review snapshots.
+- Open a selected portfolio plan into the live editable workspace without leaving the registry.
+
+### Agile Delivery
+- `Agile Board` provides backlog, workflow lanes, sprint planning, and hybrid delivery reporting on top of the same native schedule.
+- Organize work with statuses, buckets, sprints, epics, story points, parent grouping, tags, and optional detail panes.
+- Use bucket ordering, workflow controls, sprint planner, and focus mode to manage delivery flow without breaking the native project model.
+
 ### Visual Gantt Editing
 - `Gantt Chart` supports both review and native-plan editing.
 - Move task bars, resize duration, create and remove dependencies, and restructure task hierarchy.
@@ -230,7 +257,7 @@ Go to **System Settings → Privacy & Security**, scroll down, and click **Open 
 - Review pack and issue exports for recurring governance workflows.
 
 ### Help and Usability
-- In-app `Guide & Help` screen with feature documentation and workflow guidance.
+- In-app `Guide & Help` screen with screen-by-screen documentation, workflow guidance, document-mode guidance, and portfolio usage paths.
 - macOS Help menu entries for the guide and financial glossary.
 - Search across task name, ID, WBS, notes, resources, and custom fields.
 - Keyboard shortcuts for navigation and planner editing.
