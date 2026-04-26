@@ -2830,6 +2830,11 @@ struct ContentView: View {
         return nil
     }
 
+    private var activeDetailPortfolioPlan: PortfolioProjectPlan? {
+        guard document.isEditablePlan else { return nil }
+        return effectiveWorkspacePortfolioPlan
+    }
+
     private var workspacePortfolioBinding: Binding<UUID?> {
         Binding(
             get: { workspacePortfolioID },
@@ -2845,9 +2850,6 @@ struct ContentView: View {
     private var displayProject: ProjectModel? {
         if document.isEditablePlan {
             return editableAnalysis?.project
-        }
-        if let plan = effectiveWorkspacePortfolioPlan {
-            return plan.asNativePlan().asProjectModel()
         }
         return currentProject
     }
@@ -3053,7 +3055,7 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
             }
         } else if let project = displayProject {
-            detailView(for: selectedNav, project: project, portfolioPlan: effectiveWorkspacePortfolioPlan)
+            detailView(for: selectedNav, project: project, portfolioPlan: activeDetailPortfolioPlan)
         } else {
             Text("No project loaded")
                 .foregroundStyle(.secondary)
@@ -3445,69 +3447,39 @@ struct ContentView: View {
         }
     }
 
-    @MainActor
-    private func promoteImportedProjectToEditableIfNeeded() async {
-        guard !document.isEditablePlan else { return }
-        guard editablePortfolioPlan == nil else { return }
-        guard let project = projectModelForEditablePromotion() else { return }
-
-        let nativePlan = NativeProjectPlan(projectModel: project)
-        do {
-            try PortfolioProjectSynchronizer.upsert(nativePlan: nativePlan, in: modelContext)
-            archiveEditablePlan(nativePlan)
-            editableWorkspaceError = nil
-            refreshEditableAnalysis()
-            if shouldOpenPlannerForCurrentSelection() {
-                selectedNav = .planner
-            }
-        } catch {
-            let message: String
-            let localized = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
-            if localized.isEmpty {
-                message = "Opened in read-only mode because the editable workspace could not be prepared."
-            } else {
-                message = "Opened in read-only mode because the editable workspace could not be prepared. \(localized)"
-            }
-            editableWorkspaceError = message
-            print("Failed to promote imported MPP to editable plan: \(error)")
-        }
-    }
-
-    private func projectModelForEditablePromotion() -> ProjectModel? {
-        if let project = editableAnalysis?.project {
-            return project
-        }
-        if let project = store.project {
-            return project
-        }
-        return document.nativePlan?.asProjectModel()
-    }
-
-    private func shouldOpenPlannerForCurrentSelection() -> Bool {
-        switch selectedNav {
-        case .none, .dashboard:
-            return true
-        default:
-            return false
-        }
-    }
-
     private func shouldOpenDashboardForCurrentSelection() -> Bool {
         switch selectedNav {
-        case .none, .planner:
+        case .none, .portfolio, .planner, .agileBoard, .statusCenter:
             return true
         default:
             return false
+        }
+    }
+
+    private func normalizedNavigationForCurrentDocument() -> NavigationItem {
+        if document.isEditablePlan {
+            switch selectedNav {
+            case .none, .portfolio, .dashboard:
+                return .planner
+            case .some(let current):
+                return current
+            }
+        }
+
+        switch selectedNav {
+        case .none, .portfolio, .planner, .agileBoard, .statusCenter:
+            return .dashboard
+        case .some(let current):
+            return current
         }
     }
 
     private func handleDocumentModeChange() async {
         if document.isEditablePlan {
             store.reset()
+            selectedWorkspacePortfolioID = document.editablePortfolioID
             refreshEditableAnalysis()
-            if shouldOpenPlannerForCurrentSelection() {
-                selectedNav = .planner
-            }
+            selectedNav = normalizedNavigationForCurrentDocument()
             return
         }
 
@@ -3520,6 +3492,8 @@ struct ContentView: View {
         // does not require SwiftData promotion to render the document.
         if shouldOpenDashboardForCurrentSelection() {
             selectedNav = .dashboard
+        } else {
+            selectedNav = normalizedNavigationForCurrentDocument()
         }
     }
 
