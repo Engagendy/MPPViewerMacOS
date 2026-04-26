@@ -3870,16 +3870,31 @@ final class PortfolioReviewSnapshot {
     }
 }
 
+enum PortfolioProjectSynchronizerError: LocalizedError {
+    case storeRecoveryRequired(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .storeRecoveryRequired(let details):
+            let trimmed = details.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty {
+                return "The portfolio data store is inconsistent. Restart MPPViewer and reopen the file. The project can remain open in read-only mode."
+            }
+            return "The portfolio data store is inconsistent. Restart MPPViewer and reopen the file. The project can remain open in read-only mode. Details: \(trimmed)"
+        }
+    }
+}
+
 enum PortfolioProjectSynchronizer {
     @MainActor
     @discardableResult
     static func upsert(nativePlan: NativeProjectPlan, in context: ModelContext) throws -> PortfolioProjectPlan {
         let normalizedPlan = nativePlan.normalizedForStorage()
-        return try upsert(normalizedPlan, in: context, allowRecovery: true)
+        return try upsert(normalizedPlan, in: context)
     }
 
     @MainActor
-    private static func upsert(_ nativePlan: NativeProjectPlan, in context: ModelContext, allowRecovery: Bool) throws -> PortfolioProjectPlan {
+    private static func upsert(_ nativePlan: NativeProjectPlan, in context: ModelContext) throws -> PortfolioProjectPlan {
         let identifier = nativePlan.portfolioID
         let descriptor = FetchDescriptor<PortfolioProjectPlan>(
             predicate: #Predicate { plan in
@@ -3900,23 +3915,10 @@ enum PortfolioProjectSynchronizer {
             }
         } catch {
             context.rollback()
-
-            guard allowRecovery else {
-                throw error
+            if requiresStoreRecovery(error) {
+                throw PortfolioProjectSynchronizerError.storeRecoveryRequired(error.localizedDescription)
             }
-
-            if !requiresStoreRecovery(error) {
-                throw error
-            }
-
-            clearPersistedPortfolioData(in: context)
-            do {
-                try context.save()
-            } catch {
-                // Ignore save errors while clearing data.
-            }
-
-            return try upsert(nativePlan, in: context, allowRecovery: false)
+            throw error
         }
     }
 
@@ -3940,34 +3942,6 @@ enum PortfolioProjectSynchronizer {
         }
 
         return false
-    }
-
-    private static func clearPersistedPortfolioData(in context: ModelContext) {
-        deleteAll(PortfolioProjectPlan.self, in: context)
-        deleteAll(PortfolioPlanTask.self, in: context)
-        deleteAll(PortfolioPlanResource.self, in: context)
-        deleteAll(PortfolioPlanAssignment.self, in: context)
-        deleteAll(PortfolioCrossProjectDependency.self, in: context)
-        deleteAll(PortfolioReviewPreset.self, in: context)
-        deleteAll(PortfolioReviewSnapshot.self, in: context)
-        deleteAll(PortfolioPlanCalendar.self, in: context)
-        deleteAll(PortfolioPlanSprint.self, in: context)
-        deleteAll(PortfolioWorkflowColumn.self, in: context)
-        deleteAll(PortfolioTypeWorkflow.self, in: context)
-        deleteAll(PortfolioStatusSnapshot.self, in: context)
-        deleteAll(PortfolioSprintStatusSnapshot.self, in: context)
-    }
-
-    private static func deleteAll<T: PersistentModel>(_ type: T.Type, in context: ModelContext) {
-        do {
-            let descriptor = FetchDescriptor<T>()
-            let rows = try context.fetch(descriptor)
-            for row in rows {
-                context.delete(row)
-            }
-        } catch {
-            print("Failed to clear \(type): \(error)")
-        }
     }
 }
 

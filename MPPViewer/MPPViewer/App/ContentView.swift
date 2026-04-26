@@ -3455,12 +3455,21 @@ struct ContentView: View {
         do {
             try PortfolioProjectSynchronizer.upsert(nativePlan: nativePlan, in: modelContext)
             archiveEditablePlan(nativePlan)
+            editableWorkspaceError = nil
             refreshEditableAnalysis()
             if shouldOpenPlannerForCurrentSelection() {
                 selectedNav = .planner
             }
         } catch {
-            assertionFailure("Failed to promote imported MPP to editable plan: \(error)")
+            let message: String
+            let localized = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+            if localized.isEmpty {
+                message = "Opened in read-only mode because the editable workspace could not be prepared."
+            } else {
+                message = "Opened in read-only mode because the editable workspace could not be prepared. \(localized)"
+            }
+            editableWorkspaceError = message
+            print("Failed to promote imported MPP to editable plan: \(error)")
         }
     }
 
@@ -3496,7 +3505,6 @@ struct ContentView: View {
         if document.isEditablePlan {
             store.reset()
             refreshEditableAnalysis()
-            await promoteImportedProjectToEditableIfNeeded()
             if shouldOpenPlannerForCurrentSelection() {
                 selectedNav = .planner
             }
@@ -3506,12 +3514,10 @@ struct ContentView: View {
         editableAnalysis = nil
         let currentDocument = document
         await store.loadFromDocument(currentDocument)
-        await promoteImportedProjectToEditableIfNeeded()
 
-        if document.isEditablePlan {
-            return
-        }
-
+        // Imported .mpp files stay read-only on open. Avoid mutating the
+        // persisted portfolio workspace during launch because the viewer path
+        // does not require SwiftData promotion to render the document.
         if shouldOpenDashboardForCurrentSelection() {
             selectedNav = .dashboard
         }
