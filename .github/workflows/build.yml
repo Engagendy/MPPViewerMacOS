@@ -12,6 +12,9 @@ jobs:
   build:
     name: Build DMG (${{ matrix.arch }})
     runs-on: macos-15
+    env:
+      HAS_SIGNING_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 != '' && secrets.APPLE_CERTIFICATE_PASSWORD != '' }}
+      HAS_NOTARY_CREDENTIALS: ${{ secrets.APPLE_ID != '' && secrets.APPLE_TEAM_ID != '' && secrets.APPLE_APP_SPECIFIC_PASSWORD != '' }}
     strategy:
       matrix:
         arch: [arm64]
@@ -40,8 +43,45 @@ jobs:
       - name: Set up Maven
         run: brew install maven
 
+      - name: Import Developer ID certificate
+        if: env.HAS_SIGNING_CERTIFICATE == 'true'
+        env:
+          APPLE_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/mpp-viewer-signing.keychain-db"
+          CERTIFICATE_PATH="$RUNNER_TEMP/developer-id.p12"
+          echo "$APPLE_CERTIFICATE_P12_BASE64" | base64 --decode > "$CERTIFICATE_PATH"
+          security create-keychain -p "" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "" "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" "$KEYCHAIN_PATH"
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+
+      - name: Store notarization credentials
+        if: env.HAS_NOTARY_CREDENTIALS == 'true'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: |
+          xcrun notarytool store-credentials mpp-viewer-notary \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD"
+
       - name: Build & Package
-        run: ./scripts/package.sh --arch ${{ matrix.arch }} --version ${{ steps.version.outputs.version }}
+        run: |
+          PACKAGE_ARGS=(--arch "${{ matrix.arch }}" --version "${{ steps.version.outputs.version }}")
+          if [[ "$HAS_SIGNING_CERTIFICATE" == "true" ]]; then
+            PACKAGE_ARGS+=(--sign)
+          fi
+          if [[ "$HAS_SIGNING_CERTIFICATE" == "true" && "$HAS_NOTARY_CREDENTIALS" == "true" ]]; then
+            PACKAGE_ARGS+=(--notarize --notary-profile mpp-viewer-notary)
+          fi
+          ./scripts/package.sh "${PACKAGE_ARGS[@]}"
 
       - name: Upload build log
         if: always()
@@ -102,7 +142,7 @@ jobs:
           ### Direct Download
           1. Download the `.dmg` file for your Mac below
           2. Open the DMG and drag **MPP Viewer** to your Applications folder
-          3. On first launch, right-click the app → **Open** → **Open** (required for unsigned apps)
+          3. On first launch, right-click the app → **Open** → **Open** if macOS shows a security prompt
 
           ### Homebrew
           ```
@@ -110,7 +150,7 @@ jobs:
           ```
 
           ### Gatekeeper Bypass
-          If macOS blocks the app, run:
+          If macOS blocks a direct-download build, run:
           ```
           xattr -cr /Applications/MPP\ Viewer.app
           ```

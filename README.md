@@ -167,13 +167,13 @@ brew install --cask mpp-viewer
 
 1. Download the latest `.dmg` from [GitHub Releases](https://github.com/Engagendy/MPPViewerMacOS/releases)
 2. Open the DMG and drag **MPP Viewer** to your Applications folder
-3. On first launch, right-click the app → **Open** → **Open** (required for unsigned apps)
+3. On first launch, right-click the app → **Open** → **Open** if macOS shows a security prompt.
 
 > The app bundles its own Java runtime and converter — no prerequisites needed.
 
 ### Gatekeeper Bypass
 
-Since the app is not signed with an Apple Developer certificate, macOS will show an "unidentified developer" warning. To bypass this:
+If macOS blocks a direct-download build, use one of these options:
 
 **Option A — Right-click Open (recommended):**
 Right-click (or Control-click) the app → **Open** → click **Open** in the dialog.
@@ -299,7 +299,45 @@ Select the **MPPViewer** scheme, choose **My Mac** as the destination, and hit *
 
 This script builds the JAR, builds the app, bundles the Eclipse Temurin JRE and converter JAR into the app, and creates a `.dmg` ready for distribution.
 
-Options: `--skip-jar`, `--skip-app`, `--arch arm64|x86_64`, `--version X.Y.Z`
+Options: `--skip-jar`, `--skip-app`, `--arch arm64|x86_64`, `--version X.Y.Z`, `--sign`, `--identity NAME`, `--notarize`, `--notary-profile NAME`
+
+### Signed Release Build
+
+To build a Developer ID signed DMG:
+
+```bash
+./scripts/package.sh --version 2.2.17 --arch arm64 --sign
+```
+
+To sign, notarize, and staple the DMG:
+
+```bash
+xcrun notarytool store-credentials mpp-viewer-notary \
+  --apple-id YOUR_APPLE_ID_EMAIL \
+  --team-id YOUR_TEAM_ID \
+  --password YOUR_APP_SPECIFIC_PASSWORD
+
+./scripts/package.sh --version 2.2.17 --arch arm64 --sign --notarize --notary-profile mpp-viewer-notary
+```
+
+Signing requires a **Developer ID Application** certificate in the local keychain.
+
+### Mac App Store Build
+
+The Xcode project is configured for App Store/Xcode Cloud builds with:
+
+- Product name: `MPPViewer`
+- Bundle identifier: `com.mppviewer.MPPViewer`
+- Team ID: `7JM77223V5`
+- Version: `2.2.17`
+- Build: `217`
+- App Store sandbox entitlements: `MPPViewer/MPPViewer/MPPViewer.entitlements`
+
+The direct GitHub DMG build signs with `MPPViewer/MPPViewer/MPPViewerDirect.entitlements` so it can remain separate from the Mac App Store sandbox profile.
+
+## Privacy
+
+Privacy policy: [PRIVACY.md](PRIVACY.md)
 
 ---
 

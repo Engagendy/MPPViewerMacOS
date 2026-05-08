@@ -6,7 +6,7 @@ set -euo pipefail
 # and creates a .dmg for distribution.
 #
 # Usage:
-#   ./scripts/package.sh [--skip-jar] [--skip-app] [--arch arm64|x86_64] [--version X.Y]
+#   ./scripts/package.sh [--skip-jar] [--skip-app] [--arch arm64|x86_64] [--version X.Y] [--sign] [--notarize]
 #
 # Requirements:
 #   - Xcode command-line tools (xcodebuild)
@@ -24,6 +24,8 @@ SCHEME="MPPViewer"
 XCODEPROJ="$PROJECT_ROOT/MPPViewer/MPPViewer.xcodeproj"
 MAVEN_DIR="$PROJECT_ROOT/MPPConverter"
 JAR_NAME="mpxj-converter.jar"
+DIRECT_ENTITLEMENTS="$PROJECT_ROOT/MPPViewer/MPPViewer/MPPViewerDirect.entitlements"
+XPC_ENTITLEMENTS="$PROJECT_ROOT/MPPViewer/MPPConverterXPC/MPPConverterXPC.entitlements"
 
 JRE_VERSION="21"
 JRE_CACHE_DIR="$PROJECT_ROOT/.cache/jre"
@@ -35,6 +37,29 @@ SKIP_JAR=false
 SKIP_APP=false
 ARCH="$(uname -m)"   # arm64 or x86_64
 VERSION_OVERRIDE=""
+SIGN_APP=false
+NOTARIZE_DMG=false
+SIGN_IDENTITY="${MPPVIEWER_CODE_SIGN_IDENTITY:-Developer ID Application}"
+NOTARY_PROFILE="${MPPVIEWER_NOTARY_PROFILE:-}"
+
+usage() {
+    cat <<EOF
+Usage: ./scripts/package.sh [options]
+
+Options:
+  --skip-jar                  Reuse an existing converter JAR.
+  --skip-app                  Reuse an existing Xcode build.
+  --arch arm64|x86_64         Build architecture. Defaults to current machine.
+  --version X.Y.Z             Version written into the app and DMG name.
+  --sign                      Sign the app and DMG with Developer ID Application.
+  --identity NAME             Code signing identity. Defaults to
+                              "Developer ID Application" or MPPVIEWER_CODE_SIGN_IDENTITY.
+  --notarize                  Submit and staple the DMG with notarytool.
+  --notary-profile NAME       notarytool keychain profile. Can also be set with
+                              MPPVIEWER_NOTARY_PROFILE.
+  -h, --help                  Show this help.
+EOF
+}
 
 # ─── Parse Arguments ────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
@@ -43,6 +68,11 @@ while [[ $# -gt 0 ]]; do
         --skip-app)  SKIP_APP=true; shift ;;
         --arch)      ARCH="$2"; shift 2 ;;
         --version)   VERSION_OVERRIDE="$2"; shift 2 ;;
+        --sign)      SIGN_APP=true; shift ;;
+        --identity)  SIGN_IDENTITY="$2"; shift 2 ;;
+        --notarize)  SIGN_APP=true; NOTARIZE_DMG=true; shift ;;
+        --notary-profile) NOTARY_PROFILE="$2"; shift 2 ;;
+        -h|--help)   usage; exit 0 ;;
         *)           echo "Unknown option: $1"; exit 1 ;;
     esac
 done
@@ -59,6 +89,14 @@ echo "  MPP Viewer — Build & Package"
 echo "  Architecture: $ARCH"
 if [[ -n "$VERSION_OVERRIDE" ]]; then
     echo "  Version override: $VERSION_OVERRIDE"
+fi
+if [[ "$SIGN_APP" == true ]]; then
+    echo "  Signing: $SIGN_IDENTITY"
+else
+    echo "  Signing: ad-hoc"
+fi
+if [[ "$NOTARIZE_DMG" == true ]]; then
+    echo "  Notarization profile: $NOTARY_PROFILE"
 fi
 echo "═══════════════════════════════════════════════════════════"
 echo ""
@@ -180,12 +218,49 @@ mkdir -p "$RESOURCES_DIR"
 cp "$JAR_PATH" "$RESOURCES_DIR/$JAR_NAME"
 echo "  ✓ JAR bundled at Resources/$JAR_NAME"
 
-# ─── Step 6: Read Version ──────────────────────────────────────────────
+# ─── Step 6: Sign App ──────────────────────────────────────────────────
+if [[ "$SIGN_APP" == true ]]; then
+    if ! security find-identity -v -p codesigning | grep -F "$SIGN_IDENTITY" >/dev/null; then
+        echo "ERROR: Code signing identity not found: $SIGN_IDENTITY"
+        echo "       Install a Developer ID Application certificate in Xcode, or pass --identity."
+        exit 1
+    fi
+
+    echo ""
+    echo "▸ Developer ID signing…"
+    XPC_PATH="$APP_PATH/Contents/XPCServices/MPPConverterXPC.xpc"
+    if [[ -d "$XPC_PATH" ]]; then
+        codesign \
+            --force \
+            --timestamp \
+            --options runtime \
+            --entitlements "$XPC_ENTITLEMENTS" \
+            --sign "$SIGN_IDENTITY" \
+            "$XPC_PATH" >/dev/null
+    fi
+
+    codesign \
+        --force \
+        --deep \
+        --timestamp \
+        --options runtime \
+        --entitlements "$DIRECT_ENTITLEMENTS" \
+        --sign "$SIGN_IDENTITY" \
+        "$APP_PATH" >/dev/null
+    codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+    spctl --assess --type execute --verbose=2 "$APP_PATH" || true
+else
+    echo ""
+    echo "▸ Ad-hoc signing…"
+    codesign --force --deep --sign - "$APP_PATH" >/dev/null
+fi
+
+# ─── Step 7: Read Version ──────────────────────────────────────────────
 VERSION="$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP_PATH/Contents/Info.plist" 2>/dev/null || echo "1.0.0")"
 echo ""
 echo "  Version: $VERSION"
 
-# ─── Step 7: Create DMG ────────────────────────────────────────────────
+# ─── Step 8: Create DMG ────────────────────────────────────────────────
 echo ""
 echo "▸ Creating DMG…"
 
@@ -213,7 +288,30 @@ hdiutil create \
 
 echo "  ✓ DMG created: $DMG_PATH"
 
-# ─── Done ───────────────────────────────────────────────────────────────
+if [[ "$SIGN_APP" == true ]]; then
+    echo ""
+    echo "▸ Signing DMG…"
+    codesign --force --timestamp --sign "$SIGN_IDENTITY" "$DMG_PATH"
+    codesign --verify --verbose=2 "$DMG_PATH"
+fi
+
+if [[ "$NOTARIZE_DMG" == true ]]; then
+    if [[ -z "$NOTARY_PROFILE" ]]; then
+        echo "ERROR: --notary-profile or MPPVIEWER_NOTARY_PROFILE is required for notarization."
+        echo "       Create one with: xcrun notarytool store-credentials mpp-viewer-notary --apple-id EMAIL --team-id TEAM_ID --password APP_SPECIFIC_PASSWORD"
+        exit 1
+    fi
+
+    echo ""
+    echo "▸ Notarizing DMG…"
+    xcrun notarytool submit "$DMG_PATH" --keychain-profile "$NOTARY_PROFILE" --wait
+
+    echo "▸ Stapling DMG…"
+    xcrun stapler staple "$DMG_PATH"
+    xcrun stapler validate "$DMG_PATH"
+fi
+
+# ─── Done ──────────────────────────────────────────────────────────────
 echo ""
 echo "═══════════════════════════════════════════════════════════"
 echo "  ✓ Build complete!"
