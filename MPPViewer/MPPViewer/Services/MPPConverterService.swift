@@ -105,8 +105,8 @@ final class MPPConverterService {
 
     private func locateJava() -> String {
         // 1. Check bundled JRE first (for production/packaged app)
-        if let pluginsURL = Bundle.main.builtInPlugInsURL {
-            let bundledPath = pluginsURL
+        if let resourcesURL = Bundle.main.resourceURL {
+            let bundledPath = resourcesURL
                 .appendingPathComponent("jre")
                 .appendingPathComponent("bin")
                 .appendingPathComponent("java")
@@ -124,7 +124,7 @@ final class MPPConverterService {
             .deletingLastPathComponent()  // MPPViewer/ (xcodeproj level)
         let devJreCandidates = [
             // From package.sh build output
-            sourceRoot.appendingPathComponent("build/DerivedData/Build/Products/Release/MPPViewer.app/Contents/PlugIns/jre/bin/java").path,
+            sourceRoot.appendingPathComponent("build/DerivedData/Build/Products/Release/MPPViewer.app/Contents/Resources/jre/bin/java").path,
             // Cached JRE download (arm64)
             sourceRoot.appendingPathComponent(".cache/jre/temurin-jre-21-aarch64/Contents/Home/bin/java").path,
             // Cached JRE download (x86_64)

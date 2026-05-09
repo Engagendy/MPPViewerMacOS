@@ -200,20 +200,24 @@ fi
 echo ""
 echo "▸ Bundling JRE into app…"
 
-PLUGINS_DIR="$APP_PATH/Contents/PlugIns"
-mkdir -p "$PLUGINS_DIR/jre"
+RESOURCES_DIR="$APP_PATH/Contents/Resources"
+JRE_BUNDLE_DIR="$RESOURCES_DIR/jre"
+LEGACY_JRE_DIR="$APP_PATH/Contents/PlugIns/jre"
+rm -rf "$LEGACY_JRE_DIR"
+mkdir -p "$JRE_BUNDLE_DIR"
 
 # Copy JRE contents (bin, lib, conf, etc.)
-rsync -a --delete "$JRE_HOME/" "$PLUGINS_DIR/jre/"
+rsync -a --delete "$JRE_HOME/" "$JRE_BUNDLE_DIR/"
 
-# Strip quarantine attributes so macOS allows execution of bundled JRE
-xattr -cr "$PLUGINS_DIR/jre/" 2>/dev/null || true
-echo "  ✓ JRE bundled at PlugIns/jre/"
+# Strip downloaded metadata and normalize permissions before codesigning.
+# Some JRE files are shipped read-only, which can make recursive signing fail.
+xattr -cr "$JRE_BUNDLE_DIR/" 2>/dev/null || true
+chmod -R u+rwX,go+rX "$JRE_BUNDLE_DIR/"
+echo "  ✓ JRE bundled at Resources/jre/"
 
 # ─── Step 5: Bundle JAR into App ────────────────────────────────────────
 echo "▸ Bundling converter JAR into app…"
 
-RESOURCES_DIR="$APP_PATH/Contents/Resources"
 mkdir -p "$RESOURCES_DIR"
 cp "$JAR_PATH" "$RESOURCES_DIR/$JAR_NAME"
 echo "  ✓ JAR bundled at Resources/$JAR_NAME"
@@ -228,6 +232,37 @@ if [[ "$SIGN_APP" == true ]]; then
 
     echo ""
     echo "▸ Developer ID signing…"
+
+    echo "  Signing native libraries embedded in converter JAR…"
+    JAR_SIGN_DIR="$BUILD_DIR/jar-signing"
+    rm -rf "$JAR_SIGN_DIR"
+    mkdir -p "$JAR_SIGN_DIR"
+    ditto -x -k "$RESOURCES_DIR/$JAR_NAME" "$JAR_SIGN_DIR"
+    while IFS= read -r -d '' jar_native_path; do
+        if file "$jar_native_path" | grep -Eq 'Mach-O'; then
+            codesign \
+                --force \
+                --timestamp \
+                --options runtime \
+                --sign "$SIGN_IDENTITY" \
+                "$jar_native_path" >/dev/null
+        fi
+    done < <(find "$JAR_SIGN_DIR" -type f \( -name '*.jnilib' -o -name '*.dylib' \) -print0)
+    (cd "$JAR_SIGN_DIR" && /usr/bin/zip -qry "$RESOURCES_DIR/$JAR_NAME" .)
+    rm -rf "$JAR_SIGN_DIR"
+
+    echo "  Signing bundled JRE runtime code…"
+    while IFS= read -r -d '' runtime_path; do
+        if file "$runtime_path" | grep -Eq 'Mach-O'; then
+            codesign \
+                --force \
+                --timestamp \
+                --options runtime \
+                --sign "$SIGN_IDENTITY" \
+                "$runtime_path" >/dev/null
+        fi
+    done < <(find "$JRE_BUNDLE_DIR/bin" "$JRE_BUNDLE_DIR/lib" -type f -print0)
+
     XPC_PATH="$APP_PATH/Contents/XPCServices/MPPConverterXPC.xpc"
     if [[ -d "$XPC_PATH" ]]; then
         codesign \
@@ -241,13 +276,12 @@ if [[ "$SIGN_APP" == true ]]; then
 
     codesign \
         --force \
-        --deep \
         --timestamp \
         --options runtime \
         --entitlements "$DIRECT_ENTITLEMENTS" \
         --sign "$SIGN_IDENTITY" \
         "$APP_PATH" >/dev/null
-    codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+    codesign --verify --strict --verbose=2 "$APP_PATH"
     spctl --assess --type execute --verbose=2 "$APP_PATH" || true
 else
     echo ""

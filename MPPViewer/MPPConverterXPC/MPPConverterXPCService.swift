@@ -11,6 +11,7 @@ class MPPConverterXPCDelegate: NSObject, NSXPCListenerDelegate {
     }
 }
 
+
 /// The handler that performs the actual MPP → JSON conversion using the bundled Java runtime.
 class MPPConverterXPCHandler: NSObject, MPPConverterXPCProtocol {
     func convertMPP(atPath inputPath: String, reply: @escaping (Data?, String?) -> Void) {
@@ -85,16 +86,16 @@ class MPPConverterXPCHandler: NSObject, MPPConverterXPCProtocol {
             }
         }
 
-        // Check the parent app bundle's PlugIns directory
+        // Check the parent app bundle's Resources directory
         // XPC service is at: AppBundle/Contents/XPCServices/MPPConverterXPC.xpc
-        // JRE is at: AppBundle/Contents/PlugIns/jre/bin/java
+        // JRE is at: AppBundle/Contents/Resources/jre/bin/java
         let xpcBundlePath = xpcBundle.bundlePath
         if let appContentsURL = URL(string: xpcBundlePath)?
             .deletingLastPathComponent()  // XPCServices/
             .deletingLastPathComponent()  // Contents/
         {
             let jrePath = appContentsURL
-                .appendingPathComponent("PlugIns")
+                .appendingPathComponent("Resources")
                 .appendingPathComponent("jre")
                 .appendingPathComponent("bin")
                 .appendingPathComponent("java")
@@ -159,4 +160,3 @@ class MPPConverterXPCHandler: NSObject, MPPConverterXPCProtocol {
         return "/Users/engagendy/RiderProjects/mpp/MPPConverter/target/mpxj-converter.jar"
     }
 }
-
