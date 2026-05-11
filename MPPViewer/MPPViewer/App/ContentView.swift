@@ -2744,6 +2744,7 @@ struct ContentView: View {
     @State private var navigateToTaskID: Int?
     @State private var cachedFlaggedTaskIDs: Set<Int> = []
     @State private var editableWorkspaceError: String?
+    @State private var documentActionMessage: String?
     @State private var selectedWorkspacePortfolioID: UUID?
     @State private var isRefreshingEditableAnalysis = false
     @State private var editableAnalysisGeneration = 0
@@ -3089,6 +3090,16 @@ struct ContentView: View {
             }
         }
         .toolbar {
+            ToolbarItem(placement: .automatic) {
+                if canConvertCurrentImportToNativePlan {
+                    Button {
+                        convertCurrentImportToNativePlan()
+                    } label: {
+                        Label("Convert to Native Plan", systemImage: "arrow.trianglehead.2.clockwise.rotate.90.page.on.clipboard")
+                    }
+                    .help("Save this imported MPP as a native .mppplan file and open it for editing.")
+                }
+            }
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     toggleFocusMode()
@@ -3229,10 +3240,18 @@ struct ContentView: View {
         } message: {
             editableWorkspaceAlertText
         }
+        .alert("Document Action", isPresented: showDocumentActionMessage) {
+            Button("OK", role: .cancel) {
+                documentActionMessage = nil
+            }
+        } message: {
+            Text(documentActionMessage ?? "The document action could not be completed.")
+        }
     }
 
     var body: some View {
         alertConfiguredView
+            .frame(minWidth: 1100, minHeight: 720)
     }
 
     @ViewBuilder
@@ -3259,10 +3278,9 @@ struct ContentView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ContentUnavailableView(
-                    "Read-Only Import",
-                    systemImage: "lock",
-                    description: Text("Open or create a native plan document to edit tasks in the app.")
+                readOnlyImportUnavailableView(
+                    title: "Read-Only Import",
+                    description: "Convert this imported MPP to a native .mppplan document to edit tasks in the app."
                 )
             }
         case .agileBoard:
@@ -3282,10 +3300,9 @@ struct ContentView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ContentUnavailableView(
-                    "Read-Only Import",
-                    systemImage: "lock",
-                    description: Text("Open or create a native plan document to manage backlog, sprints, and agile workflow in the app.")
+                readOnlyImportUnavailableView(
+                    title: "Read-Only Import",
+                    description: "Convert this imported MPP to a native .mppplan document to manage backlog, sprints, and agile workflow in the app."
                 )
             }
         case .statusCenter:
@@ -3301,10 +3318,9 @@ struct ContentView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ContentUnavailableView(
-                    "Read-Only Import",
-                    systemImage: "lock",
-                    description: Text("Open or create a native plan document to apply status updates in the app.")
+                readOnlyImportUnavailableView(
+                    title: "Read-Only Import",
+                    description: "Convert this imported MPP to a native .mppplan document to apply status updates in the app."
                 )
             }
         case .executive:
@@ -3454,6 +3470,79 @@ struct ContentView: View {
         default:
             return false
         }
+    }
+
+    private var canConvertCurrentImportToNativePlan: Bool {
+        !document.isEditablePlan && currentProject != nil
+    }
+
+    private var showDocumentActionMessage: Binding<Bool> {
+        Binding(
+            get: { documentActionMessage != nil },
+            set: { newValue in
+                if !newValue {
+                    documentActionMessage = nil
+                }
+            }
+        )
+    }
+
+    @ViewBuilder
+    private func readOnlyImportUnavailableView(title: String, description: String) -> some View {
+        VStack(spacing: 14) {
+            ContentUnavailableView(
+                title,
+                systemImage: "lock",
+                description: Text(description)
+            )
+
+            if canConvertCurrentImportToNativePlan {
+                Button {
+                    convertCurrentImportToNativePlan()
+                } label: {
+                    Label("Convert to Native Plan", systemImage: "arrow.trianglehead.2.clockwise.rotate.90.page.on.clipboard")
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    @MainActor
+    private func convertCurrentImportToNativePlan() {
+        guard let project = currentProject else {
+            documentActionMessage = "There is no imported project loaded to convert."
+            return
+        }
+
+        let nativePlan = NativeProjectPlan(projectModel: project)
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.mppplan]
+        panel.canCreateDirectories = true
+        panel.isExtensionHidden = false
+        panel.nameFieldStringValue = suggestedNativePlanFileName(for: nativePlan)
+
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        do {
+            try nativePlan.encodedData().write(to: url, options: .atomic)
+            NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { _, _, error in
+                if let error {
+                    documentActionMessage = "Saved the native plan, but opening it failed: \(error.localizedDescription)"
+                }
+            }
+        } catch {
+            documentActionMessage = "Failed to save the native plan: \(error.localizedDescription)"
+        }
+    }
+
+    private func suggestedNativePlanFileName(for nativePlan: NativeProjectPlan) -> String {
+        let trimmedTitle = nativePlan.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let title = trimmedTitle.isEmpty ? "Converted Plan" : trimmedTitle
+        let safeTitle = title
+            .replacingOccurrences(of: "/", with: "-")
+            .replacingOccurrences(of: ":", with: "-")
+        return safeTitle.hasSuffix(".mppplan") ? safeTitle : "\(safeTitle).mppplan"
     }
 
     private func normalizedNavigationForCurrentDocument() -> NavigationItem {

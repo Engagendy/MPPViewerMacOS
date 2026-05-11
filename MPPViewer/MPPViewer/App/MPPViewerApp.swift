@@ -20,7 +20,20 @@ struct MPPViewerApp: App {
             ContentView(document: file.$document)
         }
         .modelContainer(modelContainer)
+        .defaultSize(width: 1280, height: 820)
         .commands {
+            CommandGroup(after: .newItem) {
+                Button("Close Window") {
+                    NSApp.keyWindow?.performClose(nil)
+                }
+                .keyboardShortcut("w", modifiers: .command)
+            }
+            CommandGroup(replacing: .appTermination) {
+                Button("Quit MPP Viewer") {
+                    NSApp.terminate(nil)
+                }
+                .keyboardShortcut("q", modifiers: .command)
+            }
             CommandGroup(after: .sidebar) {
                 ForEach(Array(NavigationItem.allCases.enumerated()), id: \.element.id) { index, item in
                     if index < 9 {
