@@ -5,8 +5,47 @@ import SwiftData
 import Foundation
 
 class AppDelegate: NSObject, NSApplicationDelegate {
+    static weak var shared: AppDelegate?
+
+    override init() {
+        super.init()
+        Self.shared = self
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSWindow.allowsAutomaticWindowTabbing = true
+        installMenuActions()
+    }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        installMenuActions()
+    }
+
+    @objc func closeFrontWindow(_ sender: Any?) {
+        let targetWindow = NSApp.keyWindow
+            ?? NSApp.mainWindow
+            ?? NSApp.orderedWindows.first(where: { $0.isVisible && $0.canBecomeKey })
+        targetWindow?.close()
+    }
+
+    @objc func quitApplication(_ sender: Any?) {
+        NSApp.terminate(sender)
+    }
+
+    private func installMenuActions() {
+        if let fileMenu = NSApp.mainMenu?.item(withTitle: "File")?.submenu,
+           let closeItem = fileMenu.item(withTitle: "Close") {
+            closeItem.target = self
+            closeItem.action = #selector(closeFrontWindow(_:))
+            closeItem.isEnabled = true
+        }
+
+        if let appMenu = NSApp.mainMenu?.items.first?.submenu,
+           let quitItem = appMenu.items.first(where: { $0.title.hasPrefix("Quit") }) {
+            quitItem.target = self
+            quitItem.action = #selector(quitApplication(_:))
+            quitItem.isEnabled = true
+        }
     }
 }
 
@@ -22,15 +61,9 @@ struct MPPViewerApp: App {
         .modelContainer(modelContainer)
         .defaultSize(width: 1280, height: 820)
         .commands {
-            CommandGroup(after: .newItem) {
-                Button("Close Window") {
-                    NSApp.keyWindow?.performClose(nil)
-                }
-                .keyboardShortcut("w", modifiers: .command)
-            }
             CommandGroup(replacing: .appTermination) {
                 Button("Quit MPP Viewer") {
-                    NSApp.terminate(nil)
+                    AppDelegate.shared?.quitApplication(nil)
                 }
                 .keyboardShortcut("q", modifiers: .command)
             }

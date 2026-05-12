@@ -2391,6 +2391,29 @@ struct FinancialTermsButton: View {
     }
 }
 
+private struct WindowCloseConfigurator: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        WindowCloseConfiguringView()
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        (nsView as? WindowCloseConfiguringView)?.configureWindow()
+    }
+}
+
+private final class WindowCloseConfiguringView: NSView {
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        configureWindow()
+    }
+
+    func configureWindow() {
+        guard let window else { return }
+        window.styleMask.insert(.closable)
+        window.standardWindowButton(.closeButton)?.isEnabled = true
+    }
+}
+
 struct AppGuideView: View {
     let isEditablePlan: Bool
 
@@ -2856,9 +2879,15 @@ struct ContentView: View {
     }
 
     private func archiveEditablePlan(_ nativePlan: NativeProjectPlan) {
-        document.editablePortfolioID = nativePlan.portfolioID
-        document.editablePlanData = try? nativePlan.encodedData()
-        document.editablePlanSeed = nil
+        if document.editablePortfolioID != nativePlan.portfolioID {
+            document.editablePortfolioID = nativePlan.portfolioID
+        }
+
+        guard let encodedPlan = try? nativePlan.encodedData() else { return }
+        if document.editablePlanData != encodedPlan {
+            document.editablePlanData = encodedPlan
+            document.editablePlanSeed = nil
+        }
     }
 
     private func portfolioPlan(for id: UUID?) -> PortfolioProjectPlan? {
@@ -3252,6 +3281,7 @@ struct ContentView: View {
     var body: some View {
         alertConfiguredView
             .frame(minWidth: 1100, minHeight: 720)
+            .background(WindowCloseConfigurator())
     }
 
     @ViewBuilder
