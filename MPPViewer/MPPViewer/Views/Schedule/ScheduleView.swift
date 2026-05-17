@@ -1,6 +1,15 @@
 import SwiftUI
+import AppKit
 
 private struct ScheduleVerticalOffsetPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
+private struct ScheduleHorizontalOffsetPreferenceKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
 
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
@@ -67,6 +76,10 @@ struct ScheduleView: View {
     @State private var shouldAutoFitTimeline = true
     @State private var collapsedIDs: Set<Int> = []
     @State private var verticalScrollOffset: CGFloat = 0
+    @State private var horizontalScrollOffset: CGFloat = 0
+    @State private var criticalPathOnly: Bool = false
+    @State private var showDependencyLinks: Bool = true
+    @State private var showBaseline: Bool = false
     private let rowHeight: CGFloat = 24
 
     private var visibleTasks: [ProjectTask] {
@@ -85,8 +98,20 @@ struct ScheduleView: View {
         CGFloat(totalDays) * pixelsPerDay
     }
 
+    private var ganttHeaderHeight: CGFloat {
+        pixelsPerDay < 15 ? 64 : 44
+    }
+
     private var taskRowsContentHeight: CGFloat {
         CGFloat(visibleTasks.count) * rowHeight
+    }
+
+    private func clampedVerticalOffset(_ value: CGFloat, viewportHeight: CGFloat) -> CGFloat {
+        min(max(0, value), max(0, taskRowsContentHeight - viewportHeight))
+    }
+
+    private func scrollScheduleRows(by deltaY: CGFloat, viewportHeight: CGFloat) {
+        verticalScrollOffset = clampedVerticalOffset(verticalScrollOffset - deltaY, viewportHeight: viewportHeight)
     }
 
     init(project: ProjectModel, searchText: String) {
@@ -122,6 +147,35 @@ struct ScheduleView: View {
                     }
                     .buttonStyle(.borderless)
                     .font(.caption)
+
+                    Divider().frame(height: 16)
+
+                    Toggle(isOn: $criticalPathOnly) {
+                        Label("Critical Path", systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                    }
+                    .toggleStyle(.button)
+                    .buttonStyle(.bordered)
+                    .tint(criticalPathOnly ? .red : nil)
+                    .help("Highlights tasks marked critical by the imported schedule and dims non-critical tasks.")
+
+                    Toggle(isOn: $showDependencyLinks) {
+                        Label("Links", systemImage: "link")
+                            .font(.caption)
+                    }
+                    .toggleStyle(.button)
+                    .buttonStyle(.bordered)
+                    .tint(showDependencyLinks ? .blue : nil)
+                    .help("Shows predecessor and successor dependency links between tasks.")
+
+                    Toggle(isOn: $showBaseline) {
+                        Label("Baseline", systemImage: "clock.arrow.2.circlepath")
+                            .font(.caption)
+                    }
+                    .toggleStyle(.button)
+                    .buttonStyle(.bordered)
+                    .tint(showBaseline ? .gray : nil)
+                    .help("Shows the saved baseline schedule as gray bars below the current bars, with start/finish variance badges.")
 
                     Divider().frame(height: 16)
 
@@ -214,15 +268,22 @@ struct ScheduleView: View {
                 Divider()
 
                 GeometryReader { rowsGeometry in
+                    let rowsViewportHeight = max(0, rowsGeometry.size.height)
+
                     LazyVStack(spacing: 0) {
                         ForEach(Array(visibleTasks.enumerated()), id: \.element.uniqueID) { index, task in
                             scheduleTaskRow(task: task, index: index)
                         }
                     }
                     .frame(height: taskRowsContentHeight, alignment: .top)
-                    .offset(y: -verticalScrollOffset)
+                    .offset(y: -clampedVerticalOffset(verticalScrollOffset, viewportHeight: rowsViewportHeight))
                     .frame(width: rowsGeometry.size.width, height: rowsGeometry.size.height, alignment: .topLeading)
                     .clipped()
+                    .overlay {
+                        ScheduleScrollWheelCapture { deltaY in
+                            scrollScheduleRows(by: deltaY, viewportHeight: rowsViewportHeight)
+                        }
+                    }
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -302,39 +363,61 @@ struct ScheduleView: View {
     private var ganttPane: some View {
         GeometryReader { geometry in
             let viewportWidth = max(geometry.size.width, 1)
+            let bodyViewportHeight = max(0, geometry.size.height - ganttHeaderHeight)
 
-            ScrollView([.horizontal, .vertical]) {
+            ScrollView(.horizontal) {
                 VStack(alignment: .leading, spacing: 0) {
-                    GeometryReader { proxy in
-                        Color.clear
-                            .preference(
-                                key: ScheduleVerticalOffsetPreferenceKey.self,
-                                value: -proxy.frame(in: .named("ScheduleScrollView")).minY
-                            )
-                    }
-                    .frame(height: 0)
-
                     GanttHeaderView(
                         dateRange: dateRange,
                         pixelsPerDay: pixelsPerDay,
                         totalWidth: timelineWidth
                     )
 
-                    GanttCanvasView(
-                        tasks: visibleTasks,
-                        allTasks: project.tasksByID,
-                        rowIndexByTaskID: derivedContent.rowIndexByTaskID,
-                        startDate: dateRange.start,
-                        totalDays: totalDays,
-                        pixelsPerDay: pixelsPerDay,
-                        rowHeight: rowHeight
-                    )
-                    .frame(width: timelineWidth, height: CGFloat(visibleTasks.count) * rowHeight)
+                    ZStack(alignment: .topLeading) {
+                        GanttCanvasView(
+                            tasks: visibleTasks,
+                            allTasks: project.tasksByID,
+                            rowIndexByTaskID: derivedContent.rowIndexByTaskID,
+                            startDate: dateRange.start,
+                            totalDays: totalDays,
+                            pixelsPerDay: pixelsPerDay,
+                            rowHeight: rowHeight,
+                            visibleRect: CGRect(
+                                x: horizontalScrollOffset,
+                                y: clampedVerticalOffset(verticalScrollOffset, viewportHeight: bodyViewportHeight),
+                                width: viewportWidth,
+                                height: bodyViewportHeight
+                            ),
+                            criticalPathOnly: criticalPathOnly,
+                            showBaseline: showBaseline,
+                            showDependencyLinks: showDependencyLinks
+                        )
+                        .frame(width: timelineWidth, height: taskRowsContentHeight)
+                        .offset(y: -clampedVerticalOffset(verticalScrollOffset, viewportHeight: bodyViewportHeight))
+                    }
+                    .frame(width: timelineWidth, height: bodyViewportHeight, alignment: .topLeading)
+                    .clipped()
+                    .overlay {
+                        ScheduleScrollWheelCapture { deltaY in
+                            scrollScheduleRows(by: deltaY, viewportHeight: bodyViewportHeight)
+                        }
+                    }
                 }
                 .frame(minHeight: geometry.size.height, alignment: .topLeading)
+                .background(
+                    GeometryReader { proxy in
+                        Color.clear.preference(
+                            key: ScheduleHorizontalOffsetPreferenceKey.self,
+                            value: max(0, -proxy.frame(in: .named("ScheduleHorizontalScrollViewport")).minX)
+                        )
+                    }
+                )
             }
-            .coordinateSpace(name: "ScheduleScrollView")
+            .coordinateSpace(name: "ScheduleHorizontalScrollViewport")
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .onPreferenceChange(ScheduleHorizontalOffsetPreferenceKey.self) { offset in
+                horizontalScrollOffset = offset
+            }
             .onAppear {
                 timelineViewportWidth = viewportWidth
                 applyAutoFitIfNeeded()
@@ -345,9 +428,6 @@ struct ScheduleView: View {
             }
             .onChange(of: totalDays) { _, _ in
                 applyAutoFitIfNeeded()
-            }
-            .onPreferenceChange(ScheduleVerticalOffsetPreferenceKey.self) { newValue in
-                verticalScrollOffset = max(0, newValue)
             }
         }
     }
@@ -391,6 +471,35 @@ struct ScheduleView: View {
     private func refreshDerivedContent() {
         withAnimation(nil) {
             derivedContent = ScheduleDerivedContent.build(project: project, searchText: searchText, collapsedIDs: collapsedIDs)
+            verticalScrollOffset = clampedVerticalOffset(verticalScrollOffset, viewportHeight: 1)
+        }
+    }
+}
+
+private struct ScheduleScrollWheelCapture: NSViewRepresentable {
+    let onScroll: (CGFloat) -> Void
+
+    func makeNSView(context: Context) -> ScrollWheelView {
+        let view = ScrollWheelView()
+        view.onScroll = onScroll
+        return view
+    }
+
+    func updateNSView(_ nsView: ScrollWheelView, context: Context) {
+        nsView.onScroll = onScroll
+    }
+
+    final class ScrollWheelView: NSView {
+        var onScroll: ((CGFloat) -> Void)?
+
+        override var acceptsFirstResponder: Bool { true }
+
+        override func scrollWheel(with event: NSEvent) {
+            if abs(event.scrollingDeltaY) >= abs(event.scrollingDeltaX) {
+                onScroll?(event.scrollingDeltaY)
+            } else {
+                super.scrollWheel(with: event)
+            }
         }
     }
 }

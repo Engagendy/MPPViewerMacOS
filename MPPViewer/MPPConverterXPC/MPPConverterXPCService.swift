@@ -76,6 +76,16 @@ class MPPConverterXPCHandler: NSObject, MPPConverterXPCProtocol {
         // Check bundled JRE in the XPC service's own bundle
         let xpcBundle = Bundle.main
         if let pluginsURL = xpcBundle.builtInPlugInsURL {
+            let archBundledPath = pluginsURL
+                .appendingPathComponent("jre")
+                .appendingPathComponent(runtimeArchitectureName())
+                .appendingPathComponent("bin")
+                .appendingPathComponent("java")
+                .path
+            if FileManager.default.fileExists(atPath: archBundledPath) {
+                return archBundledPath
+            }
+
             let bundledPath = pluginsURL
                 .appendingPathComponent("jre")
                 .appendingPathComponent("bin")
@@ -90,19 +100,28 @@ class MPPConverterXPCHandler: NSObject, MPPConverterXPCProtocol {
         // XPC service is at: AppBundle/Contents/XPCServices/MPPConverterXPC.xpc
         // JRE is at: AppBundle/Contents/Resources/jre/bin/java
         let xpcBundlePath = xpcBundle.bundlePath
-        if let appContentsURL = URL(string: xpcBundlePath)?
+        let appContentsURL = URL(fileURLWithPath: xpcBundlePath)
             .deletingLastPathComponent()  // XPCServices/
             .deletingLastPathComponent()  // Contents/
-        {
-            let jrePath = appContentsURL
-                .appendingPathComponent("Resources")
-                .appendingPathComponent("jre")
-                .appendingPathComponent("bin")
-                .appendingPathComponent("java")
-                .path
-            if FileManager.default.fileExists(atPath: jrePath) {
-                return jrePath
-            }
+        let archJrePath = appContentsURL
+            .appendingPathComponent("Resources")
+            .appendingPathComponent("jre")
+            .appendingPathComponent(runtimeArchitectureName())
+            .appendingPathComponent("bin")
+            .appendingPathComponent("java")
+            .path
+        if FileManager.default.fileExists(atPath: archJrePath) {
+            return archJrePath
+        }
+
+        let jrePath = appContentsURL
+            .appendingPathComponent("Resources")
+            .appendingPathComponent("jre")
+            .appendingPathComponent("bin")
+            .appendingPathComponent("java")
+            .path
+        if FileManager.default.fileExists(atPath: jrePath) {
+            return jrePath
         }
 
         // Fall back to common system Java locations
@@ -130,17 +149,15 @@ class MPPConverterXPCHandler: NSObject, MPPConverterXPCProtocol {
 
         // Check parent app bundle resources
         let xpcBundlePath = Bundle.main.bundlePath
-        if let appContentsURL = URL(string: xpcBundlePath)?
+        let appContentsURL = URL(fileURLWithPath: xpcBundlePath)
             .deletingLastPathComponent()  // XPCServices/
             .deletingLastPathComponent()  // Contents/
-        {
-            let jarPath = appContentsURL
-                .appendingPathComponent("Resources")
-                .appendingPathComponent("mpxj-converter.jar")
-                .path
-            if FileManager.default.fileExists(atPath: jarPath) {
-                return jarPath
-            }
+        let jarPath = appContentsURL
+            .appendingPathComponent("Resources")
+            .appendingPathComponent("mpxj-converter.jar")
+            .path
+        if FileManager.default.fileExists(atPath: jarPath) {
+            return jarPath
         }
 
         // Dev fallback
@@ -157,6 +174,16 @@ class MPPConverterXPCHandler: NSObject, MPPConverterXPCProtocol {
             return devPath
         }
 
-        return "/Users/engagendy/RiderProjects/mpp/MPPConverter/target/mpxj-converter.jar"
+        return ""
+    }
+
+    private func runtimeArchitectureName() -> String {
+        #if arch(arm64)
+        return "arm64"
+        #elseif arch(x86_64)
+        return "x86_64"
+        #else
+        return "unknown"
+        #endif
     }
 }

@@ -19,13 +19,16 @@ final class MPPConverterService {
     private var xpcConnection: NSXPCConnection?
 
     func convert(mppFileURL: URL) async throws -> Data {
-        // First try XPC service (for sandboxed/production builds)
-        if let data = try? await convertViaXPC(inputPath: mppFileURL.path) {
+        do {
+            // First try XPC service (for sandboxed/production builds).
+            let data = try await convertViaXPC(inputPath: mppFileURL.path)
             return data
+        } catch MPPConverterError.xpcConnectionFailed {
+            // Xcode development runs may not have the helper installed.
+            return try await convertDirectly(mppFileURL: mppFileURL)
+        } catch {
+            throw error
         }
-
-        // Fallback to direct process execution (for development)
-        return try await convertDirectly(mppFileURL: mppFileURL)
     }
 
     // MARK: - XPC Service Path
@@ -65,7 +68,7 @@ final class MPPConverterService {
         }
         guard FileManager.default.fileExists(atPath: jarPath) else {
             throw MPPConverterError.conversionFailed(
-                "MPXJ converter JAR not found at: \(jarPath)"
+                "MPXJ converter JAR not found in the app bundle. The app may be damaged."
             )
         }
         guard FileManager.default.fileExists(atPath: mppFileURL.path) else {
@@ -106,6 +109,16 @@ final class MPPConverterService {
     private func locateJava() -> String {
         // 1. Check bundled JRE first (for production/packaged app)
         if let resourcesURL = Bundle.main.resourceURL {
+            let archBundledPath = resourcesURL
+                .appendingPathComponent("jre")
+                .appendingPathComponent(runtimeArchitectureName())
+                .appendingPathComponent("bin")
+                .appendingPathComponent("java")
+                .path
+            if FileManager.default.fileExists(atPath: archBundledPath) {
+                return archBundledPath
+            }
+
             let bundledPath = resourcesURL
                 .appendingPathComponent("jre")
                 .appendingPathComponent("bin")
@@ -208,7 +221,17 @@ final class MPPConverterService {
             return devPath
         }
 
-        return "/Users/engagendy/RiderProjects/mpp/MPPConverter/target/mpxj-converter.jar"
+        return ""
+    }
+
+    private func runtimeArchitectureName() -> String {
+        #if arch(arm64)
+        return "arm64"
+        #elseif arch(x86_64)
+        return "x86_64"
+        #else
+        return "unknown"
+        #endif
     }
 
     private func runProcess(

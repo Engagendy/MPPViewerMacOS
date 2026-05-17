@@ -7,6 +7,8 @@ struct TimelineView: View {
     @State private var timelineViewportWidth: CGFloat = 0
     @State private var shouldAutoFitTimeline = true
     @State private var preparedData: TimelinePreparedData?
+    @State private var criticalPathOnly: Bool = false
+    @State private var showDependencyLinks: Bool = true
     @State private var showBaseline: Bool = false
     @Environment(\.colorScheme) var colorScheme
 
@@ -38,6 +40,24 @@ struct TimelineView: View {
                     }
 
                     Divider().frame(height: 16)
+
+                    Toggle(isOn: $criticalPathOnly) {
+                        Label("Critical Path", systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                    }
+                    .toggleStyle(.button)
+                    .buttonStyle(.bordered)
+                    .tint(criticalPathOnly ? .red : nil)
+                    .help("Highlights critical timeline items and dims non-critical items.")
+
+                    Toggle(isOn: $showDependencyLinks) {
+                        Label("Links", systemImage: "link")
+                            .font(.caption)
+                    }
+                    .toggleStyle(.button)
+                    .buttonStyle(.bordered)
+                    .tint(showDependencyLinks ? .blue : nil)
+                    .help("Shows predecessor and successor dependency links between visible timeline items.")
 
                     Toggle(isOn: $showBaseline) {
                         Label("Baseline", systemImage: "clock.arrow.2.circlepath")
@@ -218,14 +238,25 @@ struct TimelineView: View {
                 baselineStartDayOffset: task.baselineStartDate.map { calendar.dateComponents([.day], from: range.start, to: $0).day ?? 0 },
                 baselineEndDayOffset: task.baselineFinishDate.map { calendar.dateComponents([.day], from: range.start, to: $0).day ?? 0 },
                 baselineDescriptor: task.baselineVarianceDescriptor,
+                predecessorIDs: task.predecessors?.map(\.targetTaskUniqueID) ?? [],
                 color: color,
                 laneIndex: laneIndex,
-                isLevel1: (task.outlineLevel ?? 1) <= 1 && task.summary == true
+                isLevel1: (task.outlineLevel ?? 1) <= 1 && task.summary == true,
+                isCritical: task.critical == true
             ))
+        }
+
+        let itemIndexByID = Dictionary(nonThrowingUniquePairs: items.enumerated().map { ($1.uniqueID, $0) })
+        let dependencies = items.flatMap { item -> [TimelineDependency] in
+            item.predecessorIDs.compactMap { predecessorID in
+                guard itemIndexByID[predecessorID] != nil else { return nil }
+                return TimelineDependency(predecessorID: predecessorID, successorID: item.uniqueID)
+            }
         }
 
         return TimelinePreparedData(
             items: items,
+            dependencies: dependencies,
             startDate: range.start,
             endDate: range.end,
             totalDays: totalDays,
@@ -239,8 +270,13 @@ struct TimelineView: View {
     private func drawTimeline(context: GraphicsContext, size: CGSize, data: TimelinePreparedData) {
         let isDark = colorScheme == .dark
 
+        if showDependencyLinks {
+            drawTimelineLinks(context: context, data: data)
+        }
+
         for (index, item) in data.items.enumerated() {
             let y = CGFloat(index) * rowHeight
+            let itemOpacity = (!criticalPathOnly || item.isCritical) ? 1.0 : 0.18
 
             // Alternating lane tint
             if item.laneIndex % 2 == 0 {
@@ -313,11 +349,11 @@ struct TimelineView: View {
             }
 
             if item.isMilestone {
-                drawMilestone(context: context, item: item, x: xStart, y: y)
+                drawMilestone(context: context, item: item, x: xStart, y: y, opacity: itemOpacity)
             } else if item.isSummary {
                 guard item.hasEnd else { continue }
                 let barWidth = max(6, CGFloat(max(1, item.endDayOffset - item.startDayOffset)) * pixelsPerDay)
-                drawBar(context: context, item: item, x: xStart, y: y, width: barWidth, isDark: isDark)
+                drawBar(context: context, item: item, x: xStart, y: y, width: barWidth, isDark: isDark, opacity: itemOpacity)
             }
 
             if let anchorX = baselineBadgeAnchorX,
@@ -339,7 +375,38 @@ struct TimelineView: View {
         }
     }
 
-    private func drawMilestone(context: GraphicsContext, item: TimelineItem, x: CGFloat, y: CGFloat) {
+    private func drawTimelineLinks(context: GraphicsContext, data: TimelinePreparedData) {
+        let indexByID = Dictionary(nonThrowingUniquePairs: data.items.enumerated().map { ($1.uniqueID, $0) })
+        for dependency in data.dependencies {
+            guard let predecessorIndex = indexByID[dependency.predecessorID],
+                  let successorIndex = indexByID[dependency.successorID] else { continue }
+            let predecessor = data.items[predecessorIndex]
+            let successor = data.items[successorIndex]
+            guard predecessor.hasStart, successor.hasStart else { continue }
+
+            let startX = CGFloat(predecessor.hasEnd ? predecessor.endDayOffset : predecessor.startDayOffset) * pixelsPerDay
+            let startY = CGFloat(predecessorIndex) * rowHeight + rowHeight / 2
+            let endX = CGFloat(successor.startDayOffset) * pixelsPerDay
+            let endY = CGFloat(successorIndex) * rowHeight + rowHeight / 2
+            let midX = startX + 10
+
+            var path = Path()
+            path.move(to: CGPoint(x: startX, y: startY))
+            path.addLine(to: CGPoint(x: midX, y: startY))
+            path.addLine(to: CGPoint(x: midX, y: endY))
+            path.addLine(to: CGPoint(x: endX, y: endY))
+            context.stroke(path, with: .color(.secondary.opacity(0.55)), style: StrokeStyle(lineWidth: 1.1))
+
+            var head = Path()
+            head.move(to: CGPoint(x: endX, y: endY))
+            head.addLine(to: CGPoint(x: endX - 4, y: endY - 4))
+            head.addLine(to: CGPoint(x: endX - 4, y: endY + 4))
+            head.closeSubpath()
+            context.fill(head, with: .color(.secondary.opacity(0.55)))
+        }
+    }
+
+    private func drawMilestone(context: GraphicsContext, item: TimelineItem, x: CGFloat, y: CGFloat, opacity: Double) {
         let cy = y + rowHeight / 2
         let dSize: CGFloat = 12
 
@@ -349,12 +416,12 @@ struct TimelineView: View {
         diamond.addLine(to: CGPoint(x: x, y: cy + dSize / 2))
         diamond.addLine(to: CGPoint(x: x - dSize / 2, y: cy))
         diamond.closeSubpath()
-        context.fill(diamond, with: .color(.orange))
-        context.stroke(diamond, with: .color(.orange.opacity(0.8)), lineWidth: 1)
+        context.fill(diamond, with: .color(.orange.opacity(opacity)))
+        context.stroke(diamond, with: .color(.orange.opacity(0.8 * opacity)), lineWidth: 1)
 
         let label = Text("\(item.name)  \(item.startDateStr)")
             .font(.system(size: 9))
-            .foregroundColor(.secondary)
+            .foregroundColor(.secondary.opacity(opacity))
         context.draw(context.resolve(label), at: CGPoint(x: x + dSize / 2 + 6, y: cy), anchor: .leading)
     }
 
@@ -373,7 +440,7 @@ struct TimelineView: View {
         context.draw(resolved, at: CGPoint(x: badgeRect.midX, y: badgeRect.midY), anchor: .center)
     }
 
-    private func drawBar(context: GraphicsContext, item: TimelineItem, x: CGFloat, y: CGFloat, width: CGFloat, isDark: Bool) {
+    private func drawBar(context: GraphicsContext, item: TimelineItem, x: CGFloat, y: CGFloat, width: CGFloat, isDark: Bool, opacity: Double) {
         let level = item.outlineLevel
         let barHeight: CGFloat = level <= 1 ? 24 : 18
         let barY = y + (rowHeight - barHeight) / 2
@@ -384,8 +451,8 @@ struct TimelineView: View {
         let barPath = RoundedRectangle(cornerRadius: cornerRadius).path(in: barRect)
 
         let fillOpacity = isDark ? (level <= 1 ? 0.45 : 0.3) : (level <= 1 ? 0.3 : 0.2)
-        context.fill(barPath, with: .color(color.opacity(fillOpacity)))
-        context.stroke(barPath, with: .color(color.opacity(isDark ? 0.7 : 0.5)), lineWidth: level <= 1 ? 1.0 : 0.5)
+        context.fill(barPath, with: .color(color.opacity(fillOpacity * opacity)))
+        context.stroke(barPath, with: .color(color.opacity((isDark ? 0.7 : 0.5) * opacity)), lineWidth: level <= 1 ? 1.0 : 0.5)
 
         // Progress
         let pct = item.percentComplete / 100.0
@@ -394,7 +461,7 @@ struct TimelineView: View {
             let progressRect = CGRect(x: x, y: barY, width: progressWidth, height: barHeight)
             var progressCtx = context
             progressCtx.clip(to: barPath)
-            progressCtx.fill(Path(progressRect), with: .color(color.opacity(isDark ? 0.6 : 0.5)))
+            progressCtx.fill(Path(progressRect), with: .color(color.opacity((isDark ? 0.6 : 0.5) * opacity)))
         }
 
         // Name
@@ -404,19 +471,19 @@ struct TimelineView: View {
         if width > 80 {
             let label = Text(item.name)
                 .font(.system(size: fontSize, weight: fontWeight))
-                .foregroundColor(isDark ? .white : .primary)
+                .foregroundColor((isDark ? Color.white : Color.primary).opacity(opacity))
             context.draw(context.resolve(label), at: CGPoint(x: x + 6, y: barY + barHeight / 2), anchor: .leading)
 
             if pct > 0 && width > 120 {
                 let pctLabel = Text("\(Int(item.percentComplete))%")
                     .font(.system(size: 8, weight: .medium))
-                    .foregroundColor(isDark ? .white.opacity(0.8) : .secondary)
+                    .foregroundColor((isDark ? Color.white.opacity(0.8) : Color.secondary).opacity(opacity))
                 context.draw(context.resolve(pctLabel), at: CGPoint(x: x + width - 6, y: barY + barHeight / 2), anchor: .trailing)
             }
         } else {
             let label = Text(item.name)
                 .font(.system(size: fontSize, weight: fontWeight))
-                .foregroundColor(.secondary)
+                .foregroundColor(.secondary.opacity(opacity))
             context.draw(context.resolve(label), at: CGPoint(x: x + width + 6, y: barY + barHeight / 2), anchor: .leading)
         }
 
@@ -448,13 +515,21 @@ private struct TimelineItem {
     let baselineStartDayOffset: Int?
     let baselineEndDayOffset: Int?
     let baselineDescriptor: BaselineVarianceDescriptor?
+    let predecessorIDs: [Int]
     let color: Color
     let laneIndex: Int
     let isLevel1: Bool
+    let isCritical: Bool
+}
+
+private struct TimelineDependency {
+    let predecessorID: Int
+    let successorID: Int
 }
 
 private struct TimelinePreparedData {
     let items: [TimelineItem]
+    let dependencies: [TimelineDependency]
     let startDate: Date
     let endDate: Date
     let totalDays: Int

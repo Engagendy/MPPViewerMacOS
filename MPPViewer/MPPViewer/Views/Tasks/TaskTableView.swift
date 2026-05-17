@@ -59,6 +59,41 @@ struct TaskTableView: View {
         return allTasks[id]
     }
 
+    @ViewBuilder
+    private func toolbarLabel(_ title: String, systemImage: String, compact: Bool) -> some View {
+        if compact {
+            Image(systemName: systemImage)
+                .help(title)
+        } else {
+            Label(title, systemImage: systemImage)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+        }
+    }
+
+    @ViewBuilder
+    private func taskLegendItem(title: String, systemImage: String? = nil, color: Color, compact: Bool) -> some View {
+        HStack(spacing: 4) {
+            if let systemImage {
+                Image(systemName: systemImage)
+                    .font(.caption2)
+                    .foregroundStyle(color)
+            } else {
+                Circle()
+                    .fill(color)
+                    .frame(width: 8, height: 8)
+            }
+
+            if !compact {
+                Text(title)
+                    .font(.caption)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+        }
+        .help(title)
+    }
+
     private var reviewAnnotations: [Int: TaskReviewAnnotation] {
         ReviewNotesStore.decodeAnnotations(taskReviewNotesData)
     }
@@ -76,6 +111,7 @@ struct TaskTableView: View {
     var body: some View {
         GeometryReader { geometry in
             let inspectorWidth = clampedInspectorWidth(for: geometry.size.width)
+            let compactToolbar = geometry.size.width < 1350
 
             HStack(spacing: 0) {
                 // Main table
@@ -126,22 +162,10 @@ struct TaskTableView: View {
                         Spacer()
 
                         HStack(spacing: 14) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "folder.fill").font(.caption2).foregroundStyle(.blue)
-                                Text("Summary").font(.caption)
-                            }
-                            HStack(spacing: 4) {
-                                Image(systemName: "diamond.fill").font(.caption2).foregroundStyle(.orange)
-                                Text("Milestone").font(.caption)
-                            }
-                            HStack(spacing: 4) {
-                                Circle().fill(.red).frame(width: 8, height: 8)
-                                Text("Critical").font(.caption)
-                            }
-                            HStack(spacing: 4) {
-                                Circle().fill(.primary).frame(width: 8, height: 8)
-                                Text("Normal").font(.caption)
-                            }
+                            taskLegendItem(title: "Summary", systemImage: "folder.fill", color: .blue, compact: compactToolbar)
+                            taskLegendItem(title: "Milestone", systemImage: "diamond.fill", color: .orange, compact: compactToolbar)
+                            taskLegendItem(title: "Critical", color: .red, compact: compactToolbar)
+                            taskLegendItem(title: "Normal", color: .primary, compact: compactToolbar)
                         }
                         .foregroundStyle(.secondary)
 
@@ -151,7 +175,7 @@ struct TaskTableView: View {
                             Button {
                                 showColumnPicker.toggle()
                             } label: {
-                                Label("Columns", systemImage: "slider.horizontal.3")
+                                toolbarLabel("Columns", systemImage: "slider.horizontal.3", compact: compactToolbar)
                             }
                             .buttonStyle(.borderless)
                             .popover(isPresented: $showColumnPicker) {
@@ -188,7 +212,7 @@ struct TaskTableView: View {
                                 fileName: "Task List \(PDFExporter.fileNameTimestamp).pdf"
                             )
                         } label: {
-                            Label("Export PDF", systemImage: "arrow.down.doc")
+                            toolbarLabel("Export PDF", systemImage: "arrow.down.doc", compact: compactToolbar)
                         }
                         .buttonStyle(.borderless)
                         .help("Export task list as PDF")
@@ -202,7 +226,7 @@ struct TaskTableView: View {
                                 fileName: "Task List \(PDFExporter.fileNameTimestamp).csv"
                             )
                         } label: {
-                            Label("Export CSV", systemImage: "tablecells")
+                            toolbarLabel("Export CSV", systemImage: "tablecells", compact: compactToolbar)
                         }
                         .buttonStyle(.borderless)
                         .help("Export task list as CSV")
@@ -216,7 +240,7 @@ struct TaskTableView: View {
                                 fileName: "Task List \(PDFExporter.fileNameTimestamp).xls"
                             )
                         } label: {
-                            Label("Export Excel", systemImage: "tablecells.badge.ellipsis")
+                            toolbarLabel("Export Excel", systemImage: "tablecells.badge.ellipsis", compact: compactToolbar)
                         }
                         .buttonStyle(.borderless)
                         .help("Export task list as an Excel-compatible spreadsheet")
@@ -224,7 +248,7 @@ struct TaskTableView: View {
                         Button {
                             printTaskList()
                         } label: {
-                            Label("Print", systemImage: "printer")
+                            toolbarLabel("Print", systemImage: "printer", compact: compactToolbar)
                         }
                         .buttonStyle(.borderless)
                         .help("Print task list")
@@ -242,6 +266,7 @@ struct TaskTableView: View {
                     }
                     .padding(.horizontal)
                     .padding(.vertical, 6)
+                    .lineLimit(1)
 
                     if visibleTasks.isEmpty {
                         ContentUnavailableView(

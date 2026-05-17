@@ -4,6 +4,7 @@ struct GanttHeaderView: View {
     let dateRange: (start: Date, end: Date)
     let pixelsPerDay: CGFloat
     let totalWidth: CGFloat
+    var showsTodayMarker: Bool = true
 
     @Environment(\.colorScheme) var colorScheme
 
@@ -30,14 +31,15 @@ struct GanttHeaderView: View {
             context.stroke(borderPath, with: .color(.gray.opacity(0.4)), lineWidth: 1)
 
             // Today marker in header
-            if let todayOffset = GanttDateHelpers.todayDayOffset(from: dateRange.start) {
+            if showsTodayMarker, let todayOffset = GanttDateHelpers.todayDayOffset(from: dateRange.start) {
                 let todayX = todayOffset * pixelsPerDay
                 if todayX >= 0 && todayX <= size.width {
                     let triSize: CGFloat = 6
+                    let triangleTipY = size.height - 3
                     var triangle = Path()
-                    triangle.move(to: CGPoint(x: todayX, y: size.height))
-                    triangle.addLine(to: CGPoint(x: todayX - triSize, y: size.height - triSize))
-                    triangle.addLine(to: CGPoint(x: todayX + triSize, y: size.height - triSize))
+                    triangle.move(to: CGPoint(x: todayX, y: triangleTipY))
+                    triangle.addLine(to: CGPoint(x: todayX - triSize, y: triangleTipY - triSize))
+                    triangle.addLine(to: CGPoint(x: todayX + triSize, y: triangleTipY - triSize))
                     triangle.closeSubpath()
                     context.fill(triangle, with: .color(.red))
 

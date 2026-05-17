@@ -44,6 +44,177 @@ private struct GanttFinancialSummary {
     }
 }
 
+private struct GanttTaskPopover: View {
+    let task: ProjectTask
+    var onClose: (() -> Void)? = nil
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 10) {
+                taskKindIcon
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(task.displayName)
+                        .font(.headline)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text(taskKindText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer(minLength: 8)
+
+                Button {
+                    onClose?()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.caption)
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(.secondary)
+                .keyboardShortcut(.cancelAction)
+                .help("Close")
+            }
+
+            ScrollView(.vertical, showsIndicators: true) {
+                VStack(alignment: .leading, spacing: 14) {
+                    detailSection("Schedule") {
+                        detailRow("Start", DateFormatting.shortDate(task.start))
+                        detailRow("Finish", DateFormatting.shortDate(task.finish))
+                        detailRow("Duration", task.durationDisplay.isEmpty ? "-" : task.durationDisplay)
+                        detailRow("Complete", task.percentCompleteDisplay)
+                        detailRow("Critical", task.critical == true ? "Yes" : "No")
+                    }
+
+                    detailSection("Tracking") {
+                        detailRow("Work", task.work.map(DurationFormatting.formatSeconds) ?? "-")
+                        detailRow("Cost", task.cost.map { String(format: "%.2f", $0) } ?? "-")
+                        detailRow("Priority", task.priority.map(String.init) ?? "-")
+                        detailRow("Total Slack", task.totalSlackDisplay ?? "-")
+                        detailRow("Free Slack", task.freeSlackDisplay ?? "-")
+                    }
+
+                    detailSection("Structure") {
+                        detailRow("Unique ID", String(task.uniqueID))
+                        detailRow("ID", task.id.map(String.init) ?? "-")
+                        detailRow("WBS", task.wbs ?? "-")
+                        detailRow("Outline", task.outlineNumber ?? task.outlineLevel.map(String.init) ?? "-")
+                        detailRow("Predecessors", relationSummary(task.predecessors))
+                        detailRow("Successors", relationSummary(task.successors))
+                    }
+
+                    if task.hasBaseline {
+                        detailSection("Baseline") {
+                            detailRow("Status", baselineSummary)
+                            detailRow("Start", DateFormatting.shortDate(task.baselineStart))
+                            detailRow("Finish", DateFormatting.shortDate(task.baselineFinish))
+                        }
+                    }
+
+                    if (task.constraintType?.isEmpty == false) || (task.constraintDate?.isEmpty == false) {
+                        detailSection("Constraint") {
+                            detailRow("Type", task.constraintType ?? "-")
+                            detailRow("Date", DateFormatting.shortDate(task.constraintDate))
+                        }
+                    }
+
+                    if let notes = task.notes, !notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        detailSection("Notes") {
+                            Text(notes)
+                                .font(.caption)
+                                .foregroundStyle(.primary)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                }
+                .padding(.trailing, 6)
+            }
+            .frame(maxHeight: 430)
+        }
+        .padding(18)
+        .frame(width: 460, alignment: .leading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(.quaternary, lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.18), radius: 28, x: 0, y: 16)
+    }
+
+    @ViewBuilder
+    private var taskKindIcon: some View {
+        if task.summary == true {
+            Image(systemName: "folder.fill")
+                .foregroundStyle(.blue)
+        } else if task.milestone == true {
+            Image(systemName: "diamond.fill")
+                .foregroundStyle(.orange)
+        } else if task.critical == true {
+            Circle()
+                .fill(.red)
+                .frame(width: 9, height: 9)
+        } else {
+            RoundedRectangle(cornerRadius: 2)
+                .fill(.blue.opacity(0.65))
+                .frame(width: 14, height: 9)
+        }
+    }
+
+    private var baselineSummary: String {
+        if let descriptor = task.baselineVarianceDescriptor {
+            return descriptor.label
+        }
+        return "Captured"
+    }
+
+    private var taskKindText: String {
+        if task.summary == true { return "Summary" }
+        if task.milestone == true { return "Milestone" }
+        return "Task"
+    }
+
+    private func relationSummary(_ relations: [TaskRelation]?) -> String {
+        guard let relations, !relations.isEmpty else { return "-" }
+        return relations
+            .map { relation in
+                let type = relation.type?.isEmpty == false ? " \(relation.type!)" : ""
+                return "\(relation.targetTaskUniqueID)\(type)"
+            }
+            .joined(separator: ", ")
+    }
+
+    private func detailSection<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 6) {
+                content()
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(12)
+        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private func detailRow(_ title: String, _ value: String) -> some View {
+        GridRow {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(width: 96, alignment: .leading)
+            Text(value.isEmpty ? "-" : value)
+                .font(.caption)
+                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
 private enum GanttInspectorTab: String, CaseIterable, Identifiable {
     case task = "Task"
     case links = "Links"
@@ -151,7 +322,12 @@ struct GanttChartView: View {
     @State private var rowHeight: CGFloat = 24
     @State private var criticalPathOnly: Bool = false
     @State private var showBaseline: Bool = false
+    @State private var showDependencyLinks: Bool = true
     @State private var selectedTaskID: Int?
+    @State private var detailPopoverTaskID: Int?
+    @State private var detailPopoverAnchor: CGPoint = .zero
+    @State private var detailPopoverVisibleRect: CGRect = .zero
+    @State private var detailSheetTaskID: Int?
     @State private var pendingDependencySourceTaskID: Int?
     @State private var selectedDependency: GanttDependencySelection?
     @State private var interactionMode: GanttInteractionMode = .view
@@ -159,6 +335,7 @@ struct GanttChartView: View {
     @GestureState private var magnifyBy: CGFloat = 1.0
 
     private let exportTaskListWidth: CGFloat = 280
+    private let timelineTrailingLabelWidth: CGFloat = 420
     private let ganttConstraintOptions = ["None", "ASAP", "SNET", "FNET", "MSO", "MFO"]
 
     private var flatTasks: [ProjectTask] {
@@ -209,6 +386,10 @@ struct GanttChartView: View {
 
     private var timelineWidth: CGFloat {
         CGFloat(totalDays) * pixelsPerDay
+    }
+
+    private var chartContentWidth: CGFloat {
+        timelineWidth + timelineTrailingLabelWidth
     }
 
     private var selectedProjectTask: ProjectTask? {
@@ -263,20 +444,37 @@ struct GanttChartView: View {
                     let viewportWidth = max(geometry.size.width, 1)
                     let taskListWidth = showsEditSidebar ? preferredTaskListWidth(for: viewportWidth) : 0
 
-                    ScrollView([.horizontal, .vertical]) {
-                        ganttContent(taskListWidth: taskListWidth)
-                            .frame(minHeight: geometry.size.height, alignment: .topLeading)
+                    ScrollView(.horizontal) {
+                        ZStack(alignment: .topLeading) {
+                            VStack(alignment: .leading, spacing: 0) {
+                                ganttHeaderRow(taskListWidth: taskListWidth, showsTodayMarker: false)
+
+                                ScrollView(.vertical) {
+                                    ganttRowsContent(taskListWidth: taskListWidth)
+                                        .frame(minHeight: max(0, geometry.size.height - ganttHeaderHeight), alignment: .topLeading)
+                                }
+                                .coordinateSpace(name: "GanttVerticalScrollViewport")
+                                .frame(
+                                    width: taskListWidth + chartContentWidth,
+                                    height: max(0, geometry.size.height - ganttHeaderHeight),
+                                    alignment: .topLeading
+                                )
+                            }
+
+                            todayViewportMarker(taskListWidth: taskListWidth, height: geometry.size.height)
+                        }
+                        .frame(width: taskListWidth + chartContentWidth, height: geometry.size.height, alignment: .topLeading)
                     }
-                    .coordinateSpace(name: "GanttScrollViewport")
+                    .coordinateSpace(name: "GanttHorizontalScrollViewport")
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     .onAppear {
                         timelineViewportWidth = viewportWidth
-                        timelineViewportHeight = geometry.size.height
+                        timelineViewportHeight = max(0, geometry.size.height - ganttHeaderHeight)
                         applyAutoFitIfNeeded()
                     }
                     .onChange(of: viewportWidth) { _, newWidth in
                         timelineViewportWidth = newWidth
-                        timelineViewportHeight = geometry.size.height
+                        timelineViewportHeight = max(0, geometry.size.height - ganttHeaderHeight)
                         applyAutoFitIfNeeded()
                     }
                     .onChange(of: totalDays) { _, _ in
@@ -340,6 +538,36 @@ struct GanttChartView: View {
         }
         .transaction { transaction in
             transaction.animation = nil
+        }
+        .overlay {
+            taskDetailModalOverlay
+        }
+    }
+
+    @ViewBuilder
+    private var taskDetailModalOverlay: some View {
+        if let detailSheetTaskID,
+           let task = project.tasksByID[detailSheetTaskID] {
+            ZStack {
+                Color.black.opacity(0.08)
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        closeTaskDetailModal()
+                    }
+
+                GanttTaskPopover(task: task) {
+                    closeTaskDetailModal()
+                }
+                .transition(.scale(scale: 0.985).combined(with: .opacity))
+            }
+            .zIndex(200)
+            .animation(.easeOut(duration: 0.12), value: detailSheetTaskID)
+        }
+    }
+
+    private func closeTaskDetailModal() {
+        withAnimation(.easeOut(duration: 0.1)) {
+            detailSheetTaskID = nil
         }
     }
 
@@ -434,6 +662,22 @@ struct GanttChartView: View {
                 .toggleStyle(.button)
                 .buttonStyle(.bordered)
                 .tint(criticalPathOnly ? .red : nil)
+                .help("Highlights tasks marked critical by the imported schedule and dims non-critical tasks.")
+
+                Toggle(isOn: $showDependencyLinks) {
+                    Label("Links", systemImage: "link")
+                        .font(.caption)
+                }
+                .toggleStyle(.button)
+                .buttonStyle(.bordered)
+                .tint(showDependencyLinks ? .blue : nil)
+                .help("Shows predecessor and successor dependency links between tasks.")
+                .onChange(of: showDependencyLinks) { _, isOn in
+                    if !isOn {
+                        selectedDependency = nil
+                        pendingDependencySourceTaskID = nil
+                    }
+                }
 
                 Toggle(isOn: $showBaseline) {
                     Label("Baseline", systemImage: "clock.arrow.2.circlepath")
@@ -442,6 +686,7 @@ struct GanttChartView: View {
                 .toggleStyle(.button)
                 .buttonStyle(.bordered)
                 .tint(showBaseline ? .gray : nil)
+                .help("Shows the saved baseline schedule as gray bars below the current bars, with start/finish variance badges.")
 
                 Divider().frame(height: 16)
 
@@ -975,7 +1220,7 @@ struct GanttChartView: View {
     private func exportToPDF() {
         let contentView = ganttContent(taskListWidth: exportTaskListWidth)
         let contentSize = CGSize(
-            width: exportTaskListWidth + timelineWidth,
+            width: exportTaskListWidth + chartContentWidth,
             height: CGFloat(flatTasks.count) * rowHeight + ganttHeaderHeight
         )
         let title = project.properties.projectTitle ?? "Gantt Chart"
@@ -989,7 +1234,7 @@ struct GanttChartView: View {
     private func printGantt() {
         let contentView = ganttContent(taskListWidth: exportTaskListWidth)
         let contentSize = CGSize(
-            width: exportTaskListWidth + timelineWidth,
+            width: exportTaskListWidth + chartContentWidth,
             height: CGFloat(flatTasks.count) * rowHeight + ganttHeaderHeight
         )
         let title = project.properties.projectTitle ?? "Gantt Chart"
@@ -1028,66 +1273,175 @@ struct GanttChartView: View {
 
     private func ganttContent(taskListWidth: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .top, spacing: 0) {
-                if showsEditSidebar {
-                    taskListHeader(width: taskListWidth)
-                }
-                GanttHeaderView(
-                    dateRange: dateRange,
-                    pixelsPerDay: pixelsPerDay,
-                    totalWidth: timelineWidth
-                )
-            }
+            ganttHeaderRow(taskListWidth: taskListWidth)
 
-            HStack(alignment: .top, spacing: 0) {
-                if showsEditSidebar {
-                    ganttTaskList(width: taskListWidth)
-                }
-                GanttCanvasView(
-                    tasks: flatTasks,
-                    allTasks: project.tasksByID,
-                    rowIndexByTaskID: derivedContent.rowIndexByTaskID,
-                    startDate: dateRange.start,
-                    totalDays: totalDays,
-                    pixelsPerDay: pixelsPerDay,
-                    rowHeight: rowHeight,
-                    visibleRect: timelineVisibleRect,
-                    criticalPathOnly: criticalPathOnly,
-                    showBaseline: showBaseline,
-                    editableTaskIDs: editableTaskIDs,
-                    selectedTaskID: selectedTaskID,
-                    selectedDependency: selectedDependency,
-                    pendingLinkSourceTaskID: pendingDependencySourceTaskID,
-                    onMoveTask: planModel == nil ? nil : moveNativeTask,
-                    onResizeTask: planModel == nil ? nil : resizeNativeTask,
-                    onSelectTask: handleTaskSelection,
-                    onStartLinkingFromTask: startLinkingFromTask,
-                    onSelectDependency: { predecessorID, successorID in
-                        selectedDependency = GanttDependencySelection(
-                            predecessorID: predecessorID,
-                            successorID: successorID
-                        )
-                        selectedTaskID = successorID
-                    },
-                    onRemoveDependency: { predecessorID, successorID in
-                        removeDependency(predecessorID: predecessorID, successorID: successorID)
-                    }
-                )
-                .frame(width: timelineWidth, height: CGFloat(flatTasks.count) * rowHeight)
-                .background(
-                    GeometryReader { proxy in
-                        Color.clear.preference(
-                            key: GanttTimelineViewportPreferenceKey.self,
-                            value: CGRect(
-                                x: max(0, -proxy.frame(in: .named("GanttScrollViewport")).minX),
-                                y: max(0, -proxy.frame(in: .named("GanttScrollViewport")).minY),
-                                width: timelineViewportWidth,
-                                height: timelineViewportHeight
-                            )
-                        )
-                    }
-                )
+            ganttRowsContent(taskListWidth: taskListWidth)
+        }
+    }
+
+    private func ganttHeaderRow(taskListWidth: CGFloat, showsTodayMarker: Bool = true) -> some View {
+        HStack(alignment: .top, spacing: 0) {
+            if showsEditSidebar {
+                taskListHeader(width: taskListWidth)
             }
+            GanttHeaderView(
+                dateRange: dateRange,
+                pixelsPerDay: pixelsPerDay,
+                totalWidth: chartContentWidth,
+                showsTodayMarker: showsTodayMarker
+            )
+        }
+    }
+
+    private func todayViewportMarker(taskListWidth: CGFloat, height: CGFloat) -> some View {
+        Canvas { context, size in
+            guard let todayOffset = GanttDateHelpers.todayDayOffset(from: dateRange.start) else { return }
+            let todayX = taskListWidth + todayOffset * pixelsPerDay
+            guard todayX >= taskListWidth, todayX <= taskListWidth + chartContentWidth else { return }
+
+            var line = Path()
+            line.move(to: CGPoint(x: todayX, y: 0))
+            line.addLine(to: CGPoint(x: todayX, y: size.height))
+            context.stroke(
+                line,
+                with: .color(.red.opacity(0.75)),
+                style: StrokeStyle(lineWidth: 1.4, dash: [4, 3])
+            )
+
+            let triSize: CGFloat = 7
+            let tipY = min(size.height - 2, ganttHeaderHeight + 12)
+            var triangle = Path()
+            triangle.move(to: CGPoint(x: todayX, y: tipY))
+            triangle.addLine(to: CGPoint(x: todayX - triSize, y: tipY - triSize))
+            triangle.addLine(to: CGPoint(x: todayX + triSize, y: tipY - triSize))
+            triangle.closeSubpath()
+            context.fill(triangle, with: .color(.red))
+        }
+        .frame(width: taskListWidth + chartContentWidth, height: height)
+        .allowsHitTesting(false)
+    }
+
+    private func ganttTaskDetailOverlay(taskListWidth: CGFloat) -> some View {
+        ZStack(alignment: .topLeading) {
+            if let detailPopoverTaskID,
+               let task = project.tasksByID[detailPopoverTaskID] {
+                let origin = detailPopoverOrigin(taskListWidth: taskListWidth, width: 300, height: 190)
+                GanttTaskPopover(task: task) {
+                    self.detailPopoverTaskID = nil
+                }
+                .offset(x: origin.x, y: origin.y)
+                .zIndex(100)
+            }
+        }
+        .frame(width: taskListWidth + chartContentWidth, height: max(ganttHeaderHeight, timelineViewportHeight + ganttHeaderHeight), alignment: .topLeading)
+        .allowsHitTesting(true)
+    }
+
+    private func detailPopoverOrigin(taskListWidth: CGFloat, width: CGFloat, height: CGFloat) -> CGPoint {
+        let padding: CGFloat = 10
+        let visibleRect = popoverVisibleRect
+        let bounds = CGRect(
+            x: taskListWidth + visibleRect.minX,
+            y: ganttHeaderHeight,
+            width: visibleRect.width,
+            height: visibleRect.height
+        )
+        let anchor = CGPoint(
+            x: taskListWidth + detailPopoverAnchor.x,
+            y: ganttHeaderHeight + detailPopoverAnchor.y - visibleRect.minY
+        )
+
+        var x = anchor.x + 12
+        if x + width + padding > bounds.maxX {
+            x = anchor.x - width - 12
+        }
+
+        var y = anchor.y + 12
+        if y + height + padding > bounds.maxY {
+            y = anchor.y - height - 12
+        }
+
+        return CGPoint(
+            x: min(max(bounds.minX + padding, x), max(bounds.minX + padding, bounds.maxX - width - padding)),
+            y: min(max(bounds.minY + padding, y), max(bounds.minY + padding, bounds.maxY - height - padding))
+        )
+    }
+
+    private var popoverVisibleRect: CGRect {
+        if detailPopoverVisibleRect.width > 0, detailPopoverVisibleRect.height > 0 {
+            return detailPopoverVisibleRect
+        }
+        if timelineVisibleRect.width > 0, timelineVisibleRect.height > 0 {
+            return timelineVisibleRect
+        }
+        return CGRect(
+            x: 0,
+            y: 0,
+            width: max(timelineViewportWidth, chartContentWidth),
+            height: max(timelineViewportHeight, rowHeight)
+        )
+    }
+
+    private func ganttRowsContent(taskListWidth: CGFloat) -> some View {
+        HStack(alignment: .top, spacing: 0) {
+            if showsEditSidebar {
+                ganttTaskList(width: taskListWidth)
+            }
+            GanttCanvasView(
+                tasks: flatTasks,
+                allTasks: project.tasksByID,
+                rowIndexByTaskID: derivedContent.rowIndexByTaskID,
+                startDate: dateRange.start,
+                totalDays: totalDays,
+                pixelsPerDay: pixelsPerDay,
+                rowHeight: rowHeight,
+                visibleRect: timelineVisibleRect,
+                criticalPathOnly: criticalPathOnly,
+                showBaseline: showBaseline,
+                showDependencyLinks: showDependencyLinks,
+                editableTaskIDs: editableTaskIDs,
+                selectedTaskID: selectedTaskID,
+                selectedDependency: selectedDependency,
+                pendingLinkSourceTaskID: pendingDependencySourceTaskID,
+                onMoveTask: planModel == nil ? nil : moveNativeTask,
+                onResizeTask: planModel == nil ? nil : resizeNativeTask,
+                onSelectTask: handleTaskSelection,
+                onShowTaskDetails: { taskID, anchor, visibleRect in
+                    withAnimation(.easeOut(duration: 0.12)) {
+                        detailSheetTaskID = taskID
+                    }
+                    detailPopoverTaskID = taskID
+                    detailPopoverAnchor = anchor
+                    detailPopoverVisibleRect = visibleRect
+                },
+                onStartLinkingFromTask: startLinkingFromTask,
+                onSelectDependency: { predecessorID, successorID in
+                    selectedDependency = GanttDependencySelection(
+                        predecessorID: predecessorID,
+                        successorID: successorID
+                    )
+                    selectedTaskID = successorID
+                },
+                onRemoveDependency: { predecessorID, successorID in
+                    removeDependency(predecessorID: predecessorID, successorID: successorID)
+                }
+            )
+            .frame(width: chartContentWidth, height: CGFloat(flatTasks.count) * rowHeight)
+            .background(
+                GeometryReader { proxy in
+                    let horizontalFrame = proxy.frame(in: .named("GanttHorizontalScrollViewport"))
+                    let verticalFrame = proxy.frame(in: .named("GanttVerticalScrollViewport"))
+                    Color.clear.preference(
+                        key: GanttTimelineViewportPreferenceKey.self,
+                        value: CGRect(
+                            x: max(0, -horizontalFrame.minX),
+                            y: max(0, -verticalFrame.minY),
+                            width: max(0, timelineViewportWidth - max(0, horizontalFrame.minX)),
+                            height: timelineViewportHeight
+                        )
+                    )
+                }
+            )
         }
     }
 
@@ -2228,25 +2582,34 @@ struct GanttChartView: View {
 
 enum GanttDateHelpers {
     static func dateRange(for tasks: [ProjectTask]) -> (start: Date, end: Date) {
+        let calendar = Calendar.current
         let allDates = tasks.compactMap { $0.startDate } + tasks.compactMap { $0.finishDate }
         guard let minDate = allDates.min(), let maxDate = allDates.max() else {
-            let now = Date()
-            return (now, now.addingTimeInterval(86400 * 30))
+            let now = calendar.startOfDay(for: Date())
+            return (now, calendar.date(byAdding: .day, value: 30, to: now) ?? now.addingTimeInterval(86400 * 30))
         }
-        let paddedStart = Calendar.current.date(byAdding: .day, value: -3, to: minDate) ?? minDate
-        let paddedEnd = Calendar.current.date(byAdding: .day, value: 7, to: maxDate) ?? maxDate
+        let normalizedStart = calendar.startOfDay(for: minDate)
+        let normalizedEnd = calendar.startOfDay(for: maxDate)
+        let paddedStart = calendar.date(byAdding: .day, value: -3, to: normalizedStart) ?? normalizedStart
+        let paddedEnd = calendar.date(byAdding: .day, value: 7, to: normalizedEnd) ?? normalizedEnd
         return (paddedStart, paddedEnd)
     }
 
     static func totalDays(for dateRange: (start: Date, end: Date)) -> Int {
-        max(1, Calendar.current.dateComponents([.day], from: dateRange.start, to: dateRange.end).day ?? 30)
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: dateRange.start)
+        let end = calendar.startOfDay(for: dateRange.end)
+        return max(1, calendar.dateComponents([.day], from: start, to: end).day ?? 30)
     }
 
     static func todayDayOffset(from startDate: Date) -> CGFloat? {
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
+        dayOffset(from: Date(), startDate: startDate)
+    }
+
+    static func dayOffset(from date: Date, startDate: Date, calendar: Calendar = .current) -> CGFloat {
+        let target = calendar.startOfDay(for: date)
         let start = calendar.startOfDay(for: startDate)
-        let days = calendar.dateComponents([.day], from: start, to: today).day ?? 0
+        let days = calendar.dateComponents([.day], from: start, to: target).day ?? 0
         return CGFloat(days)
     }
 }
@@ -2257,10 +2620,11 @@ struct GanttLegendBar: View {
     var body: some View {
         HStack(spacing: 16) {
             legendItem(color: .blue, label: "Normal")
-            legendItem(color: .red, label: "Critical")
+            legendItem(color: .red, label: "Critical", help: "Critical tasks are tasks the source schedule marks as driving the project finish.")
             summaryLegendItem()
             milestoneLegendItem()
             progressLegendItem()
+            dependencyLegendItem()
             baselineLegendItem()
             Spacer()
         }
@@ -2269,7 +2633,7 @@ struct GanttLegendBar: View {
         .background(Color(nsColor: .controlBackgroundColor))
     }
 
-    private func legendItem(color: Color, label: String) -> some View {
+    private func legendItem(color: Color, label: String, help: String? = nil) -> some View {
         HStack(spacing: 4) {
             RoundedRectangle(cornerRadius: 2)
                 .fill(color.opacity(0.5))
@@ -2280,6 +2644,7 @@ struct GanttLegendBar: View {
                 )
             Text(label).font(.caption2).foregroundStyle(.secondary)
         }
+        .help(help ?? label)
     }
 
     private func summaryLegendItem() -> some View {
@@ -2314,13 +2679,35 @@ struct GanttLegendBar: View {
         }
     }
 
+    private func dependencyLegendItem() -> some View {
+        HStack(spacing: 4) {
+            ZStack(alignment: .trailing) {
+                Rectangle()
+                    .fill(Color.gray.opacity(0.55))
+                    .frame(width: 18, height: 1)
+                Image(systemName: "arrowtriangle.right.fill")
+                    .font(.system(size: 6))
+                    .foregroundStyle(.gray)
+                    .offset(x: 2)
+            }
+            Text("Links").font(.caption2).foregroundStyle(.secondary)
+        }
+        .help("Task dependency links between predecessors and successors.")
+    }
+
     private func baselineLegendItem() -> some View {
         HStack(spacing: 4) {
-            RoundedRectangle(cornerRadius: 2)
-                .fill(Color.gray.opacity(0.3))
-                .frame(width: 16, height: 6)
+            VStack(spacing: 2) {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(Color.blue.opacity(0.35))
+                    .frame(width: 18, height: 5)
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(Color.gray.opacity(0.65))
+                    .frame(width: 18, height: 3)
+            }
             Text("Baseline").font(.caption2).foregroundStyle(.secondary)
         }
+        .help("Gray bars show saved baseline dates below current task bars.")
     }
 }
 
@@ -2463,7 +2850,7 @@ private struct GanttCanvasLayoutState {
         let timelineContentWidth = CGFloat(totalDays) * pixelsPerDay
         let barInset: CGFloat = 4
         let barHeight = rowHeight - barInset * 2
-        let baselineBarHeight = barHeight * 0.5
+        let baselineBarHeight: CGFloat = 4
 
         let taskGeometryByID = Dictionary(nonThrowingUniquePairs: tasks.enumerated().map { index, task in
             let rowRect = CGRect(
@@ -2474,15 +2861,14 @@ private struct GanttCanvasLayoutState {
             )
 
             let startX = task.startDate.map { date -> CGFloat in
-                let startDays = calendar.dateComponents([.day], from: startDate, to: date).day ?? 0
-                return CGFloat(startDays) * pixelsPerDay
+                GanttDateHelpers.dayOffset(from: date, startDate: startDate, calendar: calendar) * pixelsPerDay
             }
 
             let width: CGFloat? = {
                 guard let taskStart = task.startDate, let taskFinish = task.finishDate else { return nil }
-                let startDays = calendar.dateComponents([.day], from: startDate, to: taskStart).day ?? 0
-                let finishDays = calendar.dateComponents([.day], from: startDate, to: taskFinish).day ?? 0
-                return max(4, CGFloat(max(1, finishDays - startDays)) * pixelsPerDay)
+                let startDays = GanttDateHelpers.dayOffset(from: taskStart, startDate: startDate, calendar: calendar)
+                let finishDays = GanttDateHelpers.dayOffset(from: taskFinish, startDate: startDate, calendar: calendar)
+                return max(4, max(1, finishDays - startDays) * pixelsPerDay)
             }()
 
             let barRect: CGRect? = {
@@ -2502,13 +2888,11 @@ private struct GanttCanvasLayoutState {
             }()
 
             let baselineStartX = task.baselineStartDate.map { date -> CGFloat in
-                let days = calendar.dateComponents([.day], from: startDate, to: date).day ?? 0
-                return CGFloat(days) * pixelsPerDay
+                GanttDateHelpers.dayOffset(from: date, startDate: startDate, calendar: calendar) * pixelsPerDay
             }
 
             let baselineFinishX = task.baselineFinishDate.map { date -> CGFloat in
-                let days = calendar.dateComponents([.day], from: startDate, to: date).day ?? 0
-                return CGFloat(days) * pixelsPerDay
+                GanttDateHelpers.dayOffset(from: date, startDate: startDate, calendar: calendar) * pixelsPerDay
             }
 
             let baselineBarRect: CGRect? = {
@@ -2522,7 +2906,7 @@ private struct GanttCanvasLayoutState {
 
                 return CGRect(
                     x: baselineStartX,
-                    y: rowRect.minY + barInset + barHeight - baselineBarHeight,
+                    y: rowRect.maxY - baselineBarHeight - 2,
                     width: max(4, baselineFinishX - baselineStartX),
                     height: baselineBarHeight
                 )
@@ -2575,8 +2959,7 @@ private struct GanttCanvasLayoutState {
 
     private static func dayOffsetX(for date: Date?, startDate: Date, pixelsPerDay: CGFloat, calendar: Calendar) -> CGFloat {
         guard let date else { return 0 }
-        let days = calendar.dateComponents([.day], from: startDate, to: date).day ?? 0
-        return CGFloat(days) * pixelsPerDay
+        return GanttDateHelpers.dayOffset(from: date, startDate: startDate, calendar: calendar) * pixelsPerDay
     }
 }
 
@@ -2593,6 +2976,7 @@ struct GanttCanvasView: View {
     let visibleRect: CGRect
     var criticalPathOnly: Bool = false
     var showBaseline: Bool = false
+    var showDependencyLinks: Bool = true
     var editableTaskIDs: Set<Int> = []
     var selectedTaskID: Int? = nil
     var selectedDependency: GanttDependencySelection? = nil
@@ -2600,12 +2984,15 @@ struct GanttCanvasView: View {
     var onMoveTask: ((Int, Int) -> Void)? = nil
     var onResizeTask: ((Int, GanttResizeEdge, Int) -> Void)? = nil
     var onSelectTask: ((Int) -> Void)? = nil
+    var onShowTaskDetails: ((Int, CGPoint, CGRect) -> Void)? = nil
     var onStartLinkingFromTask: ((Int) -> Void)? = nil
     var onSelectDependency: ((Int, Int) -> Void)? = nil
     var onRemoveDependency: ((Int, Int) -> Void)? = nil
 
     @Environment(\.colorScheme) var colorScheme
     @State private var layoutState: GanttCanvasLayoutState
+
+    private let trailingLabelHitWidth: CGFloat = 420
 
     init(
         tasks: [ProjectTask],
@@ -2618,6 +3005,7 @@ struct GanttCanvasView: View {
         visibleRect: CGRect = .zero,
         criticalPathOnly: Bool = false,
         showBaseline: Bool = false,
+        showDependencyLinks: Bool = true,
         editableTaskIDs: Set<Int> = [],
         selectedTaskID: Int? = nil,
         selectedDependency: GanttDependencySelection? = nil,
@@ -2625,6 +3013,7 @@ struct GanttCanvasView: View {
         onMoveTask: ((Int, Int) -> Void)? = nil,
         onResizeTask: ((Int, GanttResizeEdge, Int) -> Void)? = nil,
         onSelectTask: ((Int) -> Void)? = nil,
+        onShowTaskDetails: ((Int, CGPoint, CGRect) -> Void)? = nil,
         onStartLinkingFromTask: ((Int) -> Void)? = nil,
         onSelectDependency: ((Int, Int) -> Void)? = nil,
         onRemoveDependency: ((Int, Int) -> Void)? = nil
@@ -2639,6 +3028,7 @@ struct GanttCanvasView: View {
         self.visibleRect = visibleRect
         self.criticalPathOnly = criticalPathOnly
         self.showBaseline = showBaseline
+        self.showDependencyLinks = showDependencyLinks
         self.editableTaskIDs = editableTaskIDs
         self.selectedTaskID = selectedTaskID
         self.selectedDependency = selectedDependency
@@ -2646,6 +3036,7 @@ struct GanttCanvasView: View {
         self.onMoveTask = onMoveTask
         self.onResizeTask = onResizeTask
         self.onSelectTask = onSelectTask
+        self.onShowTaskDetails = onShowTaskDetails
         self.onStartLinkingFromTask = onStartLinkingFromTask
         self.onSelectDependency = onSelectDependency
         self.onRemoveDependency = onRemoveDependency
@@ -2671,6 +3062,10 @@ struct GanttCanvasView: View {
 
     private var timelineContentWidth: CGFloat {
         layoutState.timelineContentWidth
+    }
+
+    private var interactiveContentWidth: CGFloat {
+        timelineContentWidth + trailingLabelHitWidth
     }
 
     private var layoutInput: GanttCanvasLayoutInput {
@@ -2721,7 +3116,7 @@ struct GanttCanvasView: View {
     }
 
     private var visibleDependencySegments: [GanttDependencySegment] {
-        let expandedRect = visibleRect.insetBy(dx: -40, dy: -rowHeight)
+        let expandedRect = visibleBounds.insetBy(dx: -120, dy: -rowHeight * 2)
         return layoutState.dependencySegments.filter { segment in
             let minX = min(segment.start.x, segment.end.x, segment.midX)
             let maxX = max(segment.start.x, segment.end.x, segment.midX)
@@ -2743,11 +3138,16 @@ struct GanttCanvasView: View {
             gridCanvas
                 .drawingGroup()
             taskBarsCanvas
-            dependencyCanvas
+            if showDependencyLinks {
+                dependencyCanvas
+            }
             tooltipOverlay
             linkSourceHighlightOverlay
-            linkTargetHighlightOverlay
-            dependencySelectionOverlay
+            if showDependencyLinks {
+                linkTargetHighlightOverlay
+                dependencySelectionOverlay
+            }
+            taskRowHitOverlay
             editableBarsOverlay
         }
         .coordinateSpace(name: canvasCoordinateSpaceName)
@@ -2778,12 +3178,128 @@ struct GanttCanvasView: View {
                     onSelectTask: {
                         onSelectTask?(row.task.uniqueID)
                     },
+                    onShowTaskDetails: { anchor in
+                        let currentVisibleBounds = visibleBounds
+                        onShowTaskDetails?(row.task.uniqueID, detailAnchor(for: anchor), currentVisibleBounds)
+                    },
                     onStartLinkingFromTask: {
                         onStartLinkingFromTask?(row.task.uniqueID)
                     }
                 )
             }
         }
+    }
+
+    private var taskRowHitOverlay: some View {
+        ZStack(alignment: .topLeading) {
+            ForEach(visibleTaskRows, id: \.task.uniqueID) { row in
+                if let geometry = taskGeometryByID[row.task.uniqueID] {
+                    Button {
+                        let anchor = CGPoint(
+                            x: min(max(visibleBounds.midX, geometry.rowRect.minX + 12), interactiveContentWidth - 12),
+                            y: geometry.rowRect.midY
+                        )
+                        onSelectTask?(row.task.uniqueID)
+                        onShowTaskDetails?(row.task.uniqueID, detailAnchor(for: anchor), visibleBounds)
+                    } label: {
+                        Rectangle()
+                            .fill(Color.white.opacity(0.001))
+                            .frame(width: interactiveContentWidth, height: geometry.rowRect.height)
+                    }
+                    .buttonStyle(.plain)
+                    .position(x: interactiveContentWidth / 2, y: geometry.rowRect.midY)
+                    .help(tooltipFor(row.task))
+                }
+            }
+        }
+    }
+
+    private func detailAnchor(for point: CGPoint) -> CGPoint {
+        let bounds = visibleBounds
+        guard bounds.width > 0, bounds.height > 0 else {
+            return point
+        }
+
+        return CGPoint(
+            x: min(max(point.x, bounds.minX + 12), bounds.maxX - 12),
+            y: min(max(point.y, bounds.minY + 12), bounds.maxY - 12)
+        )
+    }
+
+    private var taskHelpOverlay: some View {
+        ZStack(alignment: .topLeading) {
+            ForEach(visibleTaskRows, id: \.task.uniqueID) { row in
+                if let taskRect = taskInteractiveRect(for: row.task) {
+                    Rectangle()
+                        .fill(Color.clear)
+                        .frame(width: taskRect.width, height: taskRect.height)
+                        .position(x: taskRect.midX, y: taskRect.midY)
+                        .help(tooltipFor(row.task))
+                        .allowsHitTesting(false)
+                }
+            }
+        }
+    }
+
+    private func detailAnchor(for taskRect: CGRect, clickLocation: CGPoint) -> CGPoint {
+        let localClick = CGPoint(
+            x: taskRect.minX + clickLocation.x,
+            y: taskRect.minY + clickLocation.y
+        )
+        let bounds = visibleBounds
+        guard bounds.width > 0, bounds.height > 0 else {
+            return CGPoint(x: taskRect.maxX, y: taskRect.minY)
+        }
+
+        return CGPoint(
+            x: min(max(localClick.x, bounds.minX + 12), bounds.maxX - 12),
+            y: min(max(localClick.y, bounds.minY + 12), bounds.maxY - 12)
+        )
+    }
+
+    private var visibleBounds: CGRect {
+        if visibleRect != .zero {
+            return visibleRect
+        }
+        return CGRect(x: 0, y: 0, width: interactiveContentWidth, height: CGFloat(tasks.count) * rowHeight)
+    }
+
+    private func taskHitRect(for task: ProjectTask) -> CGRect? {
+        guard let geometry = taskGeometryByID[task.uniqueID] else { return nil }
+        let baseRect = geometry.barRect ?? geometry.rowRect
+        let minWidth: CGFloat = task.milestone == true ? 22 : 16
+        let width = max(baseRect.width, minWidth)
+        return CGRect(
+            x: baseRect.midX - width / 2,
+            y: baseRect.minY - 4,
+            width: width,
+            height: baseRect.height + 8
+        )
+    }
+
+    private func taskInteractiveRect(for task: ProjectTask) -> CGRect? {
+        guard let geometry = taskGeometryByID[task.uniqueID],
+              let barHitRect = taskHitRect(for: task)
+        else { return nil }
+
+        var minX = barHitRect.minX
+        var maxX = barHitRect.maxX
+
+        if let baselineRect = geometry.baselineBarRect {
+            minX = min(minX, baselineRect.minX - 6)
+            maxX = max(maxX, baselineRect.maxX + 6)
+        }
+
+        // Canvas-drawn names and baseline variance badges sit outside short bars
+        // and milestones. Keep those clicks attached to the same task.
+        maxX += 360
+
+        return CGRect(
+            x: max(0, minX),
+            y: geometry.rowRect.minY,
+            width: max(16, min(interactiveContentWidth, maxX) - max(0, minX)),
+            height: geometry.rowRect.height
+        )
     }
 
     private var linkTargetHighlightOverlay: some View {
@@ -3038,36 +3554,35 @@ struct GanttCanvasView: View {
             let barHeight = rowHeight - barInset * 2
             let dimOpacity: CGFloat = criticalPathOnly ? 0.15 : 1.0
 
-            // --- Baseline Markers (always visible) ---
-            let markerStyle = StrokeStyle(lineWidth: 0.8, dash: [3, 3])
-            for row in visibleTaskRows {
-                let task = row.task
-                let y = CGFloat(row.index) * rowHeight
-                guard task.hasBaseline else { continue }
-
-                if let xStart = taskGeometryByID[task.uniqueID]?.baselineStartX {
-                    var line = Path()
-                    line.move(to: CGPoint(x: xStart, y: y + 6))
-                    line.addLine(to: CGPoint(x: xStart, y: y + rowHeight - 6))
-                    context.stroke(line, with: .color(.gray.opacity(0.4)), style: markerStyle)
-                }
-
-                if let xFinish = taskGeometryByID[task.uniqueID]?.baselineFinishX {
-                    var line = Path()
-                    line.move(to: CGPoint(x: xFinish, y: y + 6))
-                    line.addLine(to: CGPoint(x: xFinish, y: y + rowHeight - 6))
-                    context.stroke(line, with: .color(.gray.opacity(0.4)), style: markerStyle)
-                }
-            }
-
-            // --- Baseline Bars (behind actual bars) ---
+            // --- Baseline Bars and Markers ---
             if showBaseline {
+                let markerStyle = StrokeStyle(lineWidth: 0.8, dash: [3, 3])
+                for row in visibleTaskRows {
+                    let task = row.task
+                    let y = CGFloat(row.index) * rowHeight
+                    guard task.hasBaseline else { continue }
+
+                    if let xStart = taskGeometryByID[task.uniqueID]?.baselineStartX {
+                        var line = Path()
+                        line.move(to: CGPoint(x: xStart, y: y + 6))
+                        line.addLine(to: CGPoint(x: xStart, y: y + rowHeight - 3))
+                        context.stroke(line, with: .color(.gray.opacity(0.55)), style: markerStyle)
+                    }
+
+                    if let xFinish = taskGeometryByID[task.uniqueID]?.baselineFinishX {
+                        var line = Path()
+                        line.move(to: CGPoint(x: xFinish, y: y + 6))
+                        line.addLine(to: CGPoint(x: xFinish, y: y + rowHeight - 3))
+                        context.stroke(line, with: .color(.gray.opacity(0.55)), style: markerStyle)
+                    }
+                }
+
                 for row in visibleTaskRows {
                     let task = row.task
                     guard let baseRect = taskGeometryByID[task.uniqueID]?.baselineBarRect else { continue }
                     let rr = RoundedRectangle(cornerRadius: 2).path(in: baseRect)
-                    context.fill(rr, with: .color(.gray.opacity(baselineOpacity)))
-                    context.stroke(rr, with: .color(.gray.opacity(baselineOpacity + 0.15)), lineWidth: 0.5)
+                    context.fill(rr, with: .color(.gray.opacity(0.65)))
+                    context.stroke(rr, with: .color(.gray.opacity(0.85)), lineWidth: 0.5)
                 }
             }
 
@@ -3100,11 +3615,25 @@ struct GanttCanvasView: View {
                     context.fill(diamond, with: .color(.orange.opacity(taskOpacity)))
 
                     // Right-side label for milestones
-                    let label = Text(task.displayName).font(.system(size: 9)).foregroundColor(.primary.opacity(taskOpacity))
-                    context.draw(
-                        context.resolve(label),
-                        at: CGPoint(x: cx + dSize / 2 + 4, y: y + rowHeight / 2),
-                        anchor: .leading
+                    let varianceDescriptor = showBaseline ? task.baselineVarianceDescriptor.flatMap { $0.days == 0 ? nil : $0 } : nil
+                    let badgeWidth = varianceDescriptor.map { baselineBadgeWidth(for: $0) } ?? 0
+                    let badgeX = cx + dSize / 2 + 6
+                    if let varianceDescriptor {
+                        drawBaselineBadge(
+                            context: context,
+                            descriptor: varianceDescriptor,
+                            x: badgeX,
+                            y: y + barInset,
+                            opacity: taskOpacity
+                        )
+                    }
+                    drawTaskName(
+                        context: context,
+                        task: task,
+                        x: badgeX + (varianceDescriptor == nil ? 0 : badgeWidth + 6),
+                        y: y + rowHeight / 2,
+                        color: .primary,
+                        opacity: taskOpacity
                     )
                     continue
                 }
@@ -3129,6 +3658,28 @@ struct GanttCanvasView: View {
                     rightTick.move(to: CGPoint(x: xStart + width, y: bracketY))
                     rightTick.addLine(to: CGPoint(x: xStart + width, y: bracketY + bracketH + tick))
                     context.stroke(rightTick, with: .color(.primary.opacity(0.6 * taskOpacity)), lineWidth: 1.5)
+
+                    let varianceDescriptor = showBaseline ? task.baselineVarianceDescriptor.flatMap { $0.days == 0 ? nil : $0 } : nil
+                    let badgeWidth = varianceDescriptor.map { baselineBadgeWidth(for: $0) } ?? 0
+                    let outsideX = xStart + width + 6
+                    if let varianceDescriptor {
+                        drawBaselineBadge(
+                            context: context,
+                            descriptor: varianceDescriptor,
+                            x: outsideX,
+                            y: y + barInset,
+                            opacity: taskOpacity
+                        )
+                    }
+
+                    drawTaskName(
+                        context: context,
+                        task: task,
+                        x: outsideX + (varianceDescriptor == nil ? 0 : badgeWidth + 6),
+                        y: y + rowHeight / 2,
+                        color: .secondary,
+                        opacity: taskOpacity
+                    )
                 } else {
                 // Regular bar
                 let bgColor: Color = isCritical ? .red.opacity(barBgOpacity * taskOpacity) : .blue.opacity(barBgOpacity * taskOpacity)
@@ -3148,29 +3699,41 @@ struct GanttCanvasView: View {
                     context.fill(fillRR, with: .color(fgColor.opacity(0.6 * taskOpacity)))
                 }
 
-                // Task name: inline if enough space, otherwise right of bar
-                if width > 60 {
-                    let label = Text(task.displayName).font(.system(size: 9)).foregroundColor(.primary.opacity(taskOpacity))
-                    context.draw(
-                        context.resolve(label),
-                        at: CGPoint(x: xStart + 4, y: y + rowHeight / 2),
-                        anchor: .leading
-                    )
-                } else {
-                    let label = Text(task.displayName).font(.system(size: 9)).foregroundColor(.secondary.opacity(taskOpacity))
-                    context.draw(
-                        context.resolve(label),
-                        at: CGPoint(x: xStart + width + 4, y: y + rowHeight / 2),
-                        anchor: .leading
+                let varianceDescriptor = showBaseline ? task.baselineVarianceDescriptor.flatMap { $0.days == 0 ? nil : $0 } : nil
+                let badgeWidth = varianceDescriptor.map { baselineBadgeWidth(for: $0) } ?? 0
+                let shouldDrawInlineLabel = width >= 92
+                let shouldDrawOutsideLabel = !shouldDrawInlineLabel
+                let outsideBadgeX = xStart + width + 6
+
+                if shouldDrawInlineLabel {
+                    drawTaskName(
+                        context: context,
+                        task: task,
+                        x: xStart + 5,
+                        y: y + rowHeight / 2,
+                        color: .primary,
+                        opacity: taskOpacity
                     )
                 }
 
-                if let descriptor = task.baselineVarianceDescriptor, descriptor.days != 0 {
+                if let varianceDescriptor {
                     drawBaselineBadge(
                         context: context,
-                        descriptor: descriptor,
-                        x: xStart + width + 8,
+                        descriptor: varianceDescriptor,
+                        x: outsideBadgeX,
                         y: y + barInset,
+                        opacity: taskOpacity
+                    )
+                }
+
+                if shouldDrawOutsideLabel {
+                    let labelX = outsideBadgeX + (varianceDescriptor == nil ? 0 : badgeWidth + 6)
+                    drawTaskName(
+                        context: context,
+                        task: task,
+                        x: labelX,
+                        y: y + rowHeight / 2,
+                        color: .secondary,
                         opacity: taskOpacity
                     )
                 }
@@ -3184,12 +3747,13 @@ struct GanttCanvasView: View {
             for segment in visibleDependencySegments {
                 context.stroke(
                     segmentPath(segment),
-                    with: .color(.gray.opacity(0.5)),
-                    style: StrokeStyle(lineWidth: 0.8)
+                    with: .color(.secondary.opacity(0.72)),
+                    style: StrokeStyle(lineWidth: 1.25)
                 )
-                context.fill(arrowHeadPath(segment), with: .color(.gray.opacity(0.5)))
+                context.fill(arrowHeadPath(segment), with: .color(.secondary.opacity(0.72)))
             }
         }
+        .allowsHitTesting(false)
     }
 
     private func refreshLayoutState() {
@@ -3224,5 +3788,23 @@ struct GanttCanvasView: View {
         context.fill(border, with: .color(descriptor.color.opacity(0.2 * opacity)))
         context.stroke(border, with: .color(descriptor.color.opacity(0.6 * opacity)), lineWidth: 0.5)
         context.draw(resolved, at: CGPoint(x: badgeRect.midX, y: badgeRect.midY), anchor: .center)
+    }
+
+    private func baselineBadgeWidth(for descriptor: BaselineVarianceDescriptor) -> CGFloat {
+        max(CGFloat(descriptor.label.count) * 7 + 10, 32)
+    }
+
+    private func drawTaskName(
+        context: GraphicsContext,
+        task: ProjectTask,
+        x: CGFloat,
+        y: CGFloat,
+        color: Color,
+        opacity: Double
+    ) {
+        let label = Text(task.displayName)
+            .font(.system(size: 9))
+            .foregroundColor(color.opacity(opacity))
+        context.draw(context.resolve(label), at: CGPoint(x: x, y: y), anchor: .leading)
     }
 }

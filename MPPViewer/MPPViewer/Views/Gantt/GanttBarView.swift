@@ -18,6 +18,7 @@ struct GanttBarView: View {
     var onMoveTask: ((Int) -> Void)? = nil
     var onResizeTask: ((GanttResizeEdge, Int) -> Void)? = nil
     var onSelectTask: (() -> Void)? = nil
+    var onShowTaskDetails: ((CGPoint) -> Void)? = nil
     var onStartLinkingFromTask: (() -> Void)? = nil
 
     @State private var moveTranslation: CGFloat = 0
@@ -117,7 +118,18 @@ struct GanttBarView: View {
                     onMoveTask?(delta)
                 } : nil
             )
-            .simultaneousGesture(TapGesture().onEnded { onSelectTask?() })
+            .simultaneousGesture(
+                SpatialTapGesture()
+                    .onEnded { value in
+                        onSelectTask?()
+                        onShowTaskDetails?(
+                            CGPoint(
+                                x: taskStartOffset + CGFloat(movePreviewDays) * pixelsPerDay - size / 2 + value.location.x,
+                                y: yPosition + (rowHeight - size) / 2 + value.location.y
+                            )
+                        )
+                    }
+            )
             .simultaneousGesture(
                 TapGesture()
                     .modifiers(.control)
@@ -146,7 +158,18 @@ struct GanttBarView: View {
                 y: yPosition + barInset + barHeight * 0.3
             )
             .contentShape(Rectangle())
-            .simultaneousGesture(TapGesture().onEnded { onSelectTask?() })
+            .simultaneousGesture(
+                SpatialTapGesture()
+                    .onEnded { value in
+                        onSelectTask?()
+                        onShowTaskDetails?(
+                            CGPoint(
+                                x: taskStartOffset + value.location.x,
+                                y: yPosition + barInset + barHeight * 0.3 + value.location.y
+                            )
+                        )
+                    }
+            )
             .simultaneousGesture(
                 TapGesture()
                     .modifiers(.control)
@@ -217,7 +240,18 @@ struct GanttBarView: View {
                     onMoveTask?(delta)
                 } : nil
         )
-        .simultaneousGesture(TapGesture().onEnded { onSelectTask?() })
+        .simultaneousGesture(
+            SpatialTapGesture()
+                .onEnded { value in
+                    onSelectTask?()
+                    onShowTaskDetails?(
+                        CGPoint(
+                            x: previewOffsetX + value.location.x,
+                            y: yPosition + barInset + value.location.y
+                        )
+                    )
+                }
+        )
         .simultaneousGesture(
             TapGesture()
                 .modifiers(.control)
