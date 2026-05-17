@@ -21,6 +21,34 @@ RESOURCES_DIR="$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH"
 JRE_VERSION="21"
 JRE_CACHE_DIR="$PROJECT_ROOT/.cache/jre"
 
+sign_runtime_executable() {
+    local executable_path="$1"
+
+    if [[ "${CODE_SIGNING_ALLOWED:-YES}" == "NO" ]]; then
+        return
+    fi
+
+    local signing_identity="${EXPANDED_CODE_SIGN_IDENTITY:-${CODE_SIGN_IDENTITY:-}}"
+    if [[ -z "$signing_identity" ]]; then
+        echo "warning: Skipping code signing for $executable_path because no signing identity is available."
+        return
+    fi
+
+    local entitlements_path=""
+    if [[ -n "${CODE_SIGN_ENTITLEMENTS:-}" ]]; then
+        entitlements_path="$PROJECT_ROOT/MPPViewer/$CODE_SIGN_ENTITLEMENTS"
+        if [[ ! -f "$entitlements_path" ]]; then
+            entitlements_path="$SRCROOT/$CODE_SIGN_ENTITLEMENTS"
+        fi
+    fi
+
+    if [[ -f "$entitlements_path" ]]; then
+        codesign --force --sign "$signing_identity" --options runtime --entitlements "$entitlements_path" "$executable_path"
+    else
+        codesign --force --sign "$signing_identity" --options runtime "$executable_path"
+    fi
+}
+
 mkdir -p "$RESOURCES_DIR"
 
 if [[ ! -f "$JAR_PATH" && ! -f "$VENDORED_JAR_PATH" ]]; then
@@ -88,5 +116,18 @@ for arch in $archs; do
     rsync -a --delete "$jre_home/" "$runtime_dir/"
     xattr -cr "$runtime_dir/" 2>/dev/null || true
     chmod -R u+rwX,go+rX "$runtime_dir/"
+
+    for executable_name in java jfr jrunscript jwebserver keytool rmiregistry; do
+        executable_path="$runtime_dir/bin/$executable_name"
+        if [[ -f "$executable_path" ]]; then
+            sign_runtime_executable "$executable_path"
+        fi
+    done
+
+    helper_path="$runtime_dir/lib/jspawnhelper"
+    if [[ -f "$helper_path" ]]; then
+        sign_runtime_executable "$helper_path"
+    fi
+
     echo "Bundled JRE for $runtime_arch."
 done
