@@ -25,6 +25,7 @@ XCODEPROJ="$PROJECT_ROOT/MPPViewer/MPPViewer.xcodeproj"
 MAVEN_DIR="$PROJECT_ROOT/MPPConverter"
 JAR_NAME="mpxj-converter.jar"
 DIRECT_ENTITLEMENTS="$PROJECT_ROOT/MPPViewer/MPPViewer/MPPViewerDirect.entitlements"
+JAVA_RUNTIME_DIRECT_ENTITLEMENTS="$PROJECT_ROOT/MPPViewer/MPPViewer/JavaRuntimeDirect.entitlements"
 XPC_ENTITLEMENTS="$PROJECT_ROOT/MPPViewer/MPPConverterXPC/MPPConverterXPC.entitlements"
 
 JRE_VERSION="21"
@@ -254,12 +255,22 @@ if [[ "$SIGN_APP" == true ]]; then
     echo "  Signing bundled JRE runtime code…"
     while IFS= read -r -d '' runtime_path; do
         if file "$runtime_path" | grep -Eq 'Mach-O'; then
-            codesign \
-                --force \
-                --timestamp \
-                --options runtime \
-                --sign "$SIGN_IDENTITY" \
-                "$runtime_path" >/dev/null
+            if [[ "$runtime_path" == "$JRE_BUNDLE_DIR/bin/"* || "$runtime_path" == "$JRE_BUNDLE_DIR/lib/jspawnhelper" ]]; then
+                codesign \
+                    --force \
+                    --timestamp \
+                    --options runtime \
+                    --entitlements "$JAVA_RUNTIME_DIRECT_ENTITLEMENTS" \
+                    --sign "$SIGN_IDENTITY" \
+                    "$runtime_path" >/dev/null
+            else
+                codesign \
+                    --force \
+                    --timestamp \
+                    --options runtime \
+                    --sign "$SIGN_IDENTITY" \
+                    "$runtime_path" >/dev/null
+            fi
         fi
     done < <(find "$JRE_BUNDLE_DIR/bin" "$JRE_BUNDLE_DIR/lib" -type f -print0)
 

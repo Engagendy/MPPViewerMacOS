@@ -5,4 +5,7 @@ import Foundation
 @objc protocol MPPConverterXPCProtocol {
     /// Convert an MPP file at the given path to JSON data.
     func convertMPP(atPath inputPath: String, reply: @escaping (Data?, String?) -> Void)
+
+    /// Convert MPP file data to JSON data.
+    func convertMPPData(_ inputData: Data, fileExtension: String, reply: @escaping (Data?, String?) -> Void)
 }

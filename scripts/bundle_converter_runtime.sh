@@ -20,9 +20,11 @@ VENDORED_JAR_PATH="$MAVEN_DIR/vendor/$JAR_NAME"
 RESOURCES_DIR="$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH"
 JRE_VERSION="21"
 JRE_CACHE_DIR="$PROJECT_ROOT/.cache/jre"
+JAVA_RUNTIME_ENTITLEMENTS="$PROJECT_ROOT/MPPViewer/MPPViewer/JavaRuntime.entitlements"
 
-sign_runtime_executable() {
-    local executable_path="$1"
+sign_macho() {
+    local macho_path="$1"
+    local entitlements_path="${2:-}"
 
     if [[ "${CODE_SIGNING_ALLOWED:-YES}" == "NO" ]]; then
         return
@@ -34,19 +36,19 @@ sign_runtime_executable() {
         return
     fi
 
-    local entitlements_path=""
-    if [[ -n "${CODE_SIGN_ENTITLEMENTS:-}" ]]; then
-        entitlements_path="$PROJECT_ROOT/MPPViewer/$CODE_SIGN_ENTITLEMENTS"
-        if [[ ! -f "$entitlements_path" ]]; then
-            entitlements_path="$SRCROOT/$CODE_SIGN_ENTITLEMENTS"
-        fi
-    fi
-
     if [[ -f "$entitlements_path" ]]; then
-        codesign --force --sign "$signing_identity" --options runtime --entitlements "$entitlements_path" "$executable_path"
+        codesign --force --sign "$signing_identity" --options runtime --entitlements "$entitlements_path" "$macho_path"
     else
-        codesign --force --sign "$signing_identity" --options runtime "$executable_path"
+        codesign --force --sign "$signing_identity" --options runtime "$macho_path"
     fi
+}
+
+sign_runtime_executable() {
+    sign_macho "$1" "$JAVA_RUNTIME_ENTITLEMENTS"
+}
+
+sign_runtime_library() {
+    sign_macho "$1"
 }
 
 mkdir -p "$RESOURCES_DIR"
@@ -117,17 +119,18 @@ for arch in $archs; do
     xattr -cr "$runtime_dir/" 2>/dev/null || true
     chmod -R u+rwX,go+rX "$runtime_dir/"
 
-    for executable_name in java jfr jrunscript jwebserver keytool rmiregistry; do
-        executable_path="$runtime_dir/bin/$executable_name"
-        if [[ -f "$executable_path" ]]; then
-            sign_runtime_executable "$executable_path"
+    while IFS= read -r -d '' runtime_path; do
+        if file "$runtime_path" | grep -Eq 'Mach-O'; then
+            case "$runtime_path" in
+                "$runtime_dir/bin/"*|"$runtime_dir/lib/jspawnhelper")
+                    sign_runtime_executable "$runtime_path"
+                    ;;
+                *)
+                    sign_runtime_library "$runtime_path"
+                    ;;
+            esac
         fi
-    done
-
-    helper_path="$runtime_dir/lib/jspawnhelper"
-    if [[ -f "$helper_path" ]]; then
-        sign_runtime_executable "$helper_path"
-    fi
+    done < <(find "$runtime_dir/bin" "$runtime_dir/lib" -type f -print0)
 
     echo "Bundled JRE for $runtime_arch."
 done

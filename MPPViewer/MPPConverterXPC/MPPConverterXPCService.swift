@@ -15,6 +15,30 @@ class MPPConverterXPCDelegate: NSObject, NSXPCListenerDelegate {
 /// The handler that performs the actual MPP → JSON conversion using the bundled Java runtime.
 class MPPConverterXPCHandler: NSObject, MPPConverterXPCProtocol {
     func convertMPP(atPath inputPath: String, reply: @escaping (Data?, String?) -> Void) {
+        performConversion(inputPath: inputPath, reply: reply)
+    }
+
+    func convertMPPData(_ inputData: Data, fileExtension: String, reply: @escaping (Data?, String?) -> Void) {
+        let tempExtension = sanitizedExtension(fileExtension)
+        let inputURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension(tempExtension)
+
+        do {
+            try inputData.write(to: inputURL, options: .atomic)
+        } catch {
+            reply(nil, "Failed to stage input file for conversion: \(error.localizedDescription)")
+            return
+        }
+
+        defer {
+            try? FileManager.default.removeItem(at: inputURL)
+        }
+
+        performConversion(inputPath: inputURL.path, reply: reply)
+    }
+
+    private func performConversion(inputPath: String, reply: @escaping (Data?, String?) -> Void) {
         let javaPath = locateJava()
         let jarPath = locateJAR()
 
@@ -54,8 +78,10 @@ class MPPConverterXPCHandler: NSObject, MPPConverterXPCProtocol {
 
         if process.terminationStatus != 0 {
             let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+            let stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
             let stderr = String(data: stderrData, encoding: .utf8) ?? ""
-            reply(nil, "Java process exited with code \(process.terminationStatus): \(stderr)")
+            let stdout = String(data: stdoutData, encoding: .utf8) ?? ""
+            reply(nil, "Java process exited with code \(process.terminationStatus): \(combinedProcessOutput(stderr: stderr, stdout: stdout))")
             return
         }
 
@@ -70,6 +96,28 @@ class MPPConverterXPCHandler: NSObject, MPPConverterXPCProtocol {
         } catch {
             reply(nil, "Failed to read output: \(error.localizedDescription)")
         }
+    }
+
+    private func sanitizedExtension(_ fileExtension: String) -> String {
+        let allowed = Set("abcdefghijklmnopqrstuvwxyz0123456789")
+        let sanitized = String(fileExtension.lowercased().filter { allowed.contains($0) })
+        return sanitized.isEmpty ? "mpp" : sanitized
+    }
+
+    private func combinedProcessOutput(stderr: String, stdout: String) -> String {
+        let trimmedStderr = stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedStdout = stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if !trimmedStderr.isEmpty && !trimmedStdout.isEmpty {
+            return "\(trimmedStderr)\n\(trimmedStdout)"
+        }
+        if !trimmedStderr.isEmpty {
+            return trimmedStderr
+        }
+        if !trimmedStdout.isEmpty {
+            return trimmedStdout
+        }
+        return "No process output."
     }
 
     private func locateJava() -> String {

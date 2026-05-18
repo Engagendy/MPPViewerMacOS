@@ -21,7 +21,7 @@ final class MPPConverterService {
     func convert(mppFileURL: URL) async throws -> Data {
         do {
             // First try XPC service (for sandboxed/production builds).
-            let data = try await convertViaXPC(inputPath: mppFileURL.path)
+            let data = try await convertViaXPC(mppFileURL: mppFileURL)
             return data
         } catch MPPConverterError.xpcConnectionFailed {
             // Xcode development runs may not have the helper installed.
@@ -33,7 +33,23 @@ final class MPPConverterService {
 
     // MARK: - XPC Service Path
 
-    private func convertViaXPC(inputPath: String) async throws -> Data {
+    private func convertViaXPC(mppFileURL: URL) async throws -> Data {
+        let didStartAccessing = mppFileURL.startAccessingSecurityScopedResource()
+        defer {
+            if didStartAccessing {
+                mppFileURL.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        let inputData: Data
+        do {
+            inputData = try Data(contentsOf: mppFileURL)
+        } catch {
+            throw MPPConverterError.conversionFailed(
+                "Could not read input file before conversion: \(error.localizedDescription)"
+            )
+        }
+
         return try await withCheckedThrowingContinuation { continuation in
             let connection = NSXPCConnection(serviceName: "com.mppviewer.MPPConverterXPC")
             connection.remoteObjectInterface = NSXPCInterface(with: MPPConverterXPCProtocol.self)
@@ -44,7 +60,7 @@ final class MPPConverterService {
                 continuation.resume(throwing: MPPConverterError.xpcConnectionFailed)
             } as! MPPConverterXPCProtocol
 
-            proxy.convertMPP(atPath: inputPath) { data, errorMessage in
+            proxy.convertMPPData(inputData, fileExtension: mppFileURL.pathExtension) { data, errorMessage in
                 connection.invalidate()
                 if let data = data {
                     continuation.resume(returning: data)
@@ -58,6 +74,13 @@ final class MPPConverterService {
     // MARK: - Direct Process Fallback (development only)
 
     private func convertDirectly(mppFileURL: URL) async throws -> Data {
+        let didStartAccessing = mppFileURL.startAccessingSecurityScopedResource()
+        defer {
+            if didStartAccessing {
+                mppFileURL.stopAccessingSecurityScopedResource()
+            }
+        }
+
         let javaPath = locateJava()
         let jarPath = locateJAR()
 
@@ -259,13 +282,15 @@ final class MPPConverterService {
 
             process.terminationHandler = { proc in
                 let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+                let stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
                 let stderr = String(data: stderrData, encoding: .utf8) ?? ""
+                let stdout = String(data: stdoutData, encoding: .utf8) ?? ""
 
                 if proc.terminationStatus == 0 {
                     continuation.resume()
                 } else {
                     continuation.resume(throwing: MPPConverterError.conversionFailed(
-                        "Java process exited with code \(proc.terminationStatus): \(stderr)"
+                        "Java process exited with code \(proc.terminationStatus): \(self.combinedProcessOutput(stderr: stderr, stdout: stdout))"
                     ))
                 }
             }
@@ -276,5 +301,21 @@ final class MPPConverterService {
                 continuation.resume(throwing: MPPConverterError.conversionFailed(error.localizedDescription))
             }
         }
+    }
+
+    private func combinedProcessOutput(stderr: String, stdout: String) -> String {
+        let trimmedStderr = stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedStdout = stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if !trimmedStderr.isEmpty && !trimmedStdout.isEmpty {
+            return "\(trimmedStderr)\n\(trimmedStdout)"
+        }
+        if !trimmedStderr.isEmpty {
+            return trimmedStderr
+        }
+        if !trimmedStdout.isEmpty {
+            return trimmedStdout
+        }
+        return "No process output."
     }
 }
