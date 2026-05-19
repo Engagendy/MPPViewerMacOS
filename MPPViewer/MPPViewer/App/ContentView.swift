@@ -2770,6 +2770,7 @@ struct ContentView: View {
     @State private var documentActionMessage: String?
     @State private var selectedWorkspacePortfolioID: UUID?
     @State private var isRefreshingEditableAnalysis = false
+    @State private var isSavingNativePlan = false
     @State private var editableAnalysisGeneration = 0
     @AppStorage("flaggedTaskIDs") private var flaggedTaskIDsData: Data = Data()
 
@@ -3120,12 +3121,13 @@ struct ContentView: View {
         }
         .toolbar {
             ToolbarItem(placement: .automatic) {
-                if canConvertCurrentImportToNativePlan {
+                if shouldShowNativePlanSaveButton {
                     Button {
                         convertCurrentImportToNativePlan()
                     } label: {
-                        Label("Convert to Native Plan", systemImage: "arrow.trianglehead.2.clockwise.rotate.90.page.on.clipboard")
+                        Label(isSavingNativePlan ? "Saving Native Plan..." : "Save as .mppplan", systemImage: "square.and.arrow.down")
                     }
+                    .disabled(isSavingNativePlan)
                     .help("Save this imported MPP as a native .mppplan file and open it for editing.")
                 }
             }
@@ -3506,6 +3508,10 @@ struct ContentView: View {
         !document.isEditablePlan && currentProject != nil
     }
 
+    private var shouldShowNativePlanSaveButton: Bool {
+        !document.isEditablePlan
+    }
+
     private var showDocumentActionMessage: Binding<Bool> {
         Binding(
             get: { documentActionMessage != nil },
@@ -3540,6 +3546,18 @@ struct ContentView: View {
 
     @MainActor
     private func convertCurrentImportToNativePlan() {
+        guard !isSavingNativePlan else { return }
+
+        if store.isLoading {
+            documentActionMessage = "The MPP file is still loading. Try saving as .mppplan again after conversion finishes."
+            return
+        }
+
+        if let error = store.error {
+            documentActionMessage = "The MPP file did not load, so it cannot be saved as a native plan yet: \(error)"
+            return
+        }
+
         guard let project = currentProject else {
             documentActionMessage = "There is no imported project loaded to convert."
             return
@@ -3547,18 +3565,27 @@ struct ContentView: View {
 
         let nativePlan = NativeProjectPlan(projectModel: project)
         let panel = NSSavePanel()
+        panel.title = "Save Native Plan"
+        panel.prompt = "Save"
         panel.allowedContentTypes = [.mppplan]
         panel.canCreateDirectories = true
         panel.isExtensionHidden = false
         panel.nameFieldStringValue = suggestedNativePlanFileName(for: nativePlan)
+
+        isSavingNativePlan = true
+        defer { isSavingNativePlan = false }
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
 
         do {
             try nativePlan.encodedData().write(to: url, options: .atomic)
             NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { _, _, error in
-                if let error {
-                    documentActionMessage = "Saved the native plan, but opening it failed: \(error.localizedDescription)"
+                DispatchQueue.main.async {
+                    if let error {
+                        documentActionMessage = "Saved the native plan, but opening it failed: \(error.localizedDescription)"
+                    } else {
+                        documentActionMessage = "Saved the native plan and opened it for editing."
+                    }
                 }
             }
         } catch {
