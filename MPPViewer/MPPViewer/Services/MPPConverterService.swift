@@ -1,8 +1,10 @@
+import Darwin
 import Foundation
 
 enum MPPConverterError: LocalizedError {
     case xpcConnectionFailed
     case conversionFailed(String)
+    case conversionTimedOut(String)
 
     var errorDescription: String? {
         switch self {
@@ -10,25 +12,106 @@ enum MPPConverterError: LocalizedError {
             return "Failed to connect to the converter service."
         case .conversionFailed(let msg):
             return "MPP conversion failed: \(msg)"
+        case .conversionTimedOut(let msg):
+            return "MPP conversion timed out: \(msg)"
         }
+    }
+}
+
+private final class OneShotCompletion: @unchecked Sendable {
+    private let lock = NSLock()
+    private var hasCompleted = false
+
+    func complete(_ body: () -> Void) {
+        lock.lock()
+        guard !hasCompleted else {
+            lock.unlock()
+            return
+        }
+        hasCompleted = true
+        lock.unlock()
+        body()
+    }
+}
+
+private final class ProcessOutputCapture: @unchecked Sendable {
+    let stderrHandle: FileHandle
+    let stdoutHandle: FileHandle
+
+    private let stderrURL: URL
+    private let stdoutURL: URL
+    private let lock = NSLock()
+    private var hasClosed = false
+
+    init() throws {
+        stderrURL = Self.temporaryLogURL(extension: "stderr")
+        stdoutURL = Self.temporaryLogURL(extension: "stdout")
+        stderrHandle = try Self.makeWritableFileHandle(at: stderrURL)
+        stdoutHandle = try Self.makeWritableFileHandle(at: stdoutURL)
+    }
+
+    func closeAndReadOutput() -> (stderr: String, stdout: String) {
+        lock.lock()
+        guard !hasClosed else {
+            lock.unlock()
+            return ("", "")
+        }
+        hasClosed = true
+        lock.unlock()
+
+        try? stderrHandle.close()
+        try? stdoutHandle.close()
+        let stderr = Self.readLogText(at: stderrURL)
+        let stdout = Self.readLogText(at: stdoutURL)
+        try? FileManager.default.removeItem(at: stderrURL)
+        try? FileManager.default.removeItem(at: stdoutURL)
+        return (stderr, stdout)
+    }
+
+    private static func temporaryLogURL(extension pathExtension: String) -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension(pathExtension)
+    }
+
+    private static func makeWritableFileHandle(at url: URL) throws -> FileHandle {
+        FileManager.default.createFile(atPath: url.path, contents: nil)
+        return try FileHandle(forWritingTo: url)
+    }
+
+    private static func readLogText(at url: URL) -> String {
+        guard let data = try? Data(contentsOf: url) else { return "" }
+        return String(data: data, encoding: .utf8) ?? ""
     }
 }
 
 final class MPPConverterService {
 
+    private static let conversionTimeoutSeconds: TimeInterval = 90
     private var xpcConnection: NSXPCConnection?
 
     func convert(mppFileURL: URL) async throws -> Data {
+        #if DEBUG
+        do {
+            return try await convertDirectly(mppFileURL: mppFileURL)
+        } catch {
+            do {
+                return try await convertViaXPC(mppFileURL: mppFileURL)
+            } catch {
+                throw error
+            }
+        }
+        #else
         do {
             // First try XPC service (for sandboxed/production builds).
             let data = try await convertViaXPC(mppFileURL: mppFileURL)
             return data
-        } catch MPPConverterError.xpcConnectionFailed {
-            // Xcode development runs may not have the helper installed.
+        } catch MPPConverterError.xpcConnectionFailed, MPPConverterError.conversionTimedOut {
             return try await convertDirectly(mppFileURL: mppFileURL)
         } catch {
             throw error
         }
+        #endif
     }
 
     // MARK: - XPC Service Path
@@ -51,21 +134,41 @@ final class MPPConverterService {
         }
 
         return try await withCheckedThrowingContinuation { continuation in
+            let completion = OneShotCompletion()
             let connection = NSXPCConnection(serviceName: "com.mppviewer.MPPConverterXPC")
             connection.remoteObjectInterface = NSXPCInterface(with: MPPConverterXPCProtocol.self)
             connection.resume()
 
+            let timeout = DispatchWorkItem {
+                completion.complete {
+                    connection.invalidate()
+                    continuation.resume(throwing: MPPConverterError.conversionTimedOut(
+                        "The converter helper did not reply within \(Int(Self.conversionTimeoutSeconds)) seconds."
+                    ))
+                }
+            }
+            DispatchQueue.global(qos: .utility).asyncAfter(
+                deadline: .now() + Self.conversionTimeoutSeconds,
+                execute: timeout
+            )
+
             let proxy = connection.remoteObjectProxyWithErrorHandler { error in
-                connection.invalidate()
-                continuation.resume(throwing: MPPConverterError.xpcConnectionFailed)
+                completion.complete {
+                    timeout.cancel()
+                    connection.invalidate()
+                    continuation.resume(throwing: MPPConverterError.xpcConnectionFailed)
+                }
             } as! MPPConverterXPCProtocol
 
             proxy.convertMPPData(inputData, fileExtension: mppFileURL.pathExtension) { data, errorMessage in
-                connection.invalidate()
-                if let data = data {
-                    continuation.resume(returning: data)
-                } else {
-                    continuation.resume(throwing: MPPConverterError.conversionFailed(errorMessage ?? "Unknown error"))
+                completion.complete {
+                    timeout.cancel()
+                    connection.invalidate()
+                    if let data = data {
+                        continuation.resume(returning: data)
+                    } else {
+                        continuation.resume(throwing: MPPConverterError.conversionFailed(errorMessage ?? "Unknown error"))
+                    }
                 }
             }
         }
@@ -264,6 +367,7 @@ final class MPPConverterService {
         outputPath: String
     ) async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            let completion = OneShotCompletion()
             let process = Process()
             // Use /bin/sh to invoke java to avoid Gatekeeper/translocation
             // issues with directly executing bundled binaries
@@ -275,35 +379,64 @@ final class MPPConverterService {
             let escapedOutput = outputPath.replacingOccurrences(of: "'", with: "'\\''")
             process.arguments = ["-c", "'\(escapedJava)' -jar '\(escapedJar)' '\(escapedInput)' '\(escapedOutput)'"]
 
-            let stderrPipe = Pipe()
-            let stdoutPipe = Pipe()
-            process.standardError = stderrPipe
-            process.standardOutput = stdoutPipe
+            let outputCapture: ProcessOutputCapture
+            do {
+                outputCapture = try ProcessOutputCapture()
+            } catch {
+                continuation.resume(throwing: MPPConverterError.conversionFailed(
+                    "Failed to prepare converter log files: \(error.localizedDescription)"
+                ))
+                return
+            }
+
+            process.standardError = outputCapture.stderrHandle
+            process.standardOutput = outputCapture.stdoutHandle
 
             process.terminationHandler = { proc in
-                let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
-                let stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
-                let stderr = String(data: stderrData, encoding: .utf8) ?? ""
-                let stdout = String(data: stdoutData, encoding: .utf8) ?? ""
-
-                if proc.terminationStatus == 0 {
-                    continuation.resume()
-                } else {
-                    continuation.resume(throwing: MPPConverterError.conversionFailed(
-                        "Java process exited with code \(proc.terminationStatus): \(self.combinedProcessOutput(stderr: stderr, stdout: stdout))"
-                    ))
+                completion.complete {
+                    let output = outputCapture.closeAndReadOutput()
+                    if proc.terminationStatus == 0 {
+                        continuation.resume()
+                    } else {
+                        continuation.resume(throwing: MPPConverterError.conversionFailed(
+                            "Java process exited with code \(proc.terminationStatus): \(Self.combinedProcessOutput(stderr: output.stderr, stdout: output.stdout))"
+                        ))
+                    }
                 }
             }
 
             do {
                 try process.run()
+                DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + Self.conversionTimeoutSeconds) {
+                    completion.complete {
+                        Self.terminateProcess(process)
+                        let output = outputCapture.closeAndReadOutput()
+                        continuation.resume(throwing: MPPConverterError.conversionTimedOut(
+                            "Java did not finish within \(Int(Self.conversionTimeoutSeconds)) seconds. \(Self.combinedProcessOutput(stderr: output.stderr, stdout: output.stdout))"
+                        ))
+                    }
+                }
             } catch {
-                continuation.resume(throwing: MPPConverterError.conversionFailed(error.localizedDescription))
+                completion.complete {
+                    let output = outputCapture.closeAndReadOutput()
+                    continuation.resume(throwing: MPPConverterError.conversionFailed(
+                        "\(error.localizedDescription): \(Self.combinedProcessOutput(stderr: output.stderr, stdout: output.stdout))"
+                    ))
+                }
             }
         }
     }
 
-    private func combinedProcessOutput(stderr: String, stdout: String) -> String {
+    private static func terminateProcess(_ process: Process) {
+        guard process.isRunning else { return }
+        process.terminate()
+        Thread.sleep(forTimeInterval: 0.5)
+        if process.isRunning {
+            kill(process.processIdentifier, SIGKILL)
+        }
+    }
+
+    private static func combinedProcessOutput(stderr: String, stdout: String) -> String {
         let trimmedStderr = stderr.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedStdout = stdout.trimmingCharacters(in: .whitespacesAndNewlines)
 

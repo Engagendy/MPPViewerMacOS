@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 /// The XPC service delegate that handles incoming connections.
@@ -14,6 +15,8 @@ class MPPConverterXPCDelegate: NSObject, NSXPCListenerDelegate {
 
 /// The handler that performs the actual MPP → JSON conversion using the bundled Java runtime.
 class MPPConverterXPCHandler: NSObject, MPPConverterXPCProtocol {
+    private let conversionTimeoutSeconds: TimeInterval = 90
+
     func convertMPP(atPath inputPath: String, reply: @escaping (Data?, String?) -> Void) {
         performConversion(inputPath: inputPath, reply: reply)
     }
@@ -63,25 +66,56 @@ class MPPConverterXPCHandler: NSObject, MPPConverterXPCProtocol {
         process.executableURL = URL(fileURLWithPath: javaPath)
         process.arguments = ["-jar", jarPath, inputPath, outputURL.path]
 
-        let stderrPipe = Pipe()
-        let stdoutPipe = Pipe()
-        process.standardError = stderrPipe
-        process.standardOutput = stdoutPipe
+        let stderrURL = temporaryLogURL(extension: "stderr")
+        let stdoutURL = temporaryLogURL(extension: "stdout")
 
+        let stderrHandle: FileHandle
+        let stdoutHandle: FileHandle
         do {
-            try process.run()
-            process.waitUntilExit()
+            stderrHandle = try makeWritableFileHandle(at: stderrURL)
+            stdoutHandle = try makeWritableFileHandle(at: stdoutURL)
         } catch {
-            reply(nil, "Failed to launch Java process: \(error.localizedDescription)")
+            reply(nil, "Failed to prepare converter log files: \(error.localizedDescription)")
             return
         }
 
+        process.standardError = stderrHandle
+        process.standardOutput = stdoutHandle
+
+        func closeAndReadOutput() -> (stderr: String, stdout: String) {
+            try? stderrHandle.close()
+            try? stdoutHandle.close()
+            let stderr = readLogText(at: stderrURL)
+            let stdout = readLogText(at: stdoutURL)
+            try? FileManager.default.removeItem(at: stderrURL)
+            try? FileManager.default.removeItem(at: stdoutURL)
+            return (stderr, stdout)
+        }
+
+        let terminationSemaphore = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in
+            terminationSemaphore.signal()
+        }
+
+        do {
+            try process.run()
+        } catch {
+            let output = closeAndReadOutput()
+            reply(nil, "Failed to launch Java process: \(error.localizedDescription): \(combinedProcessOutput(stderr: output.stderr, stdout: output.stdout))")
+            return
+        }
+
+        if terminationSemaphore.wait(timeout: .now() + conversionTimeoutSeconds) == .timedOut {
+            terminateProcess(process)
+            _ = terminationSemaphore.wait(timeout: .now() + 2)
+            let output = closeAndReadOutput()
+            reply(nil, "Java process timed out after \(Int(conversionTimeoutSeconds)) seconds: \(combinedProcessOutput(stderr: output.stderr, stdout: output.stdout))")
+            return
+        }
+
+        let output = closeAndReadOutput()
         if process.terminationStatus != 0 {
-            let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
-            let stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
-            let stderr = String(data: stderrData, encoding: .utf8) ?? ""
-            let stdout = String(data: stdoutData, encoding: .utf8) ?? ""
-            reply(nil, "Java process exited with code \(process.terminationStatus): \(combinedProcessOutput(stderr: stderr, stdout: stdout))")
+            reply(nil, "Java process exited with code \(process.terminationStatus): \(combinedProcessOutput(stderr: output.stderr, stdout: output.stdout))")
             return
         }
 
@@ -102,6 +136,31 @@ class MPPConverterXPCHandler: NSObject, MPPConverterXPCProtocol {
         let allowed = Set("abcdefghijklmnopqrstuvwxyz0123456789")
         let sanitized = String(fileExtension.lowercased().filter { allowed.contains($0) })
         return sanitized.isEmpty ? "mpp" : sanitized
+    }
+
+    private func terminateProcess(_ process: Process) {
+        guard process.isRunning else { return }
+        process.terminate()
+        Thread.sleep(forTimeInterval: 0.5)
+        if process.isRunning {
+            kill(process.processIdentifier, SIGKILL)
+        }
+    }
+
+    private func temporaryLogURL(extension pathExtension: String) -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension(pathExtension)
+    }
+
+    private func makeWritableFileHandle(at url: URL) throws -> FileHandle {
+        FileManager.default.createFile(atPath: url.path, contents: nil)
+        return try FileHandle(forWritingTo: url)
+    }
+
+    private func readLogText(at url: URL) -> String {
+        guard let data = try? Data(contentsOf: url) else { return "" }
+        return String(data: data, encoding: .utf8) ?? ""
     }
 
     private func combinedProcessOutput(stderr: String, stdout: String) -> String {

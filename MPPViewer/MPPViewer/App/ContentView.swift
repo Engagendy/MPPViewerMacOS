@@ -2771,6 +2771,7 @@ struct ContentView: View {
     @State private var selectedWorkspacePortfolioID: UUID?
     @State private var isRefreshingEditableAnalysis = false
     @State private var isSavingNativePlan = false
+    @State private var isMaterializingEditableWorkspace = false
     @State private var editableAnalysisGeneration = 0
     @AppStorage("flaggedTaskIDs") private var flaggedTaskIDsData: Data = Data()
 
@@ -3008,13 +3009,42 @@ struct ContentView: View {
             editableWorkspaceError = nil
             return
         }
-        _ = materializeEditableWorkspacePlan()
+        scheduleEditableWorkspaceMaterialization(deferred: false)
+    }
+
+    private func scheduleEditableWorkspaceMaterialization(deferred: Bool = true) {
+        guard document.isEditablePlan, !isMaterializingEditableWorkspace else { return }
+        if document.editablePlanSeed == nil,
+           let existingPlan = editablePortfolioPlan {
+            normalizeEditablePlanResources(existingPlan)
+            editableWorkspaceError = nil
+            return
+        }
+        guard seedNativePlanForEditableWorkspace() != nil else { return }
+
+        isMaterializingEditableWorkspace = true
+        Task { @MainActor in
+            if deferred {
+                try? await Task.sleep(nanoseconds: 350_000_000)
+            } else {
+                await Task.yield()
+            }
+
+            guard document.isEditablePlan else {
+                isMaterializingEditableWorkspace = false
+                return
+            }
+
+            _ = materializeEditableWorkspacePlan()
+            isMaterializingEditableWorkspace = false
+            refreshEditableAnalysis()
+        }
     }
 
     private func refreshEditableWorkspaceState() {
         sanitizePortfolioStoreData()
-        ensureEditablePortfolioPlanLoaded()
         refreshEditableAnalysis()
+        scheduleEditableWorkspaceMaterialization()
     }
 
     private func handleDocumentModeTask() async {
@@ -3241,8 +3271,8 @@ struct ContentView: View {
         AnyView(
             documentLifecycleConfiguredView
                 .onChange(of: document.editablePlanData) { _, _ in
-                    ensureEditablePortfolioPlanLoaded()
                     refreshEditableAnalysis()
+                    ensureEditablePortfolioPlanLoaded()
                 }
                 .onChange(of: workspacePortfolioID) { _, newValue in
                     if document.isEditablePlan {
@@ -3605,8 +3635,8 @@ struct ContentView: View {
     private func normalizedNavigationForCurrentDocument() -> NavigationItem {
         if document.isEditablePlan {
             switch selectedNav {
-            case .none, .portfolio, .dashboard:
-                return .planner
+            case .none, .portfolio:
+                return .dashboard
             case .some(let current):
                 return current
             }
@@ -3626,6 +3656,7 @@ struct ContentView: View {
             selectedWorkspacePortfolioID = document.editablePortfolioID
             refreshEditableAnalysis()
             selectedNav = normalizedNavigationForCurrentDocument()
+            scheduleEditableWorkspaceMaterialization()
             return
         }
 

@@ -1851,9 +1851,22 @@ enum PlanScheduler {
         }
 
         let calendar = Calendar.current
+        let workingDaySearchLimit = 366 * 50
         let hierarchy = plan.buildHierarchyMetadata(for: plan.tasks)
         let originalByID = Dictionary(nonThrowingUniquePairs: plan.tasks.map { ($0.id, $0) })
         let calendarsByID = Dictionary(nonThrowingUniquePairs: plan.calendars.map { ($0.id, $0.asProjectCalendar()) })
+        let exceptionRangesByCalendarID: [Int: [(Date, Date, Bool)]] = Dictionary(
+            uniqueKeysWithValues: plan.calendars.map { planCalendar in
+                let ranges = planCalendar.exceptions.map { exception in
+                    (
+                        calendar.startOfDay(for: exception.fromDate),
+                        calendar.startOfDay(for: exception.toDate),
+                        exception.type.lowercased() == "working"
+                    )
+                }
+                return (planCalendar.id, ranges)
+            }
+        )
 
         var childIDsByParentID: [Int: [Int]] = [:]
         for (taskID, metadata) in hierarchy {
@@ -1872,24 +1885,70 @@ enum PlanScheduler {
 
         var scheduledByID: [Int: NativePlanTask] = [:]
         var schedulingStack: Set<Int> = []
+        var workingCalendarAvailabilityByID: [Int: Bool] = [:]
+
+        func resolvedWeeklyWorkingDay(
+            weekday: Int,
+            projectCalendar: ProjectCalendar?,
+            visitedCalendarIDs: Set<Int> = []
+        ) -> Bool {
+            guard let projectCalendar else {
+                return weekday >= 2 && weekday <= 6
+            }
+
+            if let calendarID = projectCalendar.uniqueID,
+               visitedCalendarIDs.contains(calendarID) {
+                return weekday >= 2 && weekday <= 6
+            }
+
+            let nextVisitedCalendarIDs: Set<Int>
+            if let calendarID = projectCalendar.uniqueID {
+                nextVisitedCalendarIDs = visitedCalendarIDs.union([calendarID])
+            } else {
+                nextVisitedCalendarIDs = visitedCalendarIDs
+            }
+
+            if let dayInfo = projectCalendar.dayForWeekday(weekday), !dayInfo.isDefault {
+                return dayInfo.isWorking
+            }
+
+            if let parentID = projectCalendar.parentUniqueID,
+               let parentCalendar = calendarsByID[parentID] {
+                return resolvedWeeklyWorkingDay(
+                    weekday: weekday,
+                    projectCalendar: parentCalendar,
+                    visitedCalendarIDs: nextVisitedCalendarIDs
+                )
+            }
+
+            return weekday >= 2 && weekday <= 6
+        }
+
+        func calendarHasWorkingWeekday(_ projectCalendar: ProjectCalendar?) -> Bool {
+            guard let projectCalendar else { return true }
+            if let calendarID = projectCalendar.uniqueID,
+               let cachedAvailability = workingCalendarAvailabilityByID[calendarID] {
+                return cachedAvailability
+            }
+
+            return (1 ... 7).contains { weekday in
+                resolvedWeeklyWorkingDay(weekday: weekday, projectCalendar: projectCalendar)
+            }
+        }
 
         func effectiveCalendar(for task: NativePlanTask) -> ProjectCalendar? {
             if let calendarID = task.calendarUniqueID ?? plan.defaultCalendarUniqueID {
-                return calendarsByID[calendarID]
+                let projectCalendar = calendarsByID[calendarID]
+                let hasWorkingWeekday = calendarHasWorkingWeekday(projectCalendar)
+                workingCalendarAvailabilityByID[calendarID] = hasWorkingWeekday
+                return hasWorkingWeekday ? projectCalendar : nil
             }
             return nil
         }
 
         func exceptionRanges(for projectCalendar: ProjectCalendar?) -> [(Date, Date, Bool)] {
-            guard let exceptions = projectCalendar?.exceptions else { return [] }
-            return exceptions.compactMap { exception in
-                guard let from = exception.fromDate, let to = exception.toDate else { return nil }
-                return (
-                    calendar.startOfDay(for: from),
-                    calendar.startOfDay(for: to),
-                    exception.isWorking
-                )
-            }
+            guard let calendarID = projectCalendar?.uniqueID else { return [] }
+            return exceptionRangesByCalendarID[calendarID] ?? []
         }
 
         func isWorkingDate(_ date: Date, projectCalendar: ProjectCalendar?) -> Bool {
@@ -1900,25 +1959,31 @@ enum PlanScheduler {
                 return isWorking
             }
             if let projectCalendar {
-                return projectCalendar.resolvedIsWorkingDay(weekday: weekday, calendarsByID: calendarsByID)
+                return resolvedWeeklyWorkingDay(weekday: weekday, projectCalendar: projectCalendar)
             }
             return weekday >= 2 && weekday <= 6
         }
 
         func nextWorkingDay(onOrAfter date: Date, projectCalendar: ProjectCalendar?) -> Date {
             var current = calendar.startOfDay(for: date)
-            while !isWorkingDate(current, projectCalendar: projectCalendar) {
+            for _ in 0 ..< workingDaySearchLimit {
+                if isWorkingDate(current, projectCalendar: projectCalendar) {
+                    return current
+                }
                 current = calendar.date(byAdding: .day, value: 1, to: current) ?? current
             }
-            return current
+            return calendar.startOfDay(for: date)
         }
 
         func previousWorkingDay(onOrBefore date: Date, projectCalendar: ProjectCalendar?) -> Date {
             var current = calendar.startOfDay(for: date)
-            while !isWorkingDate(current, projectCalendar: projectCalendar) {
+            for _ in 0 ..< workingDaySearchLimit {
+                if isWorkingDate(current, projectCalendar: projectCalendar) {
+                    return current
+                }
                 current = calendar.date(byAdding: .day, value: -1, to: current) ?? current
             }
-            return current
+            return calendar.startOfDay(for: date)
         }
 
         func shiftWorkingDays(from date: Date, by delta: Int, projectCalendar: ProjectCalendar?) -> Date {
@@ -1932,9 +1997,12 @@ enum PlanScheduler {
                 ? nextWorkingDay(onOrAfter: date, projectCalendar: projectCalendar)
                 : previousWorkingDay(onOrBefore: date, projectCalendar: projectCalendar)
             var remaining = abs(delta)
+            let stepLimit = max(workingDaySearchLimit, remaining * 14 + 14)
+            var stepCount = 0
 
-            while remaining > 0 {
+            while remaining > 0 && stepCount < stepLimit {
                 current = calendar.date(byAdding: .day, value: delta > 0 ? 1 : -1, to: current) ?? current
+                stepCount += 1
                 if isWorkingDate(current, projectCalendar: projectCalendar) {
                     remaining -= 1
                 }
@@ -1957,6 +2025,10 @@ enum PlanScheduler {
         func workingDaySpan(from start: Date, to finish: Date, projectCalendar: ProjectCalendar?) -> Int {
             let normalizedStart = calendar.startOfDay(for: min(start, finish))
             let normalizedFinish = calendar.startOfDay(for: max(start, finish))
+            let spanDays = (calendar.dateComponents([.day], from: normalizedStart, to: normalizedFinish).day ?? 0) + 1
+            guard spanDays <= workingDaySearchLimit else {
+                return max(1, Int(ceil(Double(spanDays) * 5.0 / 7.0)))
+            }
             var current = normalizedStart
             var count = 0
 
@@ -2163,6 +2235,10 @@ enum PlanScheduler {
             }
 
             let direction = normalizedStart < normalizedEnd ? 1 : -1
+            let dayDistance = abs(calendar.dateComponents([.day], from: normalizedStart, to: normalizedEnd).day ?? 0)
+            guard dayDistance <= workingDaySearchLimit else {
+                return direction * Int(ceil(Double(dayDistance) * 5.0 / 7.0))
+            }
             var current = normalizedStart
             var count = 0
 

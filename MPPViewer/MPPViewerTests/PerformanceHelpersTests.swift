@@ -110,6 +110,40 @@ final class PerformanceHelpersTests: XCTestCase {
         XCTAssertEqual(decoded.portfolioArchiveReason, nativePlan.portfolioArchiveReason)
     }
 
+    func testPlanSchedulerFallsBackWhenCalendarHasNoWorkingDays() async throws {
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: Date(timeIntervalSince1970: 1_760_000_000))
+        var nativePlan = NativeProjectPlan.empty()
+        nativePlan.defaultCalendarUniqueID = 42
+        nativePlan.calendars = [
+            NativePlanCalendar(
+                id: 42,
+                name: "Imported Non-Working Calendar",
+                parentUniqueID: nil,
+                type: "Resource",
+                personal: true,
+                sunday: .nonWorking(),
+                monday: .nonWorking(),
+                tuesday: .nonWorking(),
+                wednesday: .nonWorking(),
+                thursday: .nonWorking(),
+                friday: .nonWorking(),
+                saturday: .nonWorking(),
+                exceptions: []
+            )
+        ]
+
+        var task = nativePlan.makeTask(name: "Imported Task", anchoredTo: start)
+        task.durationDays = 3
+        task.finishDate = calendar.date(byAdding: .day, value: 2, to: start) ?? start
+        nativePlan.tasks = [task]
+
+        let scheduled = await PlanScheduler.schedule(nativePlan)
+
+        XCTAssertEqual(scheduled.tasks.count, 1)
+        XCTAssertGreaterThanOrEqual(scheduled.tasks[0].finishDate, scheduled.tasks[0].startDate)
+    }
+
     @MainActor
     func testPortfolioExecutiveSummaryRanksRiskAndMilestones() throws {
         let calendar = Calendar.current

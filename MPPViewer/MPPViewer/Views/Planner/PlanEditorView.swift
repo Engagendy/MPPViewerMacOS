@@ -27,6 +27,11 @@ struct PlanEditorView: View {
     @State private var gridDraftCommitWorkItem: DispatchWorkItem?
     @State private var refreshCounter = 0
     @State private var lastObservedPlanHash = 0
+    @State private var planSummaryMetrics: PlannerSummaryMetrics = .empty
+    @State private var planSignalCounts: PlannerSignalCounts = .empty
+    @State private var taskIndexByID: [Int: Int] = [:]
+    @State private var validTaskIDs: Set<Int> = []
+    @State private var assignmentIndicesByTaskID: [Int: [Int]] = [:]
     @State private var pendingGridRefresh = false
     @State private var pendingAnalysisRefresh = false
     @State private var pendingFullGridRefresh = false
@@ -73,29 +78,7 @@ struct PlanEditorView: View {
 
     private var selectedTaskIndex: Int? {
         guard let selectedTaskID else { return nil }
-        return plan.tasks.firstIndex(where: { $0.id == selectedTaskID })
-    }
-
-    private var milestoneCount: Int {
-        plan.tasks.filter(\.isMilestone).count
-    }
-
-    private var dependencyCount: Int {
-        plan.tasks.reduce(0) { $0 + $1.predecessorTaskIDs.count }
-    }
-
-    private var baselineCount: Int {
-        plan.tasks.filter { $0.baselineStartDate != nil || $0.baselineFinishDate != nil || $0.baselineDurationDays != nil }.count
-    }
-
-    private var sprintCount: Int {
-        plan.sprints.count
-    }
-
-    private var totalStoryPoints: Int {
-        plan.tasks.reduce(0) { partial, task in
-            partial + max(0, task.storyPoints ?? 0)
-        }
+        return taskIndex(for: selectedTaskID)
     }
 
     private var currentProject: ProjectModel {
@@ -115,9 +98,14 @@ struct PlanEditorView: View {
     }
 
     init(planModel: PortfolioProjectPlan) {
+        let initialPlan = planModel.editorSnapshotForUI()
         self.planModel = planModel
-        self._plan = State(initialValue: planModel.editorSnapshotForUI())
+        self._plan = State(initialValue: initialPlan)
         self._analysis = State(initialValue: NativePlanAnalysis.placeholder)
+        self._planSummaryMetrics = State(initialValue: PlannerSummaryMetrics.build(from: initialPlan))
+        self._taskIndexByID = State(initialValue: PlannerPlanLookup.taskIndexByID(in: initialPlan.tasks))
+        self._validTaskIDs = State(initialValue: PlannerPlanLookup.taskIDs(in: initialPlan.tasks))
+        self._assignmentIndicesByTaskID = State(initialValue: PlannerPlanLookup.assignmentIndicesByTaskID(in: initialPlan.assignments))
     }
 
     private var selectedTaskValidationIssues: [ProjectValidationIssue] {
@@ -408,7 +396,7 @@ struct PlanEditorView: View {
     }
 
     private func selectImportedTaskIssue(_ issue: CSVImportIssue) {
-        guard let targetID = issue.targetID, plan.tasks.contains(where: { $0.id == targetID }) else { return }
+        guard let targetID = issue.targetID, taskIndex(for: targetID) != nil else { return }
         PerformanceMonitor.mark("PlanEditor.SelectImportIssue", message: "task \(targetID)")
         selectedTaskID = targetID
         importReport = nil
@@ -424,7 +412,7 @@ struct PlanEditorView: View {
         switch fixAction {
         case let .createTaskCalendar(name, taskID):
             let calendarID = ensureCalendar(named: name)
-            if let taskIndex = plan.tasks.firstIndex(where: { $0.id == taskID }) {
+            if let taskIndex = taskIndex(for: taskID) {
                 plan.tasks[taskIndex].calendarUniqueID = calendarID
                 selectedTaskID = taskID
                 reschedulePlan(changedTaskIDs: [taskID])
@@ -460,12 +448,12 @@ struct PlanEditorView: View {
             company: $plan.company,
             statusDate: $plan.statusDate,
             metrics: [
-                .init(value: "\(plan.tasks.count)", label: "Tasks"),
-                .init(value: "\(sprintCount)", label: "Sprints"),
-                .init(value: "\(totalStoryPoints)", label: "Points"),
-                .init(value: "\(milestoneCount)", label: "Milestones"),
-                .init(value: "\(dependencyCount)", label: "Dependencies"),
-                .init(value: "\(baselineCount)", label: "Baselined"),
+                .init(value: "\(planSummaryMetrics.taskCount)", label: "Tasks"),
+                .init(value: "\(planSummaryMetrics.sprintCount)", label: "Sprints"),
+                .init(value: "\(planSummaryMetrics.totalStoryPoints)", label: "Points"),
+                .init(value: "\(planSummaryMetrics.milestoneCount)", label: "Milestones"),
+                .init(value: "\(planSummaryMetrics.dependencyCount)", label: "Dependencies"),
+                .init(value: "\(planSummaryMetrics.baselineCount)", label: "Baselined"),
                 .init(value: currencyText(analysis.headerMetrics.plannedCost), label: "Planned Cost"),
                 .init(value: currencyText(analysis.headerMetrics.bac), label: "BAC"),
                 .init(value: currencyText(analysis.headerMetrics.actualCost), label: "Actual Cost"),
@@ -474,10 +462,10 @@ struct PlanEditorView: View {
                 .init(value: currencyText(analysis.headerMetrics.eac), label: "EAC")
             ],
             signalChips: [
-                .init(title: "Errors", count: validationIssues.filter { $0.severity == .error }.count, color: .red),
-                .init(title: "Warnings", count: validationIssues.filter { $0.severity == .warning }.count, color: .orange),
-                .init(title: "Info", count: validationIssues.filter { $0.severity == .info }.count, color: .blue),
-                .init(title: "Diagnostics", count: diagnosticItems.count, color: .purple)
+                .init(title: "Errors", count: planSignalCounts.errorCount, color: .red),
+                .init(title: "Warnings", count: planSignalCounts.warningCount, color: .orange),
+                .init(title: "Info", count: planSignalCounts.infoCount, color: .blue),
+                .init(title: "Diagnostics", count: planSignalCounts.diagnosticCount, color: .purple)
             ]
         )
     }
@@ -574,17 +562,19 @@ struct PlanEditorView: View {
     }
 
     private func taskGridRow(row: PlannerGridRowModel, layout: PlannerGridLayout) -> some View {
-        PlannerGridRowView(
+        let liveTaskIndex = taskIndex(for: row.id)
+        let liveTask = liveTaskIndex.flatMap { plan.tasks.indices.contains($0) ? plan.tasks[$0] : nil }
+        return PlannerGridRowView(
             row: row,
             layout: layout,
             isSelected: selectedTaskID == row.id,
             resourceOptions: gridResourceOptions,
             nameValue: gridTextDrafts[PlannerGridCellKey(taskID: row.id, column: .name)] ?? row.name,
-            startDateValue: taskIndex(for: row.id).map { plan.tasks[$0].startDate } ?? row.startDate,
-            finishDateValue: taskIndex(for: row.id).map { plan.tasks[$0].normalizedFinishDate } ?? row.finishDate,
+            startDateValue: liveTask?.startDate ?? row.startDate,
+            finishDateValue: liveTask?.normalizedFinishDate ?? row.finishDate,
             durationValue: gridTextDrafts[PlannerGridCellKey(taskID: row.id, column: .duration)] ?? row.durationText,
             percentValue: gridTextDrafts[PlannerGridCellKey(taskID: row.id, column: .percent)] ?? row.percentText,
-            milestoneValue: taskIndex(for: row.id).map { plan.tasks[$0].isMilestone } ?? row.isMilestone,
+            milestoneValue: liveTask?.isMilestone ?? row.isMilestone,
             predecessorsValue: gridTextDrafts[PlannerGridCellKey(taskID: row.id, column: .predecessors)] ?? row.predecessorText,
             primaryAssignmentResourceIDValue: gridAssignmentDrafts[row.id]?.resourceID ?? row.primaryAssignmentResourceID,
             primaryAssignmentUnitsValue: {
@@ -1480,7 +1470,7 @@ struct PlanEditorView: View {
             return
         }
 
-        let liveAssignments = plan.assignments.filter { $0.taskID == selectedTaskID }
+        let liveAssignments = taskAssignmentIndices(for: selectedTaskID).map { plan.assignments[$0] }
         if force || inspectorAssignmentDraftWorkItem == nil {
             inspectorAssignmentDrafts = liveAssignments
             inspectorAssignmentDraftsAreDirty = false
@@ -1570,6 +1560,7 @@ struct PlanEditorView: View {
         }
 
         gridResourceOptions = plan.resources.map { PlannerGridResourceOption(id: $0.id, name: $0.name) }
+        refreshPlanLookupCaches()
 
         let snapshot = plan
         let builtAnalysis = await planModel.buildAnalysisForUIAsync()
@@ -1577,6 +1568,7 @@ struct PlanEditorView: View {
         guard hasInitialized else { return }
 
         analysis = builtAnalysis
+        planSignalCounts = PlannerSignalCounts.build(from: builtAnalysis)
         lastObservedPlanHash = planRefreshHash(for: snapshot)
         pendingGridRefresh = true
         pendingFullGridRefresh = true
@@ -1621,6 +1613,7 @@ struct PlanEditorView: View {
         let updatedHash = planRefreshHash(for: plan)
         guard updatedHash != lastObservedPlanHash || needsGrid || needsAnalysis else { return }
         lastObservedPlanHash = updatedHash
+        refreshPlanLookupCaches()
         if changedTaskIDs.isEmpty {
             metadataNeedsFullSync = true
         } else {
@@ -1715,6 +1708,7 @@ struct PlanEditorView: View {
         let snapshotHash = planRefreshHash(for: modelSnapshot)
         guard snapshotHash != lastObservedPlanHash else { return }
         plan = modelSnapshot
+        refreshPlanLookupCaches()
         lastObservedPlanHash = snapshotHash
         pendingGridRefresh = true
         pendingFullGridRefresh = true
@@ -1724,6 +1718,8 @@ struct PlanEditorView: View {
     }
 
     private func handleRefreshCounterChange() {
+        refreshPlanLookupCaches()
+
         if selectedTaskID == nil || selectedTaskID.flatMap(taskIndex(for:)) == nil {
             selectedTaskID = plan.tasks.first?.id
         }
@@ -1748,7 +1744,7 @@ struct PlanEditorView: View {
 
         if let selectedTaskID,
            !inspectorAssignmentDraftsAreDirty {
-            inspectorAssignmentDrafts = plan.assignments.filter { $0.taskID == selectedTaskID }
+            inspectorAssignmentDrafts = taskAssignmentIndices(for: selectedTaskID).map { plan.assignments[$0] }
         } else if selectedTaskID == nil {
             inspectorAssignmentDrafts = []
         }
@@ -1756,6 +1752,13 @@ struct PlanEditorView: View {
         guard pendingAnalysisRefresh else { return }
         pendingAnalysisRefresh = false
         scheduleAnalysisRefresh(for: plan)
+    }
+
+    private func refreshPlanLookupCaches() {
+        taskIndexByID = PlannerPlanLookup.taskIndexByID(in: plan.tasks)
+        validTaskIDs = PlannerPlanLookup.taskIDs(in: plan.tasks)
+        assignmentIndicesByTaskID = PlannerPlanLookup.assignmentIndicesByTaskID(in: plan.assignments)
+        planSummaryMetrics = PlannerSummaryMetrics.build(from: plan)
     }
 
     private func commitInspectorAssignmentDrafts() {
@@ -1801,7 +1804,7 @@ struct PlanEditorView: View {
         inspectorTaskDraftWorkItem = nil
 
         guard let draft = inspectorTaskDraft,
-              let taskIndex = plan.tasks.firstIndex(where: { $0.id == draft.id }) else {
+              let taskIndex = taskIndex(for: draft.id) else {
             inspectorTaskDraftNeedsReschedule = false
             inspectorTaskDraftIsDirty = false
             return
@@ -1828,7 +1831,7 @@ struct PlanEditorView: View {
 
         let insertionAnchorIndex: Int?
         if let taskID {
-            insertionAnchorIndex = plan.tasks.firstIndex(where: { $0.id == taskID })
+            insertionAnchorIndex = taskIndex(for: taskID)
         } else {
             insertionAnchorIndex = selectedTaskIndex
         }
@@ -2018,7 +2021,7 @@ struct PlanEditorView: View {
     }
 
     private func moveDownInGrid(fromTaskID taskID: Int, column: PlannerGridColumn) {
-        guard let currentIndex = plan.tasks.firstIndex(where: { $0.id == taskID }) else { return }
+        guard let currentIndex = taskIndex(for: taskID) else { return }
 
         if plan.tasks.indices.contains(currentIndex + 1) {
             let nextTaskID = plan.tasks[currentIndex + 1].id
@@ -2053,6 +2056,7 @@ struct PlanEditorView: View {
         let changedIDs = changedTaskIDs ?? Set(plan.tasks.map(\.id))
         let validTaskIDs = Set(plan.tasks.map(\.id))
         var primaryAssignmentsByTaskID: [Int: NativePlanAssignment] = [:]
+        let resourceNamesByID = Dictionary(nonThrowingUniquePairs: plan.resources.map { ($0.id, $0.name) })
 
         for assignment in plan.assignments where primaryAssignmentsByTaskID[assignment.taskID] == nil {
             primaryAssignmentsByTaskID[assignment.taskID] = assignment
@@ -2076,6 +2080,7 @@ struct PlanEditorView: View {
                 percentText: String(Int(task.percentComplete)),
                 predecessorText: task.predecessorTaskIDs.sorted().map(String.init).joined(separator: ", "),
                 primaryAssignmentResourceID: primaryAssignment?.resourceID,
+                primaryAssignmentResourceName: primaryAssignment?.resourceID.flatMap { resourceNamesByID[$0] } ?? "",
                 primaryAssignmentUnitsText: primaryAssignment.map { String(Int($0.units)) } ?? ""
             )
         }
@@ -2089,7 +2094,13 @@ struct PlanEditorView: View {
     }
 
     private func taskIndex(for taskID: Int) -> Int? {
-        plan.tasks.firstIndex(where: { $0.id == taskID })
+        if let index = taskIndexByID[taskID],
+           plan.tasks.indices.contains(index),
+           plan.tasks[index].id == taskID {
+           return index
+        }
+
+        return plan.tasks.firstIndex(where: { $0.id == taskID })
     }
 
     private func gridTextBinding(
@@ -2127,9 +2138,11 @@ struct PlanEditorView: View {
         let hadAssignmentDrafts = !gridAssignmentDrafts.isEmpty
         guard hadTextDrafts || hadAssignmentDrafts else { return }
 
+        refreshPlanLookupCaches()
+
         var shouldReschedule = reschedule
         var changedTaskIDs = Set<Int>()
-        let validIDs = Set(plan.tasks.map(\.id))
+        let validIDs = validTaskIDs
 
         if hadTextDrafts {
             let textDrafts = gridTextDrafts
@@ -2489,7 +2502,16 @@ struct PlanEditorView: View {
     }
 
     private func taskAssignmentIndices(for taskID: Int) -> [Int] {
-        plan.assignments.indices.filter { plan.assignments[$0].taskID == taskID }
+        if let cachedIndices = assignmentIndicesByTaskID[taskID] {
+            let validCachedIndices = cachedIndices.filter { index in
+                plan.assignments.indices.contains(index) && plan.assignments[index].taskID == taskID
+            }
+            if validCachedIndices.count == cachedIndices.count {
+                return validCachedIndices
+            }
+        }
+
+        return plan.assignments.indices.filter { plan.assignments[$0].taskID == taskID }
     }
 
     private func primaryAssignmentIndex(for taskID: Int) -> Int? {
@@ -2689,6 +2711,7 @@ struct PlanEditorView: View {
                 await MainActor.run {
                     guard !workItem.isCancelled else { return }
                     analysis = builtAnalysis
+                    planSignalCounts = PlannerSignalCounts.build(from: builtAnalysis)
                 }
             }
         }
@@ -3007,6 +3030,108 @@ struct PlanEditorView: View {
             .overlay(alignment: .trailing) {
                 Divider()
             }
+    }
+}
+
+private struct PlannerSummaryMetrics: Equatable {
+    let taskCount: Int
+    let sprintCount: Int
+    let totalStoryPoints: Int
+    let milestoneCount: Int
+    let dependencyCount: Int
+    let baselineCount: Int
+
+    static let empty = PlannerSummaryMetrics(
+        taskCount: 0,
+        sprintCount: 0,
+        totalStoryPoints: 0,
+        milestoneCount: 0,
+        dependencyCount: 0,
+        baselineCount: 0
+    )
+
+    static func build(from plan: NativeProjectPlan) -> PlannerSummaryMetrics {
+        var totalStoryPoints = 0
+        var milestoneCount = 0
+        var dependencyCount = 0
+        var baselineCount = 0
+
+        for task in plan.tasks {
+            totalStoryPoints += max(0, task.storyPoints ?? 0)
+            if task.isMilestone {
+                milestoneCount += 1
+            }
+            dependencyCount += task.predecessorTaskIDs.count
+            if task.baselineStartDate != nil || task.baselineFinishDate != nil || task.baselineDurationDays != nil {
+                baselineCount += 1
+            }
+        }
+
+        return PlannerSummaryMetrics(
+            taskCount: plan.tasks.count,
+            sprintCount: plan.sprints.count,
+            totalStoryPoints: totalStoryPoints,
+            milestoneCount: milestoneCount,
+            dependencyCount: dependencyCount,
+            baselineCount: baselineCount
+        )
+    }
+}
+
+private struct PlannerSignalCounts: Equatable {
+    let errorCount: Int
+    let warningCount: Int
+    let infoCount: Int
+    let diagnosticCount: Int
+
+    static let empty = PlannerSignalCounts(errorCount: 0, warningCount: 0, infoCount: 0, diagnosticCount: 0)
+
+    static func build(from analysis: NativePlanAnalysis) -> PlannerSignalCounts {
+        var errorCount = 0
+        var warningCount = 0
+        var infoCount = 0
+
+        for issue in analysis.validationIssues {
+            switch issue.severity {
+            case .error:
+                errorCount += 1
+            case .warning:
+                warningCount += 1
+            case .info:
+                infoCount += 1
+            }
+        }
+
+        return PlannerSignalCounts(
+            errorCount: errorCount,
+            warningCount: warningCount,
+            infoCount: infoCount,
+            diagnosticCount: analysis.diagnosticItems.count
+        )
+    }
+}
+
+private enum PlannerPlanLookup {
+    static func taskIndexByID(in tasks: [NativePlanTask]) -> [Int: Int] {
+        var result: [Int: Int] = [:]
+        result.reserveCapacity(tasks.count)
+        for (index, task) in tasks.enumerated() {
+            result[task.id] = index
+        }
+        return result
+    }
+
+    static func taskIDs(in tasks: [NativePlanTask]) -> Set<Int> {
+        Set(tasks.map(\.id))
+    }
+
+    static func assignmentIndicesByTaskID(in assignments: [NativePlanAssignment]) -> [Int: [Int]] {
+        var result: [Int: [Int]] = [:]
+        result.reserveCapacity(assignments.count)
+        for index in assignments.indices {
+            result[assignments[index].taskID, default: []].append(index)
+        }
+        return result
     }
 }
 
@@ -3376,6 +3501,7 @@ private struct PlannerGridRowModel: Identifiable, Equatable {
     let percentText: String
     let predecessorText: String
     let primaryAssignmentResourceID: Int?
+    let primaryAssignmentResourceName: String
     let primaryAssignmentUnitsText: String
 }
 
@@ -3426,10 +3552,12 @@ private struct PlannerGridRowView: View, Equatable {
     let onTap: () -> Void
 
     static func == (lhs: PlannerGridRowView, rhs: PlannerGridRowView) -> Bool {
-        lhs.row == rhs.row &&
+        let resourceOptionsEquivalent = (!lhs.isSelected && !rhs.isSelected) || lhs.resourceOptions == rhs.resourceOptions
+
+        return lhs.row == rhs.row &&
         lhs.layout == rhs.layout &&
         lhs.isSelected == rhs.isSelected &&
-        lhs.resourceOptions == rhs.resourceOptions &&
+        resourceOptionsEquivalent &&
         lhs.nameValue == rhs.nameValue &&
         lhs.startDateValue == rhs.startDateValue &&
         lhs.finishDateValue == rhs.finishDateValue &&
@@ -3483,11 +3611,19 @@ private struct PlannerGridRowView: View, Equatable {
             }
 
             cell(width: layout.start, alignment: .leading) {
-                PlannerDateField(date: $startDate)
+                if isSelected {
+                    PlannerDateField(date: $startDate)
+                } else {
+                    dateText(startDateValue)
+                }
             }
 
             cell(width: layout.finish, alignment: .leading) {
-                PlannerDateField(date: $finishDate)
+                if isSelected {
+                    PlannerDateField(date: $finishDate)
+                } else {
+                    dateText(finishDateValue)
+                }
             }
 
             cell(width: layout.duration, alignment: .center) {
@@ -3515,9 +3651,15 @@ private struct PlannerGridRowView: View, Equatable {
             }
 
             cell(width: layout.milestone, alignment: .center) {
-                Toggle("", isOn: $milestone)
-                    .labelsHidden()
-                    .toggleStyle(.checkbox)
+                if isSelected {
+                    Toggle("", isOn: $milestone)
+                        .labelsHidden()
+                        .toggleStyle(.checkbox)
+                } else if milestoneValue {
+                    Image(systemName: "checkmark")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             cell(width: layout.predecessors, alignment: .leading) {
@@ -3532,14 +3674,20 @@ private struct PlannerGridRowView: View, Equatable {
             }
 
             cell(width: layout.resource, alignment: .leading) {
-                Picker("", selection: $primaryAssignmentResourceID) {
-                    Text("Unassigned").tag(Int?.none)
-                    ForEach(resourceOptions) { option in
-                        Text(option.name).tag(Optional(option.id))
+                if isSelected {
+                    Picker("", selection: $primaryAssignmentResourceID) {
+                        Text("Unassigned").tag(Int?.none)
+                        ForEach(resourceOptions) { option in
+                            Text(option.name).tag(Optional(option.id))
+                        }
                     }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                } else {
+                    Text(row.primaryAssignmentResourceName.isEmpty ? "Unassigned" : row.primaryAssignmentResourceName)
+                        .lineLimit(1)
+                        .foregroundStyle(row.primaryAssignmentResourceName.isEmpty ? .secondary : .primary)
                 }
-                .labelsHidden()
-                .pickerStyle(.menu)
             }
 
             cell(width: layout.assignmentUnits, alignment: .center) {
@@ -3559,6 +3707,14 @@ private struct PlannerGridRowView: View, Equatable {
         .background(isSelected ? Color.accentColor.opacity(0.12) : Color.clear)
         .contentShape(Rectangle())
         .onTapGesture(perform: onTap)
+    }
+
+    private func dateText(_ date: Date) -> some View {
+        Text(DateFormatting.simpleDate(date))
+            .font(.caption)
+            .monospacedDigit()
+            .lineLimit(1)
+            .foregroundStyle(.secondary)
     }
 
     private func cell<Content: View>(width: CGFloat, alignment: Alignment, @ViewBuilder content: () -> Content) -> some View {
