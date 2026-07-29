@@ -628,13 +628,13 @@ struct CSVImportReportSheet: View {
                                         Button("Show") {
                                             onSelectIssue(issue)
                                         }
-                                        .buttonStyle(.borderless)
+                                        .buttonStyle(.accessoryBar)
                                     }
                                     if issue.fixAction != nil, let onFixIssue {
                                         Button(issue.fixAction?.title ?? "Fix") {
                                             onFixIssue(issue)
                                         }
-                                        .buttonStyle(.borderless)
+                                        .buttonStyle(.accessoryBar)
                                     }
                                 }
                                 .frame(maxWidth: .infinity, alignment: .leading)

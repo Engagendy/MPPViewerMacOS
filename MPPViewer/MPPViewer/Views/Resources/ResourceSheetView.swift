@@ -26,6 +26,7 @@ struct ResourceSheetView: View {
     var body: some View {
         if resources.isEmpty {
             ContentUnavailableView("No Resources", systemImage: "person.2", description: Text("This project has no resources defined."))
+                .topAlignedEmptyState()
         } else {
             GeometryReader { geometry in
                 HStack(spacing: 0) {
@@ -266,8 +267,9 @@ private struct ResourceInspectorView: View {
         guard !buckets.isEmpty else { return [] }
         let calendar = Calendar.current
         let sortedBuckets = buckets.sorted { $0.date < $1.date }
-        let firstDay = calendar.dateInterval(of: .weekOfYear, for: sortedBuckets.first!.date)?.start ?? sortedBuckets.first!.date
-        let lastDay = calendar.dateInterval(of: .weekOfYear, for: sortedBuckets.last!.date)?.end ?? sortedBuckets.last!.date
+        guard let firstBucket = sortedBuckets.first, let lastBucket = sortedBuckets.last else { return [] }
+        let firstDay = calendar.dateInterval(of: .weekOfYear, for: firstBucket.date)?.start ?? firstBucket.date
+        let lastDay = calendar.dateInterval(of: .weekOfYear, for: lastBucket.date)?.end ?? lastBucket.date
         var weeks: [ResourceWeek] = []
         var cursor = firstDay
         let bucketMap = Dictionary(grouping: buckets) { calendar.startOfDay(for: $0.date) }

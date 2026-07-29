@@ -571,9 +571,15 @@ struct DashboardView: View {
         }
         .task {
             refreshPersistedState()
-            let computed = ProjectStats(project: project)
+            // Stats + validation/diagnostics are read-only over the project
+            // model; compute them off the main thread so opening the
+            // dashboard does not stall the UI on large plans.
+            let projectValue = project
+            let (computed, analysis) = await Task.detached(priority: .userInitiated) {
+                (ProjectStats(project: projectValue), DashboardProjectAnalysis.build(project: projectValue))
+            }.value
             stats = computed
-            projectAnalysis = DashboardProjectAnalysis.build(project: project)
+            projectAnalysis = analysis
             if selectedSnapshotID == nil {
                 selectedSnapshotID = snapshots.first?.id
             }
@@ -625,6 +631,7 @@ struct DashboardView: View {
                         Label("Save Snapshot", systemImage: "tray.and.arrow.down")
                     }
                     .buttonStyle(.bordered)
+                    .hoverHighlight()
 
                     Menu {
                         ForEach(SnapshotTemplate.allCases) { template in
@@ -650,6 +657,7 @@ struct DashboardView: View {
                         Label("Snapshot Template", systemImage: "square.stack.3d.up")
                     }
                     .buttonStyle(.bordered)
+                    .hoverHighlight()
 
                     Button {
                         exportAudienceDashboard(stats: stats)
@@ -657,6 +665,7 @@ struct DashboardView: View {
                         Label("Export Audience Dashboard", systemImage: "square.and.arrow.up.on.square")
                     }
                     .buttonStyle(.bordered)
+                    .hoverHighlight()
 
                     Button {
                         exportReviewPack()
@@ -664,6 +673,7 @@ struct DashboardView: View {
                         Label("Export Review Pack", systemImage: "doc.richtext")
                     }
                     .buttonStyle(.bordered)
+                    .hoverHighlight()
 
                     Button {
                         exportOpenIssues()
@@ -671,6 +681,7 @@ struct DashboardView: View {
                         Label("Export Open Issues", systemImage: "exclamationmark.bubble")
                     }
                     .buttonStyle(.bordered)
+                    .hoverHighlight()
 
                     Button {
                         exportOpenIssuesCSV()
@@ -678,6 +689,7 @@ struct DashboardView: View {
                         Label("Issues CSV", systemImage: "tablecells")
                     }
                     .buttonStyle(.bordered)
+                    .hoverHighlight()
 
                     Spacer()
                     Button {
@@ -686,6 +698,7 @@ struct DashboardView: View {
                         Label("Export Summary", systemImage: "doc.text")
                     }
                     .buttonStyle(.bordered)
+                    .hoverHighlight()
                 }
 
                 if !snapshots.isEmpty {
@@ -948,15 +961,27 @@ struct DashboardView: View {
                     Spacer()
                     HStack(spacing: 8) {
                         ForEach(DashboardAudiencePreset.allCases) { preset in
-                            Button {
+                            let isSelected = audiencePreset == preset
+                            let button = Button {
                                 audiencePreset = preset
                                 appliedReviewTemplateID = nil
                                 customTemplatePreferredExports = Set(preset.defaultTemplateExports)
                             } label: {
                                 Label(preset.rawValue, systemImage: preset.icon)
                             }
-                            .buttonStyle(.borderedProminent)
-                            .tint(audiencePreset == preset ? dashboardTint(for: preset) : .secondary.opacity(0.35))
+
+                            // Selected preset gets its accent fill; inactive
+                            // presets stay quiet bordered chips instead of
+                            // solid grey blocks.
+                            if isSelected {
+                                button
+                                    .buttonStyle(.borderedProminent)
+                                    .tint(dashboardTint(for: preset))
+                            } else {
+                                button
+                                    .buttonStyle(.bordered)
+                                    .hoverHighlight()
+                            }
                         }
                     }
                 }
@@ -974,6 +999,7 @@ struct DashboardView: View {
                                     Label(item.rawValue, systemImage: item.icon)
                                 }
                                 .buttonStyle(.bordered)
+                                .hoverHighlight()
                             }
                         }
                     }
@@ -1010,6 +1036,7 @@ struct DashboardView: View {
                                     Label(export.rawValue, systemImage: export.icon)
                                 }
                                 .buttonStyle(.bordered)
+                                .hoverHighlight()
                             }
                         }
 
@@ -1070,6 +1097,7 @@ struct DashboardView: View {
                             resetAudienceConfiguration()
                         }
                         .buttonStyle(.bordered)
+                        .hoverHighlight()
                     }
                     .padding(.top, 4)
                 }
@@ -1127,6 +1155,7 @@ struct DashboardView: View {
                         saveCurrentReviewTemplate()
                     }
                     .buttonStyle(.borderedProminent)
+                    .hoverHighlight()
                     .disabled(customTemplateTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
 
@@ -1265,6 +1294,7 @@ struct DashboardView: View {
                                 restoreReminders(for: focusedSuppressedEntries)
                             }
                             .buttonStyle(.bordered)
+                            .hoverHighlight()
                         }
                         if !focusedActiveEntries.isEmpty {
                             Menu("Snooze All") {
@@ -1279,17 +1309,20 @@ struct DashboardView: View {
                                 }
                             }
                             .buttonStyle(.bordered)
+                            .hoverHighlight()
                         }
                         Button("Save All") {
                             saveReviewTemplateSnapshots(for: focusedEntries, stats: stats)
                         }
                         .buttonStyle(.borderedProminent)
+                        .hoverHighlight()
                         .tint(reviewQueueFocusAccent(for: selectedReviewQueueFocus))
                         Button("Clear") {
                             self.selectedReviewQueueFocus = nil
                             reviewQueueActionFeedback = nil
                         }
                         .buttonStyle(.bordered)
+                        .hoverHighlight()
                     }
 
                     if let reviewQueueActionFeedback {
@@ -1352,12 +1385,14 @@ struct DashboardView: View {
                     applySnapshotTemplate(template)
                 }
                 .buttonStyle(.borderedProminent)
+                .hoverHighlight()
                 .tint(dashboardTint(for: template.preset))
 
                 Button("Save Run") {
                     saveSnapshotTemplate(template, stats: stats)
                 }
                 .buttonStyle(.bordered)
+                .hoverHighlight()
             }
         }
         .padding(12)
@@ -1418,6 +1453,7 @@ struct DashboardView: View {
                         restoreReminder(for: entry.template.id)
                     }
                     .buttonStyle(.borderedProminent)
+                    .hoverHighlight()
                     .tint(dashboardTint(for: entry.template.preset))
                 } else {
                     Menu("Snooze") {
@@ -1432,28 +1468,33 @@ struct DashboardView: View {
                         }
                     }
                     .buttonStyle(.bordered)
+                    .hoverHighlight()
 
                     Button("Dismiss") {
                         dismissReminder(for: entry)
                     }
                     .buttonStyle(.bordered)
+                    .hoverHighlight()
                 }
 
                 Button("Apply") {
                     applyReviewTemplate(entry.template)
                 }
                 .buttonStyle(.bordered)
+                .hoverHighlight()
 
                 if isSuppressed {
                     Button("Save Run") {
                         saveReviewTemplateSnapshot(entry.template, stats: stats)
                     }
                     .buttonStyle(.bordered)
+                    .hoverHighlight()
                 } else {
                     Button("Save Run") {
                         saveReviewTemplateSnapshot(entry.template, stats: stats)
                     }
                     .buttonStyle(.borderedProminent)
+                    .hoverHighlight()
                     .tint(dashboardTint(for: entry.template.preset))
                 }
             }
@@ -1504,6 +1545,7 @@ struct DashboardView: View {
             )
         }
         .buttonStyle(.plain)
+        .hoverHighlight()
     }
 
     private func reviewQueueFeedbackBanner(_ feedback: ReviewQueueActionFeedback) -> some View {
@@ -1589,17 +1631,20 @@ struct DashboardView: View {
                     applyReviewTemplate(template)
                 }
                 .buttonStyle(.borderedProminent)
+                .hoverHighlight()
                 .tint(dashboardTint(for: template.preset))
 
                 Button("Save Run") {
                     saveReviewTemplateSnapshot(template, stats: stats)
                 }
                 .buttonStyle(.bordered)
+                .hoverHighlight()
 
                 Button("Overwrite") {
                     overwriteReviewTemplate(template.id)
                 }
                 .buttonStyle(.bordered)
+                .hoverHighlight()
 
                 Button(role: .destructive) {
                     deleteReviewTemplate(template.id)
@@ -1607,6 +1652,7 @@ struct DashboardView: View {
                     Image(systemName: "trash")
                 }
                 .buttonStyle(.bordered)
+                .hoverHighlight()
             }
         }
         .padding(12)
@@ -1644,6 +1690,7 @@ struct DashboardView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .buttonStyle(.bordered)
+                    .hoverHighlight()
                 }
             }
         }
@@ -1705,6 +1752,7 @@ struct DashboardView: View {
                             )
                         }
                         .buttonStyle(.plain)
+                        .hoverHighlight()
                     }
                 }
                 .frame(width: 230, alignment: .leading)
@@ -1726,16 +1774,19 @@ struct DashboardView: View {
                                 togglePinnedSnapshot(selectedSnapshot.id)
                             }
                             .buttonStyle(.bordered)
+                            .hoverHighlight()
 
                             Button("Apply Snapshot") {
                                 applySnapshot(selectedSnapshot)
                             }
                             .buttonStyle(.bordered)
+                            .hoverHighlight()
 
                             Button("Export Snapshot") {
                                 exportSnapshot(selectedSnapshot)
                             }
                             .buttonStyle(.bordered)
+                            .hoverHighlight()
 
                             Button(role: .destructive) {
                                 deleteSnapshot(selectedSnapshot.id)
@@ -1743,6 +1794,7 @@ struct DashboardView: View {
                                 Label("Delete", systemImage: "trash")
                             }
                             .buttonStyle(.bordered)
+                            .hoverHighlight()
                         }
 
                         TextField("Snapshot Label", text: snapshotTitleBinding(for: selectedSnapshot))
@@ -1880,6 +1932,7 @@ struct DashboardView: View {
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
         .buttonStyle(.plain)
+        .hoverHighlight()
     }
 
     @ViewBuilder
@@ -1910,6 +1963,7 @@ struct DashboardView: View {
                         exportSnapshotComparison(comparison)
                     }
                     .buttonStyle(.bordered)
+                    .hoverHighlight()
                 }
             }
 
@@ -3766,8 +3820,12 @@ struct ExecutiveModeView: View {
             }
         }
         .task {
-            stats = ProjectStats(project: project)
-            projectAnalysis = DashboardProjectAnalysis.build(project: project)
+            let projectValue = project
+            let (computed, analysis) = await Task.detached(priority: .userInitiated) {
+                (ProjectStats(project: projectValue), DashboardProjectAnalysis.build(project: projectValue))
+            }.value
+            stats = computed
+            projectAnalysis = analysis
         }
     }
 
@@ -3798,6 +3856,7 @@ struct ExecutiveModeView: View {
                             Label("Export Summary", systemImage: "doc.text")
                         }
                         .buttonStyle(.borderedProminent)
+                        .hoverHighlight()
 
                         Button {
                             exportReviewPackReport(project: project, stats: stats, reviewAnnotations: ReviewNotesStore.currentAnnotations())
@@ -3805,6 +3864,7 @@ struct ExecutiveModeView: View {
                             Label("Export Review Pack", systemImage: "doc.on.clipboard")
                         }
                         .buttonStyle(.bordered)
+                        .hoverHighlight()
 
                         Button {
                             exportOpenIssuesReport(project: project, reviewAnnotations: ReviewNotesStore.currentAnnotations())
@@ -3812,6 +3872,7 @@ struct ExecutiveModeView: View {
                             Label("Export Open Issues", systemImage: "exclamationmark.bubble")
                         }
                         .buttonStyle(.bordered)
+                        .hoverHighlight()
 
                         Button {
                             CSVExporter.exportOpenIssuesToCSV(
@@ -3823,6 +3884,7 @@ struct ExecutiveModeView: View {
                             Label("Issues CSV", systemImage: "tablecells")
                         }
                         .buttonStyle(.bordered)
+                        .hoverHighlight()
                     }
                 }
 
@@ -4187,14 +4249,32 @@ struct BaselineAlertView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Text(hasSlip ? "Review" : "On track")
-                .font(.caption2)
-                .fontWeight(.semibold)
-                .foregroundStyle(accentColor)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 4)
-                .background(accentColor.opacity(0.2))
-                .clipShape(Capsule())
+            if hasSlip {
+                Button {
+                    NotificationCenter.default.post(name: .navigateToItem, object: NavigationItem.gantt)
+                } label: {
+                    Text("Review")
+                        .font(.caption2)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(accentColor)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(accentColor.opacity(0.2))
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .hoverHighlight()
+                .help("Open the Gantt chart with baseline overlays to review the slipped tasks")
+            } else {
+                Text("On track")
+                    .font(.caption2)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(accentColor)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(accentColor.opacity(0.2))
+                    .clipShape(Capsule())
+            }
         }
         .padding(12)
         .background(

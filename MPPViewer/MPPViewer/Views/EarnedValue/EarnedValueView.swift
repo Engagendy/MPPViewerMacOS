@@ -57,6 +57,7 @@ struct EarnedValueView: View {
                         systemImage: "chart.line.uptrend.xyaxis",
                         description: Text("This project has no baseline cost data for EVM analysis.")
                     )
+                    .topAlignedEmptyState()
                 } else {
                     kpiCards(metrics: metrics)
                     sCurveChart(metrics: metrics)

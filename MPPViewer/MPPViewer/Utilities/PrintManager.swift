@@ -11,7 +11,7 @@ enum PrintManager {
         hostingView.needsLayout = true
         hostingView.displayIfNeeded()
 
-        let printInfo = NSPrintInfo.shared.copy() as! NSPrintInfo
+        let printInfo = (NSPrintInfo.shared.copy() as? NSPrintInfo) ?? NSPrintInfo()
         printInfo.orientation = .landscape
         printInfo.topMargin = 36
         printInfo.bottomMargin = 36

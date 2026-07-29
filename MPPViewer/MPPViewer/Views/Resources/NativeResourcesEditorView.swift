@@ -145,7 +145,7 @@ struct NativeResourcesEditorView: View {
                             systemImage: "person.2",
                             description: Text("Create or select a resource to edit staffing details and base calendar.")
                         )
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .topAlignedEmptyState()
                     }
                 }
             } else {
@@ -177,7 +177,7 @@ struct NativeResourcesEditorView: View {
                     if let result = CSVExporter.applyResourceImport(mappedSession, into: snapshot) {
                         planModel.update(from: result.plan)
                         planModel.updatedAt = Date()
-                        try? modelContext.save()
+                        modelContext.saveReportingFailures()
                         refreshReviewProject()
                         selectedResourceID = result.plan.resources.last?.id
                         lastResourceImportSession = mappedSession
@@ -238,7 +238,7 @@ struct NativeResourcesEditorView: View {
     private func persist() {
         planModel.updatedAt = Date()
         planModel.refreshPortfolioMetrics()
-        try? modelContext.save()
+        modelContext.saveReportingFailures()
         refreshReviewProject()
     }
 
@@ -284,7 +284,7 @@ struct NativeResourcesEditorView: View {
         calendar.plan = planModel
         planModel.calendars.append(calendar)
         planModel.updatedAt = Date()
-        try? modelContext.save()
+        modelContext.saveReportingFailures()
         refreshReviewProject()
         return calendar.legacyID
     }

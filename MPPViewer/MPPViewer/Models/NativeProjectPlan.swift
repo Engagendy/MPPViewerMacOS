@@ -2,12 +2,39 @@ import Foundation
 import SwiftData
 import CoreData
 
+private extension KeyedDecodingContainer {
+    func decodeLossyUUIDIfPresent(forKey key: Key) -> UUID? {
+        if let uuid = try? decodeIfPresent(UUID.self, forKey: key) {
+            return uuid
+        }
+        if let string = try? decodeIfPresent(String.self, forKey: key) {
+            return UUID(uuidString: string)
+        }
+        return nil
+    }
+}
+
 @globalActor
 actor PlanActor {
     static let shared = PlanActor()
 }
 
+enum NativePlanFormatError: LocalizedError {
+    case unsupportedSchemaVersion(found: Int, supported: Int)
+
+    var errorDescription: String? {
+        switch self {
+        case let .unsupportedSchemaVersion(found, supported):
+            return "This plan was saved by a newer version of MPP Viewer (format v\(found); this app supports up to v\(supported)). Update MPP Viewer to open it."
+        }
+    }
+}
+
 struct NativeProjectPlan: Codable, Hashable {
+    /// Bump when the .mppplan format changes in a way older app versions cannot read.
+    static let currentSchemaVersion = 1
+
+    var schemaVersion: Int
     var portfolioID: UUID
     var title: String
     var manager: String
@@ -38,6 +65,7 @@ struct NativeProjectPlan: Codable, Hashable {
     var statusSnapshots: [NativeStatusSnapshot]
 
     enum CodingKeys: String, CodingKey {
+        case schemaVersion
         case portfolioID
         case title
         case manager
@@ -134,6 +162,7 @@ struct NativeProjectPlan: Codable, Hashable {
         sprints: [NativePlanSprint],
         statusSnapshots: [NativeStatusSnapshot]
     ) {
+        self.schemaVersion = Self.currentSchemaVersion
         self.portfolioID = portfolioID
         self.title = title
         self.manager = manager
@@ -172,7 +201,16 @@ struct NativeProjectPlan: Codable, Hashable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        portfolioID = try container.decodeIfPresent(UUID.self, forKey: .portfolioID) ?? UUID()
+        // Files written before versioning have no schemaVersion field and are treated as v1.
+        let decodedVersion = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
+        guard decodedVersion <= Self.currentSchemaVersion else {
+            throw NativePlanFormatError.unsupportedSchemaVersion(
+                found: decodedVersion,
+                supported: Self.currentSchemaVersion
+            )
+        }
+        schemaVersion = Self.currentSchemaVersion
+        portfolioID = container.decodeLossyUUIDIfPresent(forKey: .portfolioID) ?? UUID()
         title = try container.decodeIfPresent(String.self, forKey: .title) ?? "Untitled Plan"
         manager = try container.decodeIfPresent(String.self, forKey: .manager) ?? ""
         company = try container.decodeIfPresent(String.self, forKey: .company) ?? ""
@@ -464,6 +502,7 @@ struct NativeProjectPlan: Codable, Hashable {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return try decoder.decode(NativeProjectPlan.self, from: data)
+            .normalizedResourceIDsForAssignmentCompatibility()
     }
 
     init(projectModel: ProjectModel) {
@@ -497,6 +536,24 @@ struct NativeProjectPlan: Codable, Hashable {
             if task.summary == true { return "Epic" }
             if task.milestone == true { return "Milestone" }
             return "Story"
+        }
+
+        func nativeCalendarDay(
+            from dayInfo: CalendarDayInfo?,
+            fallback: NativeCalendarDay
+        ) -> NativeCalendarDay {
+            guard let dayInfo else { return fallback }
+            if dayInfo.isDefault {
+                return .inherited()
+            }
+            if dayInfo.isWorking {
+                let firstRange = dayInfo.hours?.first
+                return .workingDay(
+                    from: firstRange?.from?.nonEmpty ?? "08:00",
+                    to: firstRange?.to?.nonEmpty ?? "17:00"
+                )
+            }
+            return .nonWorking()
         }
 
         let statusDate = projectModel.properties.statusDate.flatMap(DateFormatting.parseMPXJDate)
@@ -548,7 +605,7 @@ struct NativeProjectPlan: Codable, Hashable {
 
         let nativeResources = projectResources.map { resource in
             NativePlanResource(
-                id: resource.id ?? resource.uniqueID ?? 0,
+                id: resource.uniqueID ?? resource.id ?? 0,
                 name: resource.name?.nonEmpty ?? "Unnamed Resource",
                 type: resource.type?.nonEmpty ?? "Work",
                 maxUnits: resource.maxUnits ?? 100,
@@ -584,33 +641,20 @@ struct NativeProjectPlan: Codable, Hashable {
         let nativeCalendars = projectCalendars.isEmpty
             ? [NativePlanCalendar.standard(id: defaultCalendarUniqueID, name: "Standard")]
             : projectCalendars.map { calendarRow in
-                NativePlanCalendar(
+                let inheritedFallback = calendarRow.parentUniqueID == nil ? nil : NativeCalendarDay.inherited()
+                return NativePlanCalendar(
                     id: calendarRow.uniqueID ?? defaultCalendarUniqueID,
                     name: calendarRow.name?.nonEmpty ?? "Calendar",
                     parentUniqueID: calendarRow.parentUniqueID,
                     type: calendarRow.type?.nonEmpty ?? "Standard",
                     personal: calendarRow.personal ?? false,
-                    sunday: calendarRow.sunday?.isWorking == true
-                        ? .workingDay()
-                        : .nonWorking(),
-                    monday: calendarRow.monday?.isWorking == true
-                        ? .workingDay()
-                        : .nonWorking(),
-                    tuesday: calendarRow.tuesday?.isWorking == true
-                        ? .workingDay()
-                        : .nonWorking(),
-                    wednesday: calendarRow.wednesday?.isWorking == true
-                        ? .workingDay()
-                        : .nonWorking(),
-                    thursday: calendarRow.thursday?.isWorking == true
-                        ? .workingDay()
-                        : .nonWorking(),
-                    friday: calendarRow.friday?.isWorking == true
-                        ? .workingDay()
-                        : .nonWorking(),
-                    saturday: calendarRow.saturday?.isWorking == true
-                        ? .workingDay()
-                        : .nonWorking(),
+                    sunday: nativeCalendarDay(from: calendarRow.sunday, fallback: inheritedFallback ?? .nonWorking()),
+                    monday: nativeCalendarDay(from: calendarRow.monday, fallback: inheritedFallback ?? .workingDay()),
+                    tuesday: nativeCalendarDay(from: calendarRow.tuesday, fallback: inheritedFallback ?? .workingDay()),
+                    wednesday: nativeCalendarDay(from: calendarRow.wednesday, fallback: inheritedFallback ?? .workingDay()),
+                    thursday: nativeCalendarDay(from: calendarRow.thursday, fallback: inheritedFallback ?? .workingDay()),
+                    friday: nativeCalendarDay(from: calendarRow.friday, fallback: inheritedFallback ?? .workingDay()),
+                    saturday: nativeCalendarDay(from: calendarRow.saturday, fallback: inheritedFallback ?? .nonWorking()),
                     exceptions: calendarRow.exceptions?.map { exception in
                         NativeCalendarException(
                             name: exception.name?.nonEmpty ?? "Exception",
@@ -647,13 +691,14 @@ struct NativeProjectPlan: Codable, Hashable {
             sprints: [],
             statusSnapshots: []
         )
+        self = normalizedResourceIDsForAssignmentCompatibility()
     }
 
     func encodedData() throws -> Data {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
-        return try encoder.encode(self)
+        return try encoder.encode(normalizedResourceIDsForAssignmentCompatibility())
     }
 
     func nextTaskID() -> Int {
@@ -830,6 +875,10 @@ struct NativeProjectPlan: Codable, Hashable {
     }
 
     func asProjectModel(scheduleResult: PlanScheduleResult? = nil) -> ProjectModel {
+        if let repairedPlan = resourceIDCompatibilityRepairedPlan() {
+            return repairedPlan.asProjectModel(scheduleResult: scheduleResult)
+        }
+
         let scheduleResult = scheduleResult ?? PlanScheduler.scheduleSync(self)
         let scheduledTasks = scheduleResult.tasks
         let criticalTaskIDs = scheduleResult.criticalTaskIDs
@@ -1302,7 +1351,7 @@ struct NativePlanTask: Codable, Identifiable, Hashable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        uniqueID = try container.decodeIfPresent(UUID.self, forKey: .uniqueID) ?? UUID()
+        uniqueID = container.decodeLossyUUIDIfPresent(forKey: .uniqueID) ?? UUID()
         id = try container.decode(Int.self, forKey: .id)
         name = try container.decode(String.self, forKey: .name)
         startDate = try container.decode(Date.self, forKey: .startDate)
@@ -1438,7 +1487,7 @@ struct NativePlanResource: Codable, Identifiable, Hashable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        uniqueID = try container.decodeIfPresent(UUID.self, forKey: .uniqueID) ?? UUID()
+        uniqueID = container.decodeLossyUUIDIfPresent(forKey: .uniqueID) ?? UUID()
         id = try container.decode(Int.self, forKey: .id)
         name = try container.decode(String.self, forKey: .name)
         type = try container.decodeIfPresent(String.self, forKey: .type) ?? "Work"
@@ -1528,7 +1577,7 @@ struct NativePlanAssignment: Codable, Identifiable, Hashable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        uniqueID = try container.decodeIfPresent(UUID.self, forKey: .uniqueID) ?? UUID()
+        uniqueID = container.decodeLossyUUIDIfPresent(forKey: .uniqueID) ?? UUID()
         id = try container.decode(Int.self, forKey: .id)
         taskID = try container.decode(Int.self, forKey: .taskID)
         resourceID = try container.decodeIfPresent(Int.self, forKey: .resourceID)
@@ -1624,6 +1673,13 @@ struct NativeBoardWorkflowColumn: Codable, Identifiable, Hashable {
     var wipLimit: Int?
     var allowedTransitions: [String]
 
+    enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case wipLimit
+        case allowedTransitions
+    }
+
     init(
         id: UUID = UUID(),
         name: String,
@@ -1643,12 +1699,28 @@ struct NativeBoardWorkflowColumn: Codable, Identifiable, Hashable {
             return trimmed
         }
     }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            id: container.decodeLossyUUIDIfPresent(forKey: .id) ?? UUID(),
+            name: try container.decodeIfPresent(String.self, forKey: .name) ?? "Backlog",
+            wipLimit: try container.decodeIfPresent(Int.self, forKey: .wipLimit),
+            allowedTransitions: try container.decodeIfPresent([String].self, forKey: .allowedTransitions) ?? []
+        )
+    }
 }
 
 struct NativeBoardTypeWorkflow: Codable, Identifiable, Hashable {
     var id: UUID = UUID()
     var itemType: String
     var columns: [NativeBoardWorkflowColumn]
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case itemType
+        case columns
+    }
 
     init(
         id: UUID = UUID(),
@@ -1658,6 +1730,15 @@ struct NativeBoardTypeWorkflow: Codable, Identifiable, Hashable {
         self.id = id
         self.itemType = itemType.trimmingCharacters(in: .whitespacesAndNewlines)
         self.columns = columns
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            id: container.decodeLossyUUIDIfPresent(forKey: .id) ?? UUID(),
+            itemType: try container.decodeIfPresent(String.self, forKey: .itemType) ?? "Task",
+            columns: try container.decodeIfPresent([NativeBoardWorkflowColumn].self, forKey: .columns) ?? []
+        )
     }
 }
 
@@ -1679,6 +1760,85 @@ struct NativeStatusSnapshot: Codable, Identifiable, Hashable {
     var vac: Double
     var notes: String
     var sprintSnapshots: [NativeSprintSnapshot]
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case capturedAt
+        case statusDate
+        case taskCount
+        case completedTaskCount
+        case inProgressTaskCount
+        case bac
+        case pv
+        case ev
+        case ac
+        case cpi
+        case spi
+        case eac
+        case vac
+        case notes
+        case sprintSnapshots
+    }
+
+    init(
+        id: UUID = UUID(),
+        name: String,
+        capturedAt: Date,
+        statusDate: Date,
+        taskCount: Int,
+        completedTaskCount: Int,
+        inProgressTaskCount: Int,
+        bac: Double,
+        pv: Double,
+        ev: Double,
+        ac: Double,
+        cpi: Double,
+        spi: Double,
+        eac: Double,
+        vac: Double,
+        notes: String,
+        sprintSnapshots: [NativeSprintSnapshot]
+    ) {
+        self.id = id
+        self.name = name
+        self.capturedAt = capturedAt
+        self.statusDate = statusDate
+        self.taskCount = taskCount
+        self.completedTaskCount = completedTaskCount
+        self.inProgressTaskCount = inProgressTaskCount
+        self.bac = bac
+        self.pv = pv
+        self.ev = ev
+        self.ac = ac
+        self.cpi = cpi
+        self.spi = spi
+        self.eac = eac
+        self.vac = vac
+        self.notes = notes
+        self.sprintSnapshots = sprintSnapshots
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = container.decodeLossyUUIDIfPresent(forKey: .id) ?? UUID()
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? "Snapshot"
+        capturedAt = try container.decodeIfPresent(Date.self, forKey: .capturedAt) ?? Date()
+        statusDate = try container.decodeIfPresent(Date.self, forKey: .statusDate) ?? capturedAt
+        taskCount = try container.decodeIfPresent(Int.self, forKey: .taskCount) ?? 0
+        completedTaskCount = try container.decodeIfPresent(Int.self, forKey: .completedTaskCount) ?? 0
+        inProgressTaskCount = try container.decodeIfPresent(Int.self, forKey: .inProgressTaskCount) ?? 0
+        bac = try container.decodeIfPresent(Double.self, forKey: .bac) ?? 0
+        pv = try container.decodeIfPresent(Double.self, forKey: .pv) ?? 0
+        ev = try container.decodeIfPresent(Double.self, forKey: .ev) ?? 0
+        ac = try container.decodeIfPresent(Double.self, forKey: .ac) ?? 0
+        cpi = try container.decodeIfPresent(Double.self, forKey: .cpi) ?? 0
+        spi = try container.decodeIfPresent(Double.self, forKey: .spi) ?? 0
+        eac = try container.decodeIfPresent(Double.self, forKey: .eac) ?? 0
+        vac = try container.decodeIfPresent(Double.self, forKey: .vac) ?? 0
+        notes = try container.decodeIfPresent(String.self, forKey: .notes) ?? ""
+        sprintSnapshots = try container.decodeIfPresent([NativeSprintSnapshot].self, forKey: .sprintSnapshots) ?? []
+    }
 }
 
 struct NativeSprintSnapshot: Codable, Hashable {
@@ -1749,21 +1909,46 @@ struct NativePlanCalendar: Codable, Identifiable, Hashable {
         )
     }
 
+    private var shouldInheritAllWeekdaysFromParent: Bool {
+        guard parentUniqueID != nil,
+              personal,
+              type.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() == "RESOURCE" else {
+            return false
+        }
+
+        return [sunday, monday, tuesday, wednesday, thursday, friday, saturday]
+            .allSatisfy(\.isEmptyNonWorkingDay)
+    }
+
+    func normalizedForInheritedResourceCalendar() -> NativePlanCalendar {
+        guard shouldInheritAllWeekdaysFromParent else { return self }
+        var copy = self
+        copy.sunday = .inherited()
+        copy.monday = .inherited()
+        copy.tuesday = .inherited()
+        copy.wednesday = .inherited()
+        copy.thursday = .inherited()
+        copy.friday = .inherited()
+        copy.saturday = .inherited()
+        return copy
+    }
+
     func asProjectCalendar() -> ProjectCalendar {
-        ProjectCalendar(
-            uniqueID: id,
-            name: name.nonEmpty,
-            parentUniqueID: parentUniqueID,
-            type: type.nonEmpty,
-            personal: personal,
-            sunday: sunday.asCalendarDayInfo(),
-            monday: monday.asCalendarDayInfo(),
-            tuesday: tuesday.asCalendarDayInfo(),
-            wednesday: wednesday.asCalendarDayInfo(),
-            thursday: thursday.asCalendarDayInfo(),
-            friday: friday.asCalendarDayInfo(),
-            saturday: saturday.asCalendarDayInfo(),
-            exceptions: exceptions.map { $0.asCalendarException() }
+        let calendar = normalizedForInheritedResourceCalendar()
+        return ProjectCalendar(
+            uniqueID: calendar.id,
+            name: calendar.name.nonEmpty,
+            parentUniqueID: calendar.parentUniqueID,
+            type: calendar.type.nonEmpty,
+            personal: calendar.personal,
+            sunday: calendar.sunday.asCalendarDayInfo(),
+            monday: calendar.monday.asCalendarDayInfo(),
+            tuesday: calendar.tuesday.asCalendarDayInfo(),
+            wednesday: calendar.wednesday.asCalendarDayInfo(),
+            thursday: calendar.thursday.asCalendarDayInfo(),
+            friday: calendar.friday.asCalendarDayInfo(),
+            saturday: calendar.saturday.asCalendarDayInfo(),
+            exceptions: calendar.exceptions.map { $0.asCalendarException() }
         )
     }
 }
@@ -1777,18 +1962,49 @@ struct NativeCalendarDay: Codable, Hashable {
         NativeCalendarDay(type: "working", from: from, to: to)
     }
 
+    static func inherited() -> NativeCalendarDay {
+        NativeCalendarDay(type: "default", from: "", to: "")
+    }
+
     static func nonWorking() -> NativeCalendarDay {
         NativeCalendarDay(type: "non_working", from: "", to: "")
     }
 
+    var normalizedType: String {
+        type.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
     var isWorking: Bool {
-        type.lowercased() == "working"
+        normalizedType == "working"
+    }
+
+    var isDefault: Bool {
+        normalizedType.isEmpty || normalizedType == "default"
+    }
+
+    var isEmptyNonWorkingDay: Bool {
+        normalizedType == "non_working"
+            && from.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && to.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     func asCalendarDayInfo() -> CalendarDayInfo {
-        CalendarDayInfo(
+        if isDefault {
+            return CalendarDayInfo(type: "default", hours: nil)
+        }
+
+        let workingHours: [CalendarHours]?
+        if isWorking,
+           let fromValue = from.nonEmpty,
+           let toValue = to.nonEmpty {
+            workingHours = [CalendarHours(from: fromValue, to: toValue)]
+        } else {
+            workingHours = nil
+        }
+
+        return CalendarDayInfo(
             type: isWorking ? "working" : "non_working",
-            hours: isWorking ? [CalendarHours(from: from.nonEmpty, to: to.nonEmpty)] : nil
+            hours: workingHours
         )
     }
 }
@@ -1814,6 +2030,15 @@ struct NativeCalendarException: Codable, Identifiable, Hashable {
         self.fromDate = fromDate
         self.toDate = toDate
         self.type = type
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = container.decodeLossyUUIDIfPresent(forKey: .id) ?? UUID()
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? "Exception"
+        fromDate = try container.decodeIfPresent(Date.self, forKey: .fromDate) ?? Date()
+        toDate = try container.decodeIfPresent(Date.self, forKey: .toDate) ?? fromDate
+        type = try container.decodeIfPresent(String.self, forKey: .type) ?? "non_working"
     }
 
     func asCalendarException() -> CalendarException {
@@ -2212,9 +2437,14 @@ enum PlanScheduler {
             if successors.isEmpty {
                 latestFinish = projectFinish
             } else {
+                // FS link: this task must finish on the working day strictly
+                // before the successor's latest start, otherwise every
+                // predecessor on a critical chain gains one day of phantom
+                // slack and falls off the critical path.
                 let successorLimits = successors.map { successorID in
-                    previousWorkingDay(
-                        onOrBefore: latestStart(taskID: successorID),
+                    shiftWorkingDays(
+                        from: latestStart(taskID: successorID),
+                        by: -1,
                         projectCalendar: projectCalendar
                     )
                 }
@@ -2402,7 +2632,8 @@ final class PortfolioProjectPlan {
         update(from: nativePlan)
     }
 
-    func update(from nativePlan: NativeProjectPlan) {
+    func update(from nativePlan: NativeProjectPlan, in context: ModelContext? = nil) {
+        let nativePlan = nativePlan.normalizedResourceIDsForAssignmentCompatibility()
         title = nativePlan.title
         manager = nativePlan.manager
         company = nativePlan.company
@@ -2425,13 +2656,13 @@ final class PortfolioProjectPlan {
         updatedAt = Date()
         isArchived = isArchived ?? false
 
-        syncResources(from: nativePlan.resources)
-        syncCalendars(from: nativePlan.calendars)
-        syncSprints(from: nativePlan.sprints)
-        syncStatusSnapshots(from: nativePlan.statusSnapshots)
-        syncWorkflowColumns(from: nativePlan.workflowColumns)
-        syncTypeWorkflowOverrides(from: nativePlan.typeWorkflowOverrides)
-        syncTasks(from: nativePlan.tasks, assignments: nativePlan.assignments)
+        syncResources(from: nativePlan.resources, in: context)
+        syncCalendars(from: nativePlan.calendars, in: context)
+        syncSprints(from: nativePlan.sprints, in: context)
+        syncStatusSnapshots(from: nativePlan.statusSnapshots, in: context)
+        syncWorkflowColumns(from: nativePlan.workflowColumns, in: context)
+        syncTypeWorkflowOverrides(from: nativePlan.typeWorkflowOverrides, in: context)
+        syncTasks(from: nativePlan.tasks, assignments: nativePlan.assignments, in: context)
         refreshPortfolioMetrics(from: nativePlan)
     }
 
@@ -2447,6 +2678,106 @@ final class PortfolioProjectPlan {
 
     func asNativePlan() -> NativeProjectPlan {
         nativePlanProjectionForUI()
+    }
+
+    func asNativePlan(in context: ModelContext) throws -> NativeProjectPlan {
+        let identifier = portfolioID
+        let taskRows = try context.fetch(
+            FetchDescriptor<PortfolioPlanTask>(
+                predicate: #Predicate { task in
+                    task.plan?.portfolioID == identifier
+                },
+                sortBy: [SortDescriptor(\.orderIndex)]
+            )
+        )
+        let resourceRows = try context.fetch(
+            FetchDescriptor<PortfolioPlanResource>(
+                predicate: #Predicate { resource in
+                    resource.plan?.portfolioID == identifier
+                },
+                sortBy: [SortDescriptor(\.legacyID)]
+            )
+        )
+        let taskLegacyIDs = Set(taskRows.map(\.legacyID))
+        let assignmentRows = try context.fetch(
+            FetchDescriptor<PortfolioPlanAssignment>(
+                sortBy: [SortDescriptor(\.taskLegacyID), SortDescriptor(\.legacyID)]
+            )
+        )
+        .filter { taskLegacyIDs.contains($0.taskLegacyID) }
+        let calendarRows = try context.fetch(
+            FetchDescriptor<PortfolioPlanCalendar>(
+                predicate: #Predicate { calendar in
+                    calendar.plan?.portfolioID == identifier
+                },
+                sortBy: [SortDescriptor(\.legacyID)]
+            )
+        )
+        let sprintRows = try context.fetch(
+            FetchDescriptor<PortfolioPlanSprint>(
+                predicate: #Predicate { sprint in
+                    sprint.plan?.portfolioID == identifier
+                },
+                sortBy: [SortDescriptor(\.legacyID)]
+            )
+        )
+        let statusSnapshotRows = try context.fetch(
+            FetchDescriptor<PortfolioStatusSnapshot>(
+                predicate: #Predicate { snapshot in
+                    snapshot.plan?.portfolioID == identifier
+                },
+                sortBy: [SortDescriptor(\.statusDate), SortDescriptor(\.capturedAt)]
+            )
+        )
+        let workflowColumnRows = try context.fetch(
+            FetchDescriptor<PortfolioWorkflowColumn>(
+                predicate: #Predicate { column in
+                    column.plan?.portfolioID == identifier
+                },
+                sortBy: [SortDescriptor(\.orderIndex), SortDescriptor(\.name)]
+            )
+        )
+        let typeWorkflowRows = try context.fetch(
+            FetchDescriptor<PortfolioTypeWorkflow>(
+                predicate: #Predicate { workflow in
+                    workflow.plan?.portfolioID == identifier
+                },
+                sortBy: [SortDescriptor(\.itemType)]
+            )
+        )
+
+        let nativeCalendars = calendarRows.map { $0.asNativeCalendar() }
+        return NativeProjectPlan(
+            portfolioID: portfolioID,
+            title: title,
+            manager: manager,
+            company: company,
+            statusDate: statusDate,
+            portfolioWorkspace: portfolioWorkspace,
+            portfolioProgram: portfolioProgram,
+            portfolioSponsor: portfolioSponsor,
+            portfolioStage: portfolioStage,
+            portfolioHealth: portfolioHealth,
+            portfolioPriorityBand: portfolioPriorityBand,
+            portfolioApprovalState: portfolioApprovalState,
+            portfolioStrategicAlignment: portfolioStrategicAlignment,
+            portfolioRiskScore: portfolioRiskScore,
+            portfolioObjective: portfolioObjective,
+            portfolioReviewDate: portfolioReviewDate,
+            portfolioReviewCadenceDays: portfolioReviewCadenceDays,
+            portfolioArchiveReason: portfolioArchiveReason,
+            defaultCalendarUniqueID: defaultCalendarUniqueID,
+            tasks: taskRows.map { $0.asNativeTask() },
+            resources: resourceRows.map { $0.asNativeResource() },
+            assignments: assignmentRows.map { $0.asNativeAssignment() },
+            calendars: nativeCalendars.isEmpty ? [NativePlanCalendar.standard(id: 1)] : nativeCalendars,
+            boardColumns: boardColumns,
+            workflowColumns: workflowColumnRows.map { $0.asNativeWorkflowColumn() },
+            typeWorkflowOverrides: typeWorkflowRows.map { $0.asNativeTypeWorkflow() },
+            sprints: sprintRows.map { $0.asNativeSprint() },
+            statusSnapshots: statusSnapshotRows.map { $0.asNativeStatusSnapshot() }
+        )
+        .normalizedResourceIDsForAssignmentCompatibility()
     }
 
     func editorSnapshotForUI() -> NativeProjectPlan {
@@ -2532,6 +2863,7 @@ final class PortfolioProjectPlan {
             sprints: nativeSprints,
             statusSnapshots: nativeStatusSnapshots
         )
+        .normalizedResourceIDsForAssignmentCompatibility()
     }
 
     var orderedTaskRows: [PortfolioPlanTask] {
@@ -2603,30 +2935,50 @@ final class PortfolioProjectPlan {
         )
     }
 
-    private func syncResources(from nativeResources: [NativePlanResource]) {
-        let incomingIDs = Set(nativeResources.map(\.uniqueID))
-        var seenExistingIDs: Set<UUID> = []
-        resources.removeAll { !incomingIDs.contains($0.uniqueID) || !seenExistingIDs.insert($0.uniqueID).inserted }
+    private func syncResources(from nativeResources: [NativePlanResource], in context: ModelContext?) {
+        let existingResources = resources
+        let existingByID = Dictionary(nonThrowingUniquePairs: existingResources.map { ($0.uniqueID, $0) }, keepLast: false)
+        let existingByLegacyID = Dictionary(nonThrowingUniquePairs: existingResources.map { ($0.legacyID, $0) }, keepLast: false)
+        var selectedResources: Set<ObjectIdentifier> = []
+        var synchronizedResources: [PortfolioPlanResource] = []
+        var matchedByID = existingByID
 
-        var existingByID = Dictionary(nonThrowingUniquePairs: resources.map { ($0.uniqueID, $0) })
         for nativeResource in nativeResources {
-            if let existing = existingByID[nativeResource.uniqueID] {
-                existing.update(from: nativeResource)
-                existing.accrueAt = existing.accrueAtValue
+            let model: PortfolioPlanResource
+            if let existing = matchedByID[nativeResource.uniqueID],
+               selectedResources.insert(ObjectIdentifier(existing)).inserted {
+                model = existing
+            } else if let existing = existingByLegacyID[nativeResource.id],
+                      selectedResources.insert(ObjectIdentifier(existing)).inserted {
+                model = existing
             } else {
-                let model = PortfolioPlanResource(nativeResource: nativeResource)
-                model.accrueAt = model.accrueAtValue
-                model.plan = self
-                resources.append(model)
-                existingByID[nativeResource.uniqueID] = model
+                model = PortfolioPlanResource(nativeResource: nativeResource)
             }
+
+            model.update(from: nativeResource)
+            model.accrueAt = model.accrueAtValue
+            model.plan = self
+            synchronizedResources.append(model)
+            matchedByID[nativeResource.uniqueID] = model
         }
+
+        resources = synchronizedResources
+        let removedResources = existingResources.filter { !selectedResources.contains(ObjectIdentifier($0)) }
+        removedResources.forEach { context?.delete($0) }
     }
 
-    private func syncCalendars(from nativeCalendars: [NativePlanCalendar]) {
+    private func syncCalendars(from nativeCalendars: [NativePlanCalendar], in context: ModelContext?) {
         let incomingIDs = Set(nativeCalendars.map(\.id))
         var seenExistingIDs: Set<Int> = []
-        calendars.removeAll { !incomingIDs.contains($0.legacyID) || !seenExistingIDs.insert($0.legacyID).inserted }
+        var removedCalendars: [PortfolioPlanCalendar] = []
+        calendars.removeAll { calendar in
+            let shouldRemove = !incomingIDs.contains(calendar.legacyID) || !seenExistingIDs.insert(calendar.legacyID).inserted
+            if shouldRemove {
+                removedCalendars.append(calendar)
+            }
+            return shouldRemove
+        }
+        removedCalendars.forEach { context?.delete($0) }
 
         var existingByID = Dictionary(nonThrowingUniquePairs: calendars.map { ($0.legacyID, $0) })
         for nativeCalendar in nativeCalendars {
@@ -2641,10 +2993,18 @@ final class PortfolioProjectPlan {
         }
     }
 
-    private func syncSprints(from nativeSprints: [NativePlanSprint]) {
+    private func syncSprints(from nativeSprints: [NativePlanSprint], in context: ModelContext?) {
         let incomingIDs = Set(nativeSprints.map(\.id))
         var seenExistingIDs: Set<Int> = []
-        sprints.removeAll { !incomingIDs.contains($0.legacyID) || !seenExistingIDs.insert($0.legacyID).inserted }
+        var removedSprints: [PortfolioPlanSprint] = []
+        sprints.removeAll { sprint in
+            let shouldRemove = !incomingIDs.contains(sprint.legacyID) || !seenExistingIDs.insert(sprint.legacyID).inserted
+            if shouldRemove {
+                removedSprints.append(sprint)
+            }
+            return shouldRemove
+        }
+        removedSprints.forEach { context?.delete($0) }
 
         var existingByID = Dictionary(nonThrowingUniquePairs: sprints.map { ($0.legacyID, $0) })
         for nativeSprint in nativeSprints {
@@ -2659,15 +3019,23 @@ final class PortfolioProjectPlan {
         }
     }
 
-    private func syncStatusSnapshots(from nativeSnapshots: [NativeStatusSnapshot]) {
+    private func syncStatusSnapshots(from nativeSnapshots: [NativeStatusSnapshot], in context: ModelContext?) {
         let incomingIDs = Set(nativeSnapshots.map(\.id))
         var seenExistingIDs: Set<UUID> = []
-        statusSnapshots.removeAll { !incomingIDs.contains($0.uniqueID) || !seenExistingIDs.insert($0.uniqueID).inserted }
+        var removedSnapshots: [PortfolioStatusSnapshot] = []
+        statusSnapshots.removeAll { snapshot in
+            let shouldRemove = !incomingIDs.contains(snapshot.uniqueID) || !seenExistingIDs.insert(snapshot.uniqueID).inserted
+            if shouldRemove {
+                removedSnapshots.append(snapshot)
+            }
+            return shouldRemove
+        }
+        removedSnapshots.forEach { context?.delete($0) }
 
         var existingByID = Dictionary(nonThrowingUniquePairs: statusSnapshots.map { ($0.uniqueID, $0) })
         for nativeSnapshot in nativeSnapshots {
             if let existing = existingByID[nativeSnapshot.id] {
-                existing.update(from: nativeSnapshot)
+                existing.update(from: nativeSnapshot, in: context)
             } else {
                 let model = PortfolioStatusSnapshot(nativeSnapshot: nativeSnapshot)
                 model.plan = self
@@ -2677,10 +3045,18 @@ final class PortfolioProjectPlan {
         }
     }
 
-    private func syncWorkflowColumns(from nativeColumns: [NativeBoardWorkflowColumn]) {
+    private func syncWorkflowColumns(from nativeColumns: [NativeBoardWorkflowColumn], in context: ModelContext?) {
         let incomingIDs = Set(nativeColumns.map(\.id))
         var seenExistingIDs: Set<UUID> = []
-        workflowColumns.removeAll { !incomingIDs.contains($0.uniqueID) || !seenExistingIDs.insert($0.uniqueID).inserted }
+        var removedColumns: [PortfolioWorkflowColumn] = []
+        workflowColumns.removeAll { column in
+            let shouldRemove = !incomingIDs.contains(column.uniqueID) || !seenExistingIDs.insert(column.uniqueID).inserted
+            if shouldRemove {
+                removedColumns.append(column)
+            }
+            return shouldRemove
+        }
+        removedColumns.forEach { context?.delete($0) }
 
         var existingByID = Dictionary(nonThrowingUniquePairs: workflowColumns.map { ($0.uniqueID, $0) })
         for (orderIndex, nativeColumn) in nativeColumns.enumerated() {
@@ -2695,15 +3071,23 @@ final class PortfolioProjectPlan {
         }
     }
 
-    private func syncTypeWorkflowOverrides(from nativeOverrides: [NativeBoardTypeWorkflow]) {
+    private func syncTypeWorkflowOverrides(from nativeOverrides: [NativeBoardTypeWorkflow], in context: ModelContext?) {
         let incomingIDs = Set(nativeOverrides.map(\.id))
         var seenExistingIDs: Set<UUID> = []
-        typeWorkflowOverrides.removeAll { !incomingIDs.contains($0.uniqueID) || !seenExistingIDs.insert($0.uniqueID).inserted }
+        var removedOverrides: [PortfolioTypeWorkflow] = []
+        typeWorkflowOverrides.removeAll { typeWorkflow in
+            let shouldRemove = !incomingIDs.contains(typeWorkflow.uniqueID) || !seenExistingIDs.insert(typeWorkflow.uniqueID).inserted
+            if shouldRemove {
+                removedOverrides.append(typeWorkflow)
+            }
+            return shouldRemove
+        }
+        removedOverrides.forEach { context?.delete($0) }
 
         var existingByID = Dictionary(nonThrowingUniquePairs: typeWorkflowOverrides.map { ($0.uniqueID, $0) })
         for nativeOverride in nativeOverrides {
             if let existing = existingByID[nativeOverride.id] {
-                existing.update(from: nativeOverride)
+                existing.update(from: nativeOverride, in: context)
             } else {
                 let model = PortfolioTypeWorkflow(nativeTypeWorkflow: nativeOverride)
                 model.plan = self
@@ -2713,31 +3097,40 @@ final class PortfolioProjectPlan {
         }
     }
 
-    private func syncTasks(from nativeTasks: [NativePlanTask], assignments nativeAssignments: [NativePlanAssignment]) {
-        let incomingIDs = Set(nativeTasks.map(\.uniqueID))
-        var seenExistingIDs: Set<UUID> = []
-        tasks.removeAll { !incomingIDs.contains($0.uniqueID) || !seenExistingIDs.insert($0.uniqueID).inserted }
-
+    private func syncTasks(from nativeTasks: [NativePlanTask], assignments nativeAssignments: [NativePlanAssignment], in context: ModelContext?) {
         let assignmentsByTaskID = Dictionary(grouping: nativeAssignments, by: \.taskID)
         let resourceByID = Dictionary(nonThrowingUniquePairs: resources.map { ($0.legacyID, $0) })
-        var existingByID = Dictionary(nonThrowingUniquePairs: tasks.map { ($0.uniqueID, $0) })
+        let existingTasks = tasks
+        let existingByID = Dictionary(nonThrowingUniquePairs: existingTasks.map { ($0.uniqueID, $0) }, keepLast: false)
+        let existingByLegacyID = Dictionary(nonThrowingUniquePairs: existingTasks.map { ($0.legacyID, $0) }, keepLast: false)
+        var selectedTasks: Set<ObjectIdentifier> = []
+        var synchronizedTasks: [PortfolioPlanTask] = []
+        var matchedByID = existingByID
 
         for (orderIndex, nativeTask) in nativeTasks.enumerated() {
             let taskModel: PortfolioPlanTask
-            if let existing = existingByID[nativeTask.uniqueID] {
-                existing.update(from: nativeTask, orderIndex: orderIndex)
+            if let existing = matchedByID[nativeTask.uniqueID],
+               selectedTasks.insert(ObjectIdentifier(existing)).inserted {
+                taskModel = existing
+            } else if let existing = existingByLegacyID[nativeTask.id],
+                      selectedTasks.insert(ObjectIdentifier(existing)).inserted {
                 taskModel = existing
             } else {
-                let created = PortfolioPlanTask(nativeTask: nativeTask, orderIndex: orderIndex)
-                created.plan = self
-                tasks.append(created)
-                existingByID[nativeTask.uniqueID] = created
-                taskModel = created
+                taskModel = PortfolioPlanTask(nativeTask: nativeTask, orderIndex: orderIndex)
             }
 
+            taskModel.update(from: nativeTask, orderIndex: orderIndex)
+            taskModel.plan = self
+            synchronizedTasks.append(taskModel)
+            matchedByID[nativeTask.uniqueID] = taskModel
+
             let taskAssignments = assignmentsByTaskID[nativeTask.id] ?? []
-            taskModel.syncAssignments(from: taskAssignments, resourcesByLegacyID: resourceByID)
+            taskModel.syncAssignments(from: taskAssignments, resourcesByLegacyID: resourceByID, in: context)
         }
+
+        tasks = synchronizedTasks
+        let removedTasks = existingTasks.filter { !selectedTasks.contains(ObjectIdentifier($0)) }
+        removedTasks.forEach { context?.delete($0) }
     }
 
     private static func encoder() -> JSONEncoder {
@@ -2843,6 +3236,7 @@ final class PortfolioPlanTask {
     }
 
     func update(from nativeTask: NativePlanTask, orderIndex: Int) {
+        uniqueID = nativeTask.uniqueID
         legacyID = nativeTask.id
         name = nativeTask.name
         startDate = nativeTask.startDate
@@ -2876,24 +3270,40 @@ final class PortfolioPlanTask {
         self.orderIndex = orderIndex
     }
 
-    func syncAssignments(from nativeAssignments: [NativePlanAssignment], resourcesByLegacyID: [Int: PortfolioPlanResource]) {
-        let incomingIDs = Set(nativeAssignments.map(\.uniqueID))
-        var seenExistingIDs: Set<UUID> = []
-        assignments.removeAll { !incomingIDs.contains($0.uniqueID) || !seenExistingIDs.insert($0.uniqueID).inserted }
-        var existingByID = Dictionary(nonThrowingUniquePairs: assignments.map { ($0.uniqueID, $0) })
+    func syncAssignments(
+        from nativeAssignments: [NativePlanAssignment],
+        resourcesByLegacyID: [Int: PortfolioPlanResource],
+        in context: ModelContext? = nil
+    ) {
+        let existingAssignments = assignments
+        let existingByID = Dictionary(nonThrowingUniquePairs: existingAssignments.map { ($0.uniqueID, $0) }, keepLast: false)
+        let existingByLegacyID = Dictionary(nonThrowingUniquePairs: existingAssignments.map { ($0.legacyID, $0) }, keepLast: false)
+        var selectedAssignments: Set<ObjectIdentifier> = []
+        var synchronizedAssignments: [PortfolioPlanAssignment] = []
+        var matchedByID = existingByID
 
         for nativeAssignment in nativeAssignments {
-            if let existing = existingByID[nativeAssignment.uniqueID] {
-                existing.update(from: nativeAssignment)
-                existing.resource = nativeAssignment.resourceID.flatMap { resourcesByLegacyID[$0] }
+            let assignmentModel: PortfolioPlanAssignment
+            if let existing = matchedByID[nativeAssignment.uniqueID],
+               selectedAssignments.insert(ObjectIdentifier(existing)).inserted {
+                assignmentModel = existing
+            } else if let existing = existingByLegacyID[nativeAssignment.id],
+                      selectedAssignments.insert(ObjectIdentifier(existing)).inserted {
+                assignmentModel = existing
             } else {
-                let created = PortfolioPlanAssignment(nativeAssignment: nativeAssignment)
-                created.task = self
-                created.resource = nativeAssignment.resourceID.flatMap { resourcesByLegacyID[$0] }
-                assignments.append(created)
-                existingByID[nativeAssignment.uniqueID] = created
+                assignmentModel = PortfolioPlanAssignment(nativeAssignment: nativeAssignment)
             }
+
+            assignmentModel.update(from: nativeAssignment)
+            assignmentModel.task = self
+            assignmentModel.resource = nativeAssignment.resourceID.flatMap { resourcesByLegacyID[$0] }
+            synchronizedAssignments.append(assignmentModel)
+            matchedByID[nativeAssignment.uniqueID] = assignmentModel
         }
+
+        assignments = synchronizedAssignments
+        let removedAssignments = existingAssignments.filter { !selectedAssignments.contains(ObjectIdentifier($0)) }
+        removedAssignments.forEach { context?.delete($0) }
     }
 
     func asNativeTask() -> NativePlanTask {
@@ -2984,6 +3394,7 @@ final class PortfolioPlanResource {
     }
 
     func update(from nativeResource: NativePlanResource) {
+        uniqueID = nativeResource.uniqueID
         legacyID = nativeResource.id
         name = nativeResource.name
         type = nativeResource.type
@@ -3129,6 +3540,7 @@ final class PortfolioPlanCalendar {
             saturday: saturday,
             exceptions: exceptions
         )
+        .normalizedForInheritedResourceCalendar()
     }
 
     private static func encoder() -> JSONEncoder {
@@ -3281,9 +3693,9 @@ final class PortfolioTypeWorkflow {
         self.columns.forEach { $0.typeWorkflow = self }
     }
 
-    func update(from nativeTypeWorkflow: NativeBoardTypeWorkflow) {
+    func update(from nativeTypeWorkflow: NativeBoardTypeWorkflow, in context: ModelContext? = nil) {
         itemType = nativeTypeWorkflow.itemType
-        syncColumns(from: nativeTypeWorkflow.columns)
+        syncColumns(from: nativeTypeWorkflow.columns, in: context)
     }
 
     func asNativeTypeWorkflow() -> NativeBoardTypeWorkflow {
@@ -3296,10 +3708,18 @@ final class PortfolioTypeWorkflow {
         )
     }
 
-    private func syncColumns(from nativeColumns: [NativeBoardWorkflowColumn]) {
+    private func syncColumns(from nativeColumns: [NativeBoardWorkflowColumn], in context: ModelContext?) {
         let incomingIDs = Set(nativeColumns.map(\.id))
         var seenExistingIDs: Set<UUID> = []
-        columns.removeAll { !incomingIDs.contains($0.uniqueID) || !seenExistingIDs.insert($0.uniqueID).inserted }
+        var removedColumns: [PortfolioWorkflowColumn] = []
+        columns.removeAll { column in
+            let shouldRemove = !incomingIDs.contains(column.uniqueID) || !seenExistingIDs.insert(column.uniqueID).inserted
+            if shouldRemove {
+                removedColumns.append(column)
+            }
+            return shouldRemove
+        }
+        removedColumns.forEach { context?.delete($0) }
 
         var existingByID = Dictionary(nonThrowingUniquePairs: columns.map { ($0.uniqueID, $0) })
         for (orderIndex, nativeColumn) in nativeColumns.enumerated() {
@@ -3360,7 +3780,7 @@ final class PortfolioStatusSnapshot {
         self.sprintSnapshots.forEach { $0.snapshot = self }
     }
 
-    func update(from nativeSnapshot: NativeStatusSnapshot) {
+    func update(from nativeSnapshot: NativeStatusSnapshot, in context: ModelContext? = nil) {
         name = nativeSnapshot.name
         capturedAt = nativeSnapshot.capturedAt
         statusDate = nativeSnapshot.statusDate
@@ -3376,7 +3796,7 @@ final class PortfolioStatusSnapshot {
         eac = nativeSnapshot.eac
         vac = nativeSnapshot.vac
         notes = nativeSnapshot.notes
-        syncSprintSnapshots(from: nativeSnapshot.sprintSnapshots)
+        syncSprintSnapshots(from: nativeSnapshot.sprintSnapshots, in: context)
     }
 
     func asNativeStatusSnapshot() -> NativeStatusSnapshot {
@@ -3401,10 +3821,18 @@ final class PortfolioStatusSnapshot {
         )
     }
 
-    private func syncSprintSnapshots(from nativeSnapshots: [NativeSprintSnapshot]) {
+    private func syncSprintSnapshots(from nativeSnapshots: [NativeSprintSnapshot], in context: ModelContext?) {
         let incomingIDs = Set(nativeSnapshots.map(\.sprintID))
         var seenExistingIDs: Set<Int> = []
-        sprintSnapshots.removeAll { !incomingIDs.contains($0.sprintID) || !seenExistingIDs.insert($0.sprintID).inserted }
+        var removedSnapshots: [PortfolioSprintStatusSnapshot] = []
+        sprintSnapshots.removeAll { snapshot in
+            let shouldRemove = !incomingIDs.contains(snapshot.sprintID) || !seenExistingIDs.insert(snapshot.sprintID).inserted
+            if shouldRemove {
+                removedSnapshots.append(snapshot)
+            }
+            return shouldRemove
+        }
+        removedSnapshots.forEach { context?.delete($0) }
 
         var existingByID = Dictionary(nonThrowingUniquePairs: sprintSnapshots.map { ($0.sprintID, $0) })
         for nativeSnapshot in nativeSnapshots {
@@ -3485,6 +3913,7 @@ final class PortfolioPlanAssignment {
     }
 
     func update(from nativeAssignment: NativePlanAssignment) {
+        uniqueID = nativeAssignment.uniqueID
         legacyID = nativeAssignment.id
         taskLegacyID = nativeAssignment.taskID
         resourceLegacyID = nativeAssignment.resourceID
@@ -3980,7 +4409,7 @@ enum PortfolioProjectSynchronizer {
 
         do {
             if let existing = try context.fetch(descriptor).first {
-                existing.update(from: nativePlan)
+                existing.update(from: nativePlan, in: context)
                 try context.save()
                 return existing
             } else {
@@ -4022,20 +4451,78 @@ enum PortfolioProjectSynchronizer {
 }
 
 private extension NativeProjectPlan {
-    func normalizedForStorage() -> NativeProjectPlan {
-        var normalized = self
+    func normalizedResourceIDsForAssignmentCompatibility() -> NativeProjectPlan {
+        resourceIDCompatibilityRepairedPlan() ?? self
+    }
 
-        normalized.boardColumns = Self.normalizedBoardColumns(boardColumns)
+    func resourceIDCompatibilityRepairedPlan() -> NativeProjectPlan? {
+        guard let offset = resourceIDCompatibilityRepairOffset() else { return nil }
+
+        var repaired = self
+        repaired.resources = resources.map { nativeResource in
+            var resource = nativeResource
+            if let calendarID = resource.calendarUniqueID {
+                resource.id = calendarID - offset
+            }
+            return resource
+        }
+        return repaired
+    }
+
+    func resourceIDCompatibilityRepairOffset() -> Int? {
+        guard !resources.isEmpty, !assignments.isEmpty else { return nil }
+
+        let assignmentResourceIDs = assignments.compactMap(\.resourceID)
+        guard !assignmentResourceIDs.isEmpty else { return nil }
+
+        let currentResourceIDs = Set(resources.map(\.id))
+        let missingAssignmentResourceIDs = Set(assignmentResourceIDs).subtracting(currentResourceIDs)
+        guard !missingAssignmentResourceIDs.isEmpty else { return nil }
+
+        let offsets = resources.compactMap { resource -> Int? in
+            guard let calendarID = resource.calendarUniqueID else { return nil }
+            let offset = calendarID - resource.id
+            return offset == 0 ? nil : offset
+        }
+        let offsetCounts = Dictionary(grouping: offsets, by: { $0 }).mapValues(\.count)
+        guard let bestOffset = offsetCounts.sorted(by: { lhs, rhs in
+            lhs.value == rhs.value ? abs(lhs.key) < abs(rhs.key) : lhs.value > rhs.value
+        }).first,
+            bestOffset.value >= max(3, resources.count / 2) else {
+            return nil
+        }
+
+        let repairedResourceIDs = resources.map { resource in
+            resource.calendarUniqueID.map { $0 - bestOffset.key } ?? resource.id
+        }
+        guard Set(repairedResourceIDs).count == resources.count else { return nil }
+
+        let currentMatchCount = assignmentResourceIDs.filter(currentResourceIDs.contains).count
+        let repairedResourceIDSet = Set(repairedResourceIDs)
+        let repairedMatchCount = assignmentResourceIDs.filter(repairedResourceIDSet.contains).count
+
+        guard repairedMatchCount > currentMatchCount,
+              repairedMatchCount >= assignmentResourceIDs.count / 2 else {
+            return nil
+        }
+
+        return bestOffset.key
+    }
+
+    func normalizedForStorage() -> NativeProjectPlan {
+        var normalized = normalizedResourceIDsForAssignmentCompatibility()
+
+        normalized.boardColumns = Self.normalizedBoardColumns(normalized.boardColumns)
         let synchronizedStorage = Self.synchronizedWorkflowStorage(
             boardColumns: normalized.boardColumns,
-            workflowColumns: workflowColumns,
-            typeWorkflowOverrides: typeWorkflowOverrides
+            workflowColumns: normalized.workflowColumns,
+            typeWorkflowOverrides: normalized.typeWorkflowOverrides
         )
         normalized.workflowColumns = synchronizedStorage.workflowColumns
         normalized.boardColumns = synchronizedStorage.workflowColumns.map(\.name)
         normalized.typeWorkflowOverrides = synchronizedStorage.typeWorkflowOverrides
 
-        normalized.resources = resources.map { nativeResource in
+        normalized.resources = normalized.resources.map { nativeResource in
             var resource = nativeResource
             resource.accrueAt = resource.accrueAtValue
             resource.name = resource.name.nonEmpty ?? "Unnamed Resource"
@@ -4053,7 +4540,7 @@ actor PlanSchedulerModelActor {
         guard let storedPlan = modelContext.model(for: planID) as? PortfolioProjectPlan else { return }
         var nativePlan = storedPlan.asNativePlan()
         await nativePlan.reschedule()
-        storedPlan.update(from: nativePlan)
+        storedPlan.update(from: nativePlan, in: modelContext)
         try modelContext.save()
     }
 }

@@ -67,6 +67,7 @@ struct MilestonesView: View {
                     systemImage: "diamond",
                     description: Text(searchText.isEmpty ? "This project has no explicit milestones." : "No items match your search.")
                 )
+                .topAlignedEmptyState()
             } else {
                 Table(items, sortOrder: $sortOrder) {
                     TableColumn("") { _ in

@@ -41,7 +41,38 @@ class MPPConverterXPCHandler: NSObject, MPPConverterXPCProtocol {
         performConversion(inputPath: inputURL.path, reply: reply)
     }
 
+    func exportPlanToMSPDI(_ planJSON: Data, reply: @escaping (Data?, String?) -> Void) {
+        let inputURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("json")
+
+        do {
+            try planJSON.write(to: inputURL, options: .atomic)
+        } catch {
+            reply(nil, "Failed to stage plan JSON for export: \(error.localizedDescription)")
+            return
+        }
+
+        defer {
+            try? FileManager.default.removeItem(at: inputURL)
+        }
+
+        runConverter(
+            jarArguments: ["--plan-to-mspdi", inputURL.path],
+            outputExtension: "xml",
+            reply: reply
+        )
+    }
+
     private func performConversion(inputPath: String, reply: @escaping (Data?, String?) -> Void) {
+        runConverter(jarArguments: [inputPath], outputExtension: "json", reply: reply)
+    }
+
+    private func runConverter(
+        jarArguments: [String],
+        outputExtension: String,
+        reply: @escaping (Data?, String?) -> Void
+    ) {
         let javaPath = locateJava()
         let jarPath = locateJAR()
 
@@ -56,7 +87,7 @@ class MPPConverterXPCHandler: NSObject, MPPConverterXPCProtocol {
 
         let outputURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
-            .appendingPathExtension("json")
+            .appendingPathExtension(outputExtension)
 
         defer {
             try? FileManager.default.removeItem(at: outputURL)
@@ -64,7 +95,7 @@ class MPPConverterXPCHandler: NSObject, MPPConverterXPCProtocol {
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: javaPath)
-        process.arguments = ["-jar", jarPath, inputPath, outputURL.path]
+        process.arguments = ["-jar", jarPath] + jarArguments + [outputURL.path]
 
         let stderrURL = temporaryLogURL(extension: "stderr")
         let stdoutURL = temporaryLogURL(extension: "stdout")

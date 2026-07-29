@@ -15,6 +15,7 @@ struct CalendarView: View {
     var body: some View {
         if calendars.isEmpty {
             ContentUnavailableView("No Calendars", systemImage: "calendar", description: Text("This project has no calendars defined."))
+                .topAlignedEmptyState()
         } else {
             HSplitView {
                 // Calendar list
@@ -56,11 +57,14 @@ struct CalendarMonthGrid: View {
 
     private let sysCalendar = Calendar.current
     private let daysOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
-
-    private var monthTitle: String {
+    private static let monthFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "MMMM yyyy"
-        return formatter.string(from: displayMonth)
+        return formatter
+    }()
+
+    private var monthTitle: String {
+        Self.monthFormatter.string(from: displayMonth)
     }
 
     private var daysInMonth: [Date?] {
@@ -94,7 +98,7 @@ struct CalendarMonthGrid: View {
                 Button(action: { changeMonth(by: -1) }) {
                     Image(systemName: "chevron.left")
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.accessoryBar)
 
                 Text(monthTitle)
                     .font(.title2)
@@ -103,7 +107,7 @@ struct CalendarMonthGrid: View {
                 Button(action: { changeMonth(by: 1) }) {
                     Image(systemName: "chevron.right")
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.accessoryBar)
             }
 
             // Calendar info
@@ -160,23 +164,28 @@ struct CalendarMonthGrid: View {
             // Exceptions list
             if let exceptions = calendar.exceptions, !exceptions.isEmpty {
                 GroupBox("Exceptions") {
-                    VStack(alignment: .leading, spacing: 4) {
-                        ForEach(exceptions) { exception in
-                            HStack {
-                                Circle()
-                                    .fill(exception.isWorking ? ColorTheme.workingDay : ColorTheme.nonWorkingDay)
-                                    .frame(width: 8, height: 8)
-                                Text(exception.name ?? "Unnamed")
-                                Spacer()
-                                if let from = exception.from, let to = exception.to {
-                                    Text("\(from) - \(to)")
-                                        .foregroundStyle(.secondary)
-                                        .font(.caption)
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 4) {
+                            ForEach(exceptions) { exception in
+                                HStack {
+                                    Circle()
+                                        .fill(exception.isWorking ? ColorTheme.workingDay : ColorTheme.nonWorkingDay)
+                                        .frame(width: 8, height: 8)
+                                    Text(exception.name ?? "Unnamed")
+                                        .lineLimit(1)
+                                    Spacer()
+                                    if let from = exception.from, let to = exception.to {
+                                        Text("\(from) - \(to)")
+                                            .foregroundStyle(.secondary)
+                                            .font(.caption)
+                                            .lineLimit(1)
+                                    }
                                 }
                             }
                         }
+                        .padding(4)
                     }
-                    .padding(4)
+                    .frame(maxHeight: 180)
                 }
             }
 

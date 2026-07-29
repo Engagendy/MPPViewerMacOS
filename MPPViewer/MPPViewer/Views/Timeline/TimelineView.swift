@@ -46,6 +46,7 @@ struct TimelineView: View {
                             .font(.caption)
                     }
                     .toggleStyle(.button)
+                    .hoverHighlight()
                     .buttonStyle(.bordered)
                     .tint(criticalPathOnly ? .red : nil)
                     .help("Highlights critical timeline items and dims non-critical items.")
@@ -55,6 +56,7 @@ struct TimelineView: View {
                             .font(.caption)
                     }
                     .toggleStyle(.button)
+                    .hoverHighlight()
                     .buttonStyle(.bordered)
                     .tint(showDependencyLinks ? .blue : nil)
                     .help("Shows predecessor and successor dependency links between visible timeline items.")
@@ -64,6 +66,7 @@ struct TimelineView: View {
                             .font(.caption)
                     }
                     .toggleStyle(.button)
+                    .hoverHighlight()
                     .buttonStyle(.bordered)
                     .tint(showBaseline ? .gray : nil)
 
@@ -103,8 +106,11 @@ struct TimelineView: View {
                 if data.items.isEmpty {
                     ContentUnavailableView("No Summary Tasks", systemImage: "rectangle.split.3x1",
                         description: Text("No summary tasks or milestones found."))
+                        .topAlignedEmptyState()
                 } else {
-                    let timelineWidth = CGFloat(data.totalDays) * pixelsPerDay
+                    // Trailing area past the last activity keeps the final
+                    // phase/milestone labels readable, matching the Gantt view.
+                    let timelineWidth = CGFloat(data.totalDays) * pixelsPerDay + 420
                     let contentHeight = CGFloat(data.items.count) * rowHeight
 
                     GeometryReader { geometry in

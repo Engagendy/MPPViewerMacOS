@@ -79,12 +79,14 @@ struct DiffView: View {
                     systemImage: "arrow.triangle.2.circlepath",
                     description: Text("Select a baseline .mpp file to compare against the current project.")
                 )
+                .topAlignedEmptyState()
             } else if diffs.isEmpty {
                 ContentUnavailableView(
                     "No Differences",
                     systemImage: "checkmark.circle",
                     description: Text("The two project files are identical.")
                 )
+                .topAlignedEmptyState()
             } else {
                 VStack(spacing: 0) {
                     if let diffSummary {

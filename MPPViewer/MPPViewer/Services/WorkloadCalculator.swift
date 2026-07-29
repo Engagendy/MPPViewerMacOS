@@ -42,6 +42,9 @@ enum WorkloadCalculator {
             guard let uid = cal.uniqueID else { return nil }
             return (uid, cal)
         })
+        let assignmentsByResourceID = Dictionary(grouping: assignments) { assignment in
+            assignment.resourceUniqueID ?? 0
+        }
 
         // Resolve parent calendars: build effective working day lookup per calendar
         let defaultCal = defaultCalendarID.flatMap { calendarsByID[$0] }
@@ -54,7 +57,7 @@ enum WorkloadCalculator {
         for resource in resources {
             guard resource.type?.lowercased() == "work" || resource.type == nil else { continue }
 
-            let resourceAssignments = assignments.filter { $0.resourceUniqueID == resource.uniqueID }
+            let resourceAssignments = assignmentsByResourceID[resource.uniqueID ?? 0] ?? []
             guard !resourceAssignments.isEmpty else { continue }
 
             // Resolve resource's calendar: resource calendar → parent → default
@@ -75,6 +78,7 @@ enum WorkloadCalculator {
             )
 
             var weeklyLoads: [ResourceWeeklyLoad] = []
+            var taskWorkingDaysCache: [Int: Int] = [:]
 
             for (weekStart, weekEnd) in weeks {
                 var totalHours: Double = 0
@@ -98,13 +102,20 @@ enum WorkloadCalculator {
                     )
                     guard overlapWorkingDays > 0 else { continue }
 
-                    let taskWorkingDays = max(1, countWorkingDays(
-                        from: taskStart, to: taskFinish,
-                        projectCalendar: resourceCal,
-                        exceptionRanges: exceptionRanges,
-                        calendarsByID: calendarsByID,
-                        calendar: calendar
-                    ))
+                    let taskWorkingDays: Int
+                    if let cached = taskWorkingDaysCache[task.uniqueID] {
+                        taskWorkingDays = cached
+                    } else {
+                        let computed = max(1, countWorkingDays(
+                            from: taskStart, to: taskFinish,
+                            projectCalendar: resourceCal,
+                            exceptionRanges: exceptionRanges,
+                            calendarsByID: calendarsByID,
+                            calendar: calendar
+                        ))
+                        taskWorkingDaysCache[task.uniqueID] = computed
+                        taskWorkingDays = computed
+                    }
 
                     // Spread work evenly across working days
                     let totalWorkSeconds = Double(assignment.work ?? task.work ?? 0)
@@ -203,15 +214,20 @@ enum WorkloadCalculator {
         calendarsByID: [Int: ProjectCalendar],
         calendar: Calendar
     ) -> Int {
+        // Iterate calendar days whose start falls before `end`. Comparing against the
+        // exact `end` timestamp (rather than its start-of-day) keeps week boundaries
+        // (which land exactly on midnight) exclusive, while still counting the final
+        // day of a task that finishes during the working day (e.g. 17:00). Without
+        // this, a task's last working day is dropped and a task that starts and
+        // finishes on the same day contributes no work at all.
         var count = 0
         var date = calendar.startOfDay(for: start)
-        let endDay = calendar.startOfDay(for: end)
-        while date < endDay {
+        while date < end {
             let weekday = calendar.component(.weekday, from: date)
             if isWorkingDate(date, weekday: weekday, projectCalendar: projectCalendar, exceptionRanges: exceptionRanges, calendarsByID: calendarsByID, calendar: calendar) {
                 count += 1
             }
-            date = calendar.date(byAdding: .day, value: 1, to: date) ?? endDay
+            date = calendar.date(byAdding: .day, value: 1, to: date) ?? end
         }
         return count
     }

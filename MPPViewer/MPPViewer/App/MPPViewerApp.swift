@@ -57,6 +57,7 @@ struct MPPViewerApp: App {
     var body: some Scene {
         DocumentGroup(newDocument: PlanningDocument()) { file in
             ContentView(document: file.$document)
+                .saveFailureAlerts()
         }
         .modelContainer(modelContainer)
         .defaultSize(width: 1280, height: 820)

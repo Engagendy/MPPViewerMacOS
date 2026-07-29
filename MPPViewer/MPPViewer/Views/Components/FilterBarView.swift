@@ -38,30 +38,35 @@ struct FilterBarView: View {
                 // Toggles
                 Toggle("Critical", isOn: $criteria.criticalOnly)
                     .toggleStyle(.button)
+                    .hoverHighlight()
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                     .tint(criteria.criticalOnly ? .red : nil)
 
                 Toggle("Milestones", isOn: $criteria.milestoneOnly)
                     .toggleStyle(.button)
+                    .hoverHighlight()
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                     .tint(criteria.milestoneOnly ? .orange : nil)
 
                 Toggle("Flagged", isOn: $criteria.flaggedOnly)
                     .toggleStyle(.button)
+                    .hoverHighlight()
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                     .tint(criteria.flaggedOnly ? .orange : nil)
 
                 Toggle("Baseline Slip", isOn: $criteria.baselineSlippedOnly)
                     .toggleStyle(.button)
+                    .hoverHighlight()
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                     .tint(criteria.baselineSlippedOnly ? .red : nil)
 
                 Toggle("Linked", isOn: $criteria.hasDependenciesOnly)
                     .toggleStyle(.button)
+                    .hoverHighlight()
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                     .tint(criteria.hasDependenciesOnly ? .blue : nil)
@@ -85,7 +90,7 @@ struct FilterBarView: View {
                     Label("More", systemImage: showMore ? "chevron.up" : "chevron.down")
                         .font(.caption)
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.accessoryBar)
 
                 if criteria.isActive {
                     Button("Clear") {
@@ -127,7 +132,7 @@ struct FilterBarView: View {
                             criteria.dateRangeStart = nil
                             criteria.dateRangeEnd = nil
                         }
-                        .buttonStyle(.borderless)
+                        .buttonStyle(.accessoryBar)
                         .font(.caption)
                     }
 
@@ -135,18 +140,21 @@ struct FilterBarView: View {
 
                     Toggle("Annotated", isOn: $criteria.annotatedOnly)
                         .toggleStyle(.button)
+                        .hoverHighlight()
                         .buttonStyle(.bordered)
                         .controlSize(.small)
                         .tint(criteria.annotatedOnly ? .blue : nil)
 
                     Toggle("Open Issues", isOn: $criteria.unresolvedOnly)
                         .toggleStyle(.button)
+                        .hoverHighlight()
                         .buttonStyle(.bordered)
                         .controlSize(.small)
                         .tint(criteria.unresolvedOnly ? .orange : nil)
 
                     Toggle("Follow-Up", isOn: $criteria.followUpOnly)
                         .toggleStyle(.button)
+                        .hoverHighlight()
                         .buttonStyle(.bordered)
                         .controlSize(.small)
                         .tint(criteria.followUpOnly ? .red : nil)

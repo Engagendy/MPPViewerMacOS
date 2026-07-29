@@ -80,6 +80,8 @@ struct ScheduleView: View {
     @State private var criticalPathOnly: Bool = false
     @State private var showDependencyLinks: Bool = true
     @State private var showBaseline: Bool = false
+    @State private var searchDebounceWorkItem: DispatchWorkItem?
+    @State private var selectedScheduleTaskID: Int?
     private let rowHeight: CGFloat = 24
 
     private var visibleTasks: [ProjectTask] {
@@ -96,6 +98,10 @@ struct ScheduleView: View {
 
     private var timelineWidth: CGFloat {
         CGFloat(totalDays) * pixelsPerDay
+    }
+
+    private var chartScrollableWidth: CGFloat {
+        timelineWidth + 460
     }
 
     private var ganttHeaderHeight: CGFloat {
@@ -136,7 +142,7 @@ struct ScheduleView: View {
                     Button("Expand All") {
                         collapsedIDs.removeAll()
                     }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.accessoryBar)
                     .font(.caption)
                     .disabled(collapsedIDs.isEmpty)
 
@@ -145,7 +151,7 @@ struct ScheduleView: View {
                             collapsedIDs.insert(task.uniqueID)
                         }
                     }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.accessoryBar)
                     .font(.caption)
 
                     Divider().frame(height: 16)
@@ -155,6 +161,7 @@ struct ScheduleView: View {
                             .font(.caption)
                     }
                     .toggleStyle(.button)
+                    .hoverHighlight()
                     .buttonStyle(.bordered)
                     .tint(criticalPathOnly ? .red : nil)
                     .help("Highlights tasks marked critical by the imported schedule and dims non-critical tasks.")
@@ -164,6 +171,7 @@ struct ScheduleView: View {
                             .font(.caption)
                     }
                     .toggleStyle(.button)
+                    .hoverHighlight()
                     .buttonStyle(.bordered)
                     .tint(showDependencyLinks ? .blue : nil)
                     .help("Shows predecessor and successor dependency links between tasks.")
@@ -173,6 +181,7 @@ struct ScheduleView: View {
                             .font(.caption)
                     }
                     .toggleStyle(.button)
+                    .hoverHighlight()
                     .buttonStyle(.bordered)
                     .tint(showBaseline ? .gray : nil)
                     .help("Shows the saved baseline schedule as gray bars below the current bars, with start/finish variance badges.")
@@ -213,15 +222,9 @@ struct ScheduleView: View {
 
             if visibleTasks.isEmpty {
                 ContentUnavailableView("No Tasks", systemImage: "rectangle.split.2x1")
+                    .topAlignedEmptyState()
             } else {
-                HSplitView {
-                    // Left pane: task list
-                    taskListPane
-                        .frame(minWidth: 250, idealWidth: 350, maxWidth: 500)
-
-                    // Right pane: Gantt chart
-                    ganttPane
-                }
+                scheduleContent
             }
         }
         .onAppear {
@@ -231,63 +234,130 @@ struct ScheduleView: View {
             refreshDerivedContent()
         }
         .onChange(of: searchText) { _, _ in
-            refreshDerivedContent()
+            scheduleSearchRefresh()
         }
         .onChange(of: scheduleRefreshSignature) { _, _ in
             refreshDerivedContent()
         }
     }
 
-    // MARK: - Left Pane: Task List
+    // MARK: - Combined Schedule Content
 
-    private var taskListPane: some View {
+    private var taskListWidth: CGFloat { 470 }
+
+    /// Matches GanttChartView: trailing area past the last activity so bar
+    /// labels of the final tasks stay readable and the chart always has
+    /// horizontal room to scroll into.
+    private let timelineTrailingLabelWidth: CGFloat = 420
+
+    private var timelineScrollableWidth: CGFloat {
+        timelineWidth + timelineTrailingLabelWidth
+    }
+
+    /// Two panes side by side, each with its own native scroller: the task
+    /// list scrolls vertically on its own, and the timeline scrolls both
+    /// axes on its own. Pure SwiftUI, so it stays inside the safe area.
+    private var scheduleContent: some View {
         GeometryReader { geometry in
-            VStack(spacing: 0) {
-                // Column headers
-                HStack(spacing: 0) {
-                    Text("ID")
-                        .frame(width: 40, alignment: .leading)
-                    Text("Name")
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Text("Duration")
-                        .frame(width: 70, alignment: .trailing)
-                    Text("Start")
-                        .frame(width: 80, alignment: .trailing)
-                    Text("Finish")
-                        .frame(width: 80, alignment: .trailing)
-                    Text("% Done")
-                        .frame(width: 50, alignment: .trailing)
-                }
-                .font(.caption2)
-                .fontWeight(.semibold)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 8)
-                .frame(height: 28)
-                .background(Color(nsColor: .controlBackgroundColor))
+            let viewportWidth = max(geometry.size.width - taskListWidth - 1, 1)
+
+            HStack(spacing: 0) {
+                taskListPane
 
                 Divider()
 
-                GeometryReader { rowsGeometry in
-                    let rowsViewportHeight = max(0, rowsGeometry.size.height)
+                timelinePane
+            }
+            .onAppear {
+                timelineViewportWidth = viewportWidth
+                applyAutoFitIfNeeded()
+            }
+            .onChange(of: viewportWidth) { _, newWidth in
+                timelineViewportWidth = newWidth
+                applyAutoFitIfNeeded()
+            }
+            .onChange(of: totalDays) { _, _ in
+                applyAutoFitIfNeeded()
+            }
+        }
+    }
 
-                    LazyVStack(spacing: 0) {
-                        ForEach(Array(visibleTasks.enumerated()), id: \.element.uniqueID) { index, task in
-                            scheduleTaskRow(task: task, index: index)
-                        }
-                    }
-                    .frame(height: taskRowsContentHeight, alignment: .top)
-                    .offset(y: -clampedVerticalOffset(verticalScrollOffset, viewportHeight: rowsViewportHeight))
-                    .frame(width: rowsGeometry.size.width, height: rowsGeometry.size.height, alignment: .topLeading)
-                    .clipped()
-                    .overlay {
-                        ScheduleScrollWheelCapture { deltaY in
-                            scrollScheduleRows(by: deltaY, viewportHeight: rowsViewportHeight)
-                        }
+    private var taskListPane: some View {
+        VStack(spacing: 0) {
+            // Column headers stay pinned while the rows scroll below them.
+            HStack(spacing: 0) {
+                Text("ID")
+                    .frame(width: 40, alignment: .leading)
+                Text("Name")
+                    .frame(minWidth: 90, maxWidth: .infinity, alignment: .leading)
+                Text("Duration")
+                    .frame(width: 70, alignment: .trailing)
+                Text("Start")
+                    .frame(width: 80, alignment: .trailing)
+                Text("Finish")
+                    .frame(width: 80, alignment: .trailing)
+                Text("% Done")
+                    .frame(width: 50, alignment: .trailing)
+            }
+            .font(.caption2)
+            .fontWeight(.semibold)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 8)
+            .frame(height: 28)
+            .background(Color(nsColor: .controlBackgroundColor))
+
+            Divider()
+
+            ScrollView(.vertical, showsIndicators: true) {
+                LazyVStack(spacing: 0) {
+                    ForEach(Array(visibleTasks.enumerated()), id: \.element.uniqueID) { index, task in
+                        scheduleTaskRow(task: task, index: index)
                     }
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
+        .frame(width: taskListWidth, alignment: .topLeading)
+    }
+
+    private var timelinePane: some View {
+        BothAxesScrollView(
+            contentSize: CGSize(
+                width: timelineScrollableWidth,
+                height: ganttHeaderHeight + taskRowsContentHeight
+            )
+        ) {
+            VStack(alignment: .leading, spacing: 0) {
+                GanttHeaderView(
+                    dateRange: dateRange,
+                    pixelsPerDay: pixelsPerDay,
+                    totalWidth: timelineScrollableWidth
+                )
+                .frame(height: ganttHeaderHeight)
+
+                GanttCanvasView(
+                    tasks: visibleTasks,
+                    allTasks: project.tasksByID,
+                    rowIndexByTaskID: derivedContent.rowIndexByTaskID,
+                    startDate: dateRange.start,
+                    totalDays: totalDays,
+                    pixelsPerDay: pixelsPerDay,
+                    rowHeight: rowHeight,
+                    visibleRect: CGRect(
+                        x: 0,
+                        y: 0,
+                        width: timelineScrollableWidth,
+                        height: taskRowsContentHeight
+                    ),
+                    criticalPathOnly: criticalPathOnly,
+                    showBaseline: showBaseline,
+                    showDependencyLinks: showDependencyLinks,
+                    selectedTaskID: selectedScheduleTaskID,
+                    onSelectTask: { selectedScheduleTaskID = $0 }
+                )
+                .frame(width: timelineScrollableWidth, height: taskRowsContentHeight)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private func scheduleTaskRow(task: ProjectTask, index: Int) -> some View {
@@ -327,7 +397,7 @@ struct ScheduleView: View {
                     .foregroundStyle(task.critical == true ? .red : .primary)
                     .lineLimit(1)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(minWidth: 90, maxWidth: .infinity, alignment: .leading)
 
             Text(task.durationDisplay)
                 .frame(width: 70, alignment: .trailing)
@@ -345,9 +415,14 @@ struct ScheduleView: View {
         .font(.system(size: 11))
         .padding(.horizontal, 8)
         .frame(height: rowHeight)
-        .background(index % 2 == 0 ? Color.gray.opacity(0.04) : Color.clear)
+        .background(
+            selectedScheduleTaskID == task.uniqueID
+                ? Color.accentColor.opacity(0.16)
+                : (index % 2 == 0 ? Color.gray.opacity(0.04) : Color.clear)
+        )
         .contentShape(Rectangle())
         .onTapGesture {
+            selectedScheduleTaskID = task.uniqueID
             if isSummaryWithChildren {
                 if isCollapsed {
                     collapsedIDs.remove(task.uniqueID)
@@ -359,78 +434,6 @@ struct ScheduleView: View {
     }
 
     // MARK: - Right Pane: Gantt
-
-    private var ganttPane: some View {
-        GeometryReader { geometry in
-            let viewportWidth = max(geometry.size.width, 1)
-            let bodyViewportHeight = max(0, geometry.size.height - ganttHeaderHeight)
-
-            ScrollView(.horizontal) {
-                VStack(alignment: .leading, spacing: 0) {
-                    GanttHeaderView(
-                        dateRange: dateRange,
-                        pixelsPerDay: pixelsPerDay,
-                        totalWidth: timelineWidth
-                    )
-
-                    ZStack(alignment: .topLeading) {
-                        GanttCanvasView(
-                            tasks: visibleTasks,
-                            allTasks: project.tasksByID,
-                            rowIndexByTaskID: derivedContent.rowIndexByTaskID,
-                            startDate: dateRange.start,
-                            totalDays: totalDays,
-                            pixelsPerDay: pixelsPerDay,
-                            rowHeight: rowHeight,
-                            visibleRect: CGRect(
-                                x: horizontalScrollOffset,
-                                y: clampedVerticalOffset(verticalScrollOffset, viewportHeight: bodyViewportHeight),
-                                width: viewportWidth,
-                                height: bodyViewportHeight
-                            ),
-                            criticalPathOnly: criticalPathOnly,
-                            showBaseline: showBaseline,
-                            showDependencyLinks: showDependencyLinks
-                        )
-                        .frame(width: timelineWidth, height: taskRowsContentHeight)
-                        .offset(y: -clampedVerticalOffset(verticalScrollOffset, viewportHeight: bodyViewportHeight))
-                    }
-                    .frame(width: timelineWidth, height: bodyViewportHeight, alignment: .topLeading)
-                    .clipped()
-                    .overlay {
-                        ScheduleScrollWheelCapture { deltaY in
-                            scrollScheduleRows(by: deltaY, viewportHeight: bodyViewportHeight)
-                        }
-                    }
-                }
-                .frame(minHeight: geometry.size.height, alignment: .topLeading)
-                .background(
-                    GeometryReader { proxy in
-                        Color.clear.preference(
-                            key: ScheduleHorizontalOffsetPreferenceKey.self,
-                            value: max(0, -proxy.frame(in: .named("ScheduleHorizontalScrollViewport")).minX)
-                        )
-                    }
-                )
-            }
-            .coordinateSpace(name: "ScheduleHorizontalScrollViewport")
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .onPreferenceChange(ScheduleHorizontalOffsetPreferenceKey.self) { offset in
-                horizontalScrollOffset = offset
-            }
-            .onAppear {
-                timelineViewportWidth = viewportWidth
-                applyAutoFitIfNeeded()
-            }
-            .onChange(of: viewportWidth) { _, newWidth in
-                timelineViewportWidth = newWidth
-                applyAutoFitIfNeeded()
-            }
-            .onChange(of: totalDays) { _, _ in
-                applyAutoFitIfNeeded()
-            }
-        }
-    }
 
     // MARK: - Helpers
 
@@ -474,6 +477,15 @@ struct ScheduleView: View {
             verticalScrollOffset = clampedVerticalOffset(verticalScrollOffset, viewportHeight: 1)
         }
     }
+
+    private func scheduleSearchRefresh() {
+        searchDebounceWorkItem?.cancel()
+        let workItem = DispatchWorkItem {
+            refreshDerivedContent()
+        }
+        searchDebounceWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: workItem)
+    }
 }
 
 private struct ScheduleScrollWheelCapture: NSViewRepresentable {
@@ -501,5 +513,78 @@ private struct ScheduleScrollWheelCapture: NSViewRepresentable {
                 super.scrollWheel(with: event)
             }
         }
+    }
+}
+
+/// AppKit-backed scroll view with genuine two-axis native scrolling.
+/// SwiftUI's ScrollView([.horizontal, .vertical]) fails to provide a working
+/// horizontal scroller in this layout on macOS 26, so the timeline pane hosts
+/// its SwiftUI content inside an NSScrollView instead.
+private struct BothAxesScrollView<Content: View>: NSViewRepresentable {
+    private let contentSize: CGSize
+    private let content: Content
+
+    init(contentSize: CGSize, @ViewBuilder content: () -> Content) {
+        self.contentSize = contentSize
+        self.content = content()
+    }
+
+    final class Coordinator {
+        var hosting: NSHostingView<AnyView>?
+        var document: FlippedDocumentView?
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scrollView = NSScrollView()
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = true
+        scrollView.autohidesScrollers = true
+        scrollView.drawsBackground = false
+
+        let document = FlippedDocumentView()
+        let hosting = NSHostingView(rootView: anchoredContent)
+        hosting.translatesAutoresizingMaskIntoConstraints = false
+        document.addSubview(hosting)
+        NSLayoutConstraint.activate([
+            hosting.topAnchor.constraint(equalTo: document.topAnchor),
+            hosting.leadingAnchor.constraint(equalTo: document.leadingAnchor),
+            hosting.trailingAnchor.constraint(equalTo: document.trailingAnchor),
+            hosting.bottomAnchor.constraint(equalTo: document.bottomAnchor)
+        ])
+        document.setFrameSize(contentSize)
+        scrollView.documentView = document
+
+        context.coordinator.hosting = hosting
+        context.coordinator.document = document
+        return scrollView
+    }
+
+    func updateNSView(_ nsView: NSScrollView, context: Context) {
+        guard let hosting = context.coordinator.hosting,
+              let document = context.coordinator.document else { return }
+        hosting.rootView = anchoredContent
+        document.setFrameSize(contentSize)
+    }
+
+    /// The hosting view centers its root view when its bounds exceed the
+    /// content's fixed size (which happens transiently while auto-fit
+    /// settles); anchoring top-leading keeps the chart pinned to the origin.
+    private var anchoredContent: AnyView {
+        AnyView(
+            content.frame(
+                maxWidth: .infinity,
+                maxHeight: .infinity,
+                alignment: .topLeading
+            )
+        )
+    }
+
+    /// Anchors the document at the top-left so scrolling starts at the top.
+    final class FlippedDocumentView: NSView {
+        override var isFlipped: Bool { true }
     }
 }

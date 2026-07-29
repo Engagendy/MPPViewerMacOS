@@ -342,7 +342,7 @@ struct TaskDetailView: View {
                                 Button("Clear Annotation") {
                                     clearReviewAnnotation()
                                 }
-                                .buttonStyle(.borderless)
+                                .buttonStyle(.accessoryBar)
                                 .foregroundStyle(.red)
                             }
                         }
@@ -866,7 +866,7 @@ private struct RelationshipBadge: View {
                     .stroke(color.opacity(0.35), lineWidth: 0.5)
             )
         }
-        .buttonStyle(.borderless)
+        .buttonStyle(.accessoryBar)
         .disabled(action == nil)
     }
 }

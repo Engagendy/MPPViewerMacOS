@@ -15,4 +15,10 @@ import Foundation
     ///   - fileExtension: Original file extension, used only for the temporary staged filename
     ///   - reply: Callback with optional JSON data and optional error message
     func convertMPPData(_ inputData: Data, fileExtension: String, reply: @escaping (Data?, String?) -> Void)
+
+    /// Export a native-plan interchange JSON payload to MSPDI (MS Project XML) data.
+    /// - Parameters:
+    ///   - planJSON: Interchange JSON describing the native plan
+    ///   - reply: Callback with optional MSPDI XML data and optional error message
+    func exportPlanToMSPDI(_ planJSON: Data, reply: @escaping (Data?, String?) -> Void)
 }

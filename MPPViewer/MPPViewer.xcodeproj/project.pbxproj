@@ -45,6 +45,10 @@
 			A10000010000000000000091 /* AnyCodable.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000091 /* AnyCodable.swift */; };
 		A10000010000000000000092 /* PrintManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000092 /* PrintManager.swift */; };
 		A10000010000000000136 /* SafeCollection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000136 /* SafeCollection.swift */; };
+		A10000010000000000137 /* SaveStatusCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000137 /* SaveStatusCenter.swift */; };
+		A10000010000000000138 /* MSPDIExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000138 /* MSPDIExporter.swift */; };
+		A10000010000000000139 /* HoverHighlight.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000139 /* HoverHighlight.swift */; };
+		A10000010000000000140 /* FlowLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000140 /* FlowLayout.swift */; };
 		A10000010000000000000110 /* BaselineVariance.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000110 /* BaselineVariance.swift */; };
 		A10000010000000000000120 /* ReviewNotesStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000120 /* ReviewNotesStore.swift */; };
 		A10000010000000000000121 /* ScenarioAnalysis.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000121 /* ScenarioAnalysis.swift */; };
@@ -59,6 +63,7 @@
 		A10000010000000000000133 /* NativeCalendarEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000133 /* NativeCalendarEditorView.swift */; };
 		A10000010000000000000135 /* PortfolioModelContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000135 /* PortfolioModelContainer.swift */; };
 		B10000010000000000000001 /* PerformanceHelpersTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000010000000000000001 /* PerformanceHelpersTests.swift */; };
+		B100000100000000000000AA /* CoreCalculationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000100000000000000AA /* CoreCalculationTests.swift */; };
 		B10000010000000000000002 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B20000010000000000000003 /* XCTest.framework */; };
 /* End PBXBuildFile section */
 
@@ -147,7 +152,12 @@
 		A20000010000000000000133 /* NativeCalendarEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeCalendarEditorView.swift; sourceTree = "<group>"; };
 		A20000010000000000000135 /* PortfolioModelContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortfolioModelContainer.swift; sourceTree = "<group>"; };
 		A20000010000000000136 /* SafeCollection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafeCollection.swift; sourceTree = "<group>"; };
+		A20000010000000000137 /* SaveStatusCenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaveStatusCenter.swift; sourceTree = "<group>"; };
+		A20000010000000000138 /* MSPDIExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MSPDIExporter.swift; sourceTree = "<group>"; };
+		A20000010000000000139 /* HoverHighlight.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HoverHighlight.swift; sourceTree = "<group>"; };
+		A20000010000000000140 /* FlowLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowLayout.swift; sourceTree = "<group>"; };
 		B20000010000000000000001 /* PerformanceHelpersTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerformanceHelpersTests.swift; sourceTree = "<group>"; };
+		B200000100000000000000AA /* CoreCalculationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreCalculationTests.swift; sourceTree = "<group>"; };
 		B20000010000000000000002 /* MPPViewerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MPPViewerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		B20000010000000000000003 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = System/Library/Frameworks/XCTest.framework; sourceTree = SDKROOT; };
 		A30000010000000000000001 /* MPPViewer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MPPViewer.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -311,6 +321,10 @@
 				A20000010000000000000018 /* DurationFormatting.swift */,
 				A20000010000000000000019 /* ColorTheme.swift */,
 				A20000010000000000136 /* SafeCollection.swift */,
+				A20000010000000000137 /* SaveStatusCenter.swift */,
+				A20000010000000000138 /* MSPDIExporter.swift */,
+				A20000010000000000139 /* HoverHighlight.swift */,
+				A20000010000000000140 /* FlowLayout.swift */,
 				A20000010000000000000070 /* PDFExporter.swift */,
 				A20000010000000000000090 /* CSVExporter.swift */,
 				A20000010000000000000092 /* PrintManager.swift */,
@@ -436,6 +450,7 @@
 			isa = PBXGroup;
 			children = (
 				B20000010000000000000001 /* PerformanceHelpersTests.swift */,
+				B200000100000000000000AA /* CoreCalculationTests.swift */,
 				B20000010000000000000003 /* XCTest.framework */,
 			);
 			path = MPPViewerTests;
@@ -643,6 +658,10 @@
 				A10000010000000000000091 /* AnyCodable.swift in Sources */,
 				A10000010000000000000092 /* PrintManager.swift in Sources */,
 				A10000010000000000136 /* SafeCollection.swift in Sources */,
+				A10000010000000000137 /* SaveStatusCenter.swift in Sources */,
+				A10000010000000000138 /* MSPDIExporter.swift in Sources */,
+				A10000010000000000139 /* HoverHighlight.swift in Sources */,
+				A10000010000000000140 /* FlowLayout.swift in Sources */,
 				A10000010000000000000110 /* BaselineVariance.swift in Sources */,
 				A10000010000000000000120 /* ReviewNotesStore.swift in Sources */,
 				A10000010000000000000121 /* ScenarioAnalysis.swift in Sources */,
@@ -663,6 +682,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				B10000010000000000000001 /* PerformanceHelpersTests.swift in Sources */,
+				B100000100000000000000AA /* CoreCalculationTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -688,7 +708,7 @@
 				CODE_SIGN_ENTITLEMENTS = MPPConverterXPC/MPPConverterXPC.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 224;
+				CURRENT_PROJECT_VERSION = 226;
 				DEVELOPMENT_TEAM = 7JM77223V5;
 				ENABLE_APP_SANDBOX = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -697,7 +717,7 @@
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 2.2.25;
+				MARKETING_VERSION = 2.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mppviewer.MPPConverterXPC;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -716,7 +736,7 @@
 				CODE_SIGN_ENTITLEMENTS = MPPConverterXPC/MPPConverterXPC.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 224;
+				CURRENT_PROJECT_VERSION = 226;
 				DEVELOPMENT_TEAM = 7JM77223V5;
 				ENABLE_APP_SANDBOX = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -725,7 +745,7 @@
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 2.2.25;
+				MARKETING_VERSION = 2.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mppviewer.MPPConverterXPC;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -862,7 +882,7 @@
 				CODE_SIGN_ENTITLEMENTS = MPPViewer/MPPViewer.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 224;
+				CURRENT_PROJECT_VERSION = 226;
 				DEVELOPMENT_TEAM = 7JM77223V5;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -876,7 +896,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2.2.25;
+				MARKETING_VERSION = 2.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mppviewer.MPPViewer;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -892,7 +912,7 @@
 				CODE_SIGN_ENTITLEMENTS = MPPViewer/MPPViewer.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 224;
+				CURRENT_PROJECT_VERSION = 226;
 				DEVELOPMENT_TEAM = 7JM77223V5;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -906,7 +926,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2.2.25;
+				MARKETING_VERSION = 2.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mppviewer.MPPViewer;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;

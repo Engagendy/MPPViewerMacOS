@@ -132,7 +132,7 @@ struct TaskTableView: View {
                         Button("Expand All") {
                             collapsedIDs.removeAll()
                         }
-                        .buttonStyle(.borderless)
+                        .buttonStyle(.accessoryBar)
                         .disabled(collapsedIDs.isEmpty)
 
                         Button("Collapse All") {
@@ -140,7 +140,7 @@ struct TaskTableView: View {
                                 collapsedIDs.insert(task.uniqueID)
                             }
                         }
-                        .buttonStyle(.borderless)
+                        .buttonStyle(.accessoryBar)
 
                         Divider().frame(height: 16)
 
@@ -177,7 +177,7 @@ struct TaskTableView: View {
                             } label: {
                                 toolbarLabel("Columns", systemImage: "slider.horizontal.3", compact: compactToolbar)
                             }
-                            .buttonStyle(.borderless)
+                            .buttonStyle(.accessoryBar)
                             .popover(isPresented: $showColumnPicker) {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text("Custom Columns")
@@ -214,7 +214,7 @@ struct TaskTableView: View {
                         } label: {
                             toolbarLabel("Export PDF", systemImage: "arrow.down.doc", compact: compactToolbar)
                         }
-                        .buttonStyle(.borderless)
+                        .buttonStyle(.accessoryBar)
                         .help("Export task list as PDF")
 
                         Button {
@@ -228,7 +228,7 @@ struct TaskTableView: View {
                         } label: {
                             toolbarLabel("Export CSV", systemImage: "tablecells", compact: compactToolbar)
                         }
-                        .buttonStyle(.borderless)
+                        .buttonStyle(.accessoryBar)
                         .help("Export task list as CSV")
 
                         Button {
@@ -242,7 +242,7 @@ struct TaskTableView: View {
                         } label: {
                             toolbarLabel("Export Excel", systemImage: "tablecells.badge.ellipsis", compact: compactToolbar)
                         }
-                        .buttonStyle(.borderless)
+                        .buttonStyle(.accessoryBar)
                         .help("Export task list as an Excel-compatible spreadsheet")
 
                         Button {
@@ -250,7 +250,7 @@ struct TaskTableView: View {
                         } label: {
                             toolbarLabel("Print", systemImage: "printer", compact: compactToolbar)
                         }
-                        .buttonStyle(.borderless)
+                        .buttonStyle(.accessoryBar)
                         .help("Print task list")
 
                         if selectedTaskID != nil {
@@ -260,7 +260,7 @@ struct TaskTableView: View {
                             } label: {
                                 Image(systemName: "sidebar.trailing")
                             }
-                            .buttonStyle(.borderless)
+                            .buttonStyle(.accessoryBar)
                             .help("Hide inspector")
                         }
                     }
@@ -274,7 +274,7 @@ struct TaskTableView: View {
                             systemImage: "line.3.horizontal.decrease.circle",
                             description: Text(emptyStateDescription)
                         )
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .topAlignedEmptyState()
                     } else {
                         Table(of: ProjectTask.self) {
                         // Flag column
@@ -290,7 +290,7 @@ struct TaskTableView: View {
                                     .font(.caption2)
                                     .foregroundStyle(flaggedTaskIDs.contains(task.uniqueID) ? .orange : .secondary.opacity(0.4))
                             }
-                            .buttonStyle(.borderless)
+                            .buttonStyle(.accessoryBar)
                         }
                         .width(24)
 

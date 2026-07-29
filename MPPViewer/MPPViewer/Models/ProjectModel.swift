@@ -256,7 +256,7 @@ final class ProjectTask: Codable, Identifiable {
         init?(intValue: Int) { self.stringValue = "\(intValue)"; self.intValue = intValue }
     }
 
-    private static let customFieldPattern = try! NSRegularExpression(pattern: "^(text|number|cost|flag|date|start|finish|duration|outline_code|enterprise_custom_field)\\d+$")
+    private static let customFieldPattern = try? NSRegularExpression(pattern: "^(text|number|cost|flag|date|start|finish|duration|outline_code|enterprise_custom_field)\\d+$")
 
     init(
         uniqueID: Int,
@@ -410,7 +410,7 @@ final class ProjectTask: Codable, Identifiable {
         for key in dynamicContainer.allKeys {
             guard !knownKeys.contains(key.stringValue) else { continue }
             let range = NSRange(key.stringValue.startIndex..., in: key.stringValue)
-            if Self.customFieldPattern.firstMatch(in: key.stringValue, range: range) != nil {
+            if Self.customFieldPattern?.firstMatch(in: key.stringValue, range: range) != nil {
                 if let val = try? dynamicContainer.decode(AnyCodable.self, forKey: key) {
                     customs[key.stringValue] = val
                 }
@@ -494,6 +494,17 @@ struct ProjectResource: Codable, Identifiable {
         case guid
     }
 
+    enum NativeCodingKeys: String, CodingKey {
+        case uniqueID
+        case calendarUniqueID
+        case maxUnits
+        case standardRate
+        case overtimeRate
+        case costPerUse
+        case emailAddress
+        case accrueAt
+    }
+
     init(
         uniqueID: Int?,
         id: Int?,
@@ -528,6 +539,40 @@ struct ProjectResource: Codable, Identifiable {
         self.accrueAt = accrueAt
         self.active = active
         self.guid = guid
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let nativeContainer = try decoder.container(keyedBy: NativeCodingKeys.self)
+
+        let decodedID = try container.decodeIfPresent(Int.self, forKey: .id)
+        uniqueID = try container.decodeIfPresent(Int.self, forKey: .uniqueID) ?? decodedID
+        id = decodedID
+        name = try container.decodeIfPresent(String.self, forKey: .name)
+        type = try container.decodeIfPresent(String.self, forKey: .type)
+        maxUnits = try container.decodeIfPresent(Double.self, forKey: .maxUnits)
+            ?? nativeContainer.decodeIfPresent(Double.self, forKey: .maxUnits)
+        let nativeStandardRate = try nativeContainer.decodeIfPresent(Double.self, forKey: .standardRate)
+        let nativeOvertimeRate = try nativeContainer.decodeIfPresent(Double.self, forKey: .overtimeRate)
+        let nativeCostPerUse = try nativeContainer.decodeIfPresent(Double.self, forKey: .costPerUse)
+        _standardRate = (try container.decodeIfPresent(FlexibleDouble.self, forKey: ._standardRate))
+            ?? FlexibleDouble(value: nativeStandardRate)
+        _overtimeRate = (try container.decodeIfPresent(FlexibleDouble.self, forKey: ._overtimeRate))
+            ?? FlexibleDouble(value: nativeOvertimeRate)
+        _costPerUse = (try container.decodeIfPresent(FlexibleDouble.self, forKey: ._costPerUse))
+            ?? FlexibleDouble(value: nativeCostPerUse)
+        emailAddress = try container.decodeIfPresent(String.self, forKey: .emailAddress)
+            ?? nativeContainer.decodeIfPresent(String.self, forKey: .emailAddress)
+        group = try container.decodeIfPresent(String.self, forKey: .group)
+        initials = try container.decodeIfPresent(String.self, forKey: .initials)
+        notes = try container.decodeIfPresent(String.self, forKey: .notes)
+        calendarUniqueID = try container.decodeIfPresent(Int.self, forKey: .calendarUniqueID)
+            ?? nativeContainer.decodeIfPresent(Int.self, forKey: .calendarUniqueID)
+        accrueAt = try container.decodeIfPresent(String.self, forKey: .accrueAt)
+            ?? nativeContainer.decodeIfPresent(String.self, forKey: .accrueAt)
+        active = try container.decodeIfPresent(Bool.self, forKey: .active)
+        guid = try container.decodeIfPresent(String.self, forKey: .guid)
+            ?? nativeContainer.decodeIfPresent(String.self, forKey: .uniqueID)
     }
 }
 
@@ -590,6 +635,17 @@ struct ResourceAssignment: Codable, Identifiable {
         case guid
     }
 
+    enum NativeCodingKeys: String, CodingKey {
+        case id
+        case taskID
+        case resourceID
+        case units
+        case workSeconds
+        case actualWorkSeconds
+        case remainingWorkSeconds
+        case uniqueID
+    }
+
     init(
         uniqueID: Int?,
         taskUniqueID: Int?,
@@ -614,6 +670,31 @@ struct ResourceAssignment: Codable, Identifiable {
         self.finish = finish
         self.cost = cost
         self.guid = guid
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let nativeContainer = try decoder.container(keyedBy: NativeCodingKeys.self)
+
+        uniqueID = try container.decodeIfPresent(Int.self, forKey: .uniqueID)
+            ?? nativeContainer.decodeIfPresent(Int.self, forKey: .id)
+        taskUniqueID = try container.decodeIfPresent(Int.self, forKey: .taskUniqueID)
+            ?? nativeContainer.decodeIfPresent(Int.self, forKey: .taskID)
+        resourceUniqueID = try container.decodeIfPresent(Int.self, forKey: .resourceUniqueID)
+            ?? nativeContainer.decodeIfPresent(Int.self, forKey: .resourceID)
+        assignmentUnits = try container.decodeIfPresent(Double.self, forKey: .assignmentUnits)
+            ?? nativeContainer.decodeIfPresent(Double.self, forKey: .units)
+        work = try container.decodeIfPresent(Int.self, forKey: .work)
+            ?? nativeContainer.decodeIfPresent(Int.self, forKey: .workSeconds)
+        actualWork = try container.decodeIfPresent(Int.self, forKey: .actualWork)
+            ?? nativeContainer.decodeIfPresent(Int.self, forKey: .actualWorkSeconds)
+        remainingWork = try container.decodeIfPresent(Int.self, forKey: .remainingWork)
+            ?? nativeContainer.decodeIfPresent(Int.self, forKey: .remainingWorkSeconds)
+        start = try container.decodeIfPresent(String.self, forKey: .start)
+        finish = try container.decodeIfPresent(String.self, forKey: .finish)
+        cost = try container.decodeIfPresent(Double.self, forKey: .cost)
+        guid = try container.decodeIfPresent(String.self, forKey: .guid)
+            ?? nativeContainer.decodeIfPresent(String.self, forKey: .uniqueID)
     }
 }
 

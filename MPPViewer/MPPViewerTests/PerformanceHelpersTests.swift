@@ -25,6 +25,301 @@ final class PerformanceHelpersTests: XCTestCase {
     }
 
     @MainActor
+    func testPortfolioProjectSynchronizerDeletesRemovedChildren() throws {
+        var nativePlan = NativeProjectPlan.empty()
+        var resource = nativePlan.makeResource(name: "Temporary Resource")
+        resource.uniqueID = UUID()
+        nativePlan.resources = [resource]
+
+        var task = nativePlan.makeTask(name: "Temporary Task")
+        task.uniqueID = UUID()
+        nativePlan.tasks = [task]
+        nativePlan.assignments = [
+            NativePlanAssignment(
+                id: 1,
+                taskID: task.id,
+                resourceID: resource.id,
+                units: 100,
+                workSeconds: 3600,
+                actualWorkSeconds: nil,
+                remainingWorkSeconds: nil,
+                overtimeWorkSeconds: nil,
+                notes: "",
+                uniqueID: UUID()
+            )
+        ]
+
+        let container = try makeInMemoryPortfolioContainer()
+        let context = ModelContext(container)
+        _ = try PortfolioProjectSynchronizer.upsert(nativePlan: nativePlan, in: context)
+
+        nativePlan.resources = []
+        nativePlan.tasks = []
+        nativePlan.assignments = []
+        _ = try PortfolioProjectSynchronizer.upsert(nativePlan: nativePlan, in: context)
+
+        XCTAssertEqual(try context.fetch(FetchDescriptor<PortfolioPlanResource>()).count, 0)
+        XCTAssertEqual(try context.fetch(FetchDescriptor<PortfolioPlanTask>()).count, 0)
+        XCTAssertEqual(try context.fetch(FetchDescriptor<PortfolioPlanAssignment>()).count, 0)
+    }
+
+    @MainActor
+    func testPortfolioProjectSynchronizerReusesChildrenWhenNativeUUIDsChange() throws {
+        var nativePlan = NativeProjectPlan.empty()
+        nativePlan.resources = [nativePlan.makeResource(name: "Original Resource")]
+        nativePlan.tasks = [nativePlan.makeTask(name: "Original Task")]
+        nativePlan.assignments = [
+            NativePlanAssignment(
+                id: 1,
+                taskID: nativePlan.tasks[0].id,
+                resourceID: nativePlan.resources[0].id,
+                units: 100,
+                workSeconds: 3600,
+                actualWorkSeconds: nil,
+                remainingWorkSeconds: nil,
+                overtimeWorkSeconds: nil,
+                notes: "",
+                uniqueID: UUID()
+            )
+        ]
+
+        let container = try makeInMemoryPortfolioContainer()
+        let context = ModelContext(container)
+        let persistedPlan = try PortfolioProjectSynchronizer.upsert(nativePlan: nativePlan, in: context)
+        let originalResource = try XCTUnwrap(persistedPlan.resources.first)
+        let originalTask = try XCTUnwrap(persistedPlan.tasks.first)
+        let originalAssignment = try XCTUnwrap(originalTask.assignments.first)
+
+        nativePlan.resources[0].uniqueID = UUID()
+        nativePlan.resources[0].name = "Updated Resource"
+        nativePlan.tasks[0].uniqueID = UUID()
+        nativePlan.tasks[0].name = "Updated Task"
+        nativePlan.assignments[0].uniqueID = UUID()
+        nativePlan.assignments[0].notes = "Updated assignment"
+
+        let updatedPlan = try PortfolioProjectSynchronizer.upsert(nativePlan: nativePlan, in: context)
+
+        XCTAssertTrue(updatedPlan.resources.contains { $0 === originalResource })
+        XCTAssertTrue(updatedPlan.tasks.contains { $0 === originalTask })
+        XCTAssertTrue(updatedPlan.tasks.flatMap(\.assignments).contains { $0 === originalAssignment })
+        XCTAssertEqual(originalResource.uniqueID, nativePlan.resources[0].uniqueID)
+        XCTAssertEqual(originalResource.name, "Updated Resource")
+        XCTAssertEqual(originalTask.uniqueID, nativePlan.tasks[0].uniqueID)
+        XCTAssertEqual(originalTask.name, "Updated Task")
+        XCTAssertEqual(originalAssignment.uniqueID, nativePlan.assignments[0].uniqueID)
+        XCTAssertEqual(originalAssignment.notes, "Updated assignment")
+    }
+
+    @MainActor
+    func testDownloadedSDPPlanPersistsWhenFixtureAvailable() throws {
+        let sdpURL = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Downloads", isDirectory: true)
+            .appendingPathComponent("SDP.mppplan")
+
+        guard FileManager.default.fileExists(atPath: sdpURL.path) else {
+            throw XCTSkip("No downloaded SDP.mppplan fixture available.")
+        }
+
+        let data = try Data(contentsOf: sdpURL)
+        let nativePlan = try NativeProjectPlan.decode(from: data)
+        guard !nativePlan.tasks.isEmpty else {
+            throw XCTSkip("Downloaded SDP.mppplan fixture is currently an empty recovered document snapshot.")
+        }
+
+        let container = try makeInMemoryPortfolioContainer()
+        let context = ModelContext(container)
+
+        let persistedPlan = try PortfolioProjectSynchronizer.upsert(nativePlan: nativePlan, in: context)
+        let taskIDs = Set(nativePlan.tasks.map(\.id))
+        let validAssignmentCount = nativePlan.assignments.filter { taskIDs.contains($0.taskID) }.count
+
+        XCTAssertEqual(persistedPlan.portfolioID, nativePlan.portfolioID)
+        XCTAssertEqual(persistedPlan.tasks.count, nativePlan.tasks.count)
+        XCTAssertEqual(persistedPlan.resources.count, nativePlan.resources.count)
+        XCTAssertEqual(persistedPlan.tasks.flatMap(\.assignments).count, validAssignmentCount)
+        XCTAssertEqual(try context.fetch(FetchDescriptor<PortfolioPlanAssignment>()).count, validAssignmentCount)
+    }
+
+    @MainActor
+    func testStoredProjectionFeedsWorkloadAndCalendars() throws {
+        let nativePlan = try loadSampleNativePlan()
+        let container = try makeInMemoryPortfolioContainer()
+        let context = ModelContext(container)
+        let persistedPlan = try PortfolioProjectSynchronizer.upsert(nativePlan: nativePlan, in: context)
+
+        let storedProjection = try persistedPlan.asNativePlan(in: context)
+        XCTAssertEqual(storedProjection.tasks.count, nativePlan.tasks.count)
+        XCTAssertEqual(storedProjection.resources.count, nativePlan.resources.count)
+        XCTAssertEqual(storedProjection.assignments.count, nativePlan.assignments.count)
+        XCTAssertEqual(storedProjection.calendars.count, nativePlan.calendars.count)
+
+        let project = storedProjection.asProjectModel()
+        let workloads = WorkloadCalculator.compute(
+            resources: project.resources,
+            assignments: project.assignments,
+            tasks: project.tasks,
+            calendars: project.calendars,
+            defaultCalendarID: project.properties.defaultCalendarUniqueId,
+            dateRange: GanttDateHelpers.dateRange(for: project.tasks)
+        )
+
+        XCTAssertFalse(workloads.isEmpty)
+        XCTAssertTrue(workloads.contains { workload in
+            workload.weeklyLoads.contains { $0.totalHours > 0 }
+        })
+        XCTAssertEqual(project.calendars.count, nativePlan.calendars.count)
+        XCTAssertTrue(project.calendars.contains { $0.uniqueID == nativePlan.defaultCalendarUniqueID })
+    }
+
+    func testResourceCalendarWithEmptyNonWorkingDaysInheritsParentForWorkload() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let startDate = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 1, day: 5)))
+        let finishDate = try XCTUnwrap(calendar.date(byAdding: .day, value: 5, to: startDate))
+
+        var nativePlan = NativeProjectPlan.empty()
+        nativePlan.statusDate = startDate
+        nativePlan.defaultCalendarUniqueID = 1
+        nativePlan.calendars = [
+            .standard(id: 1, name: "Standard"),
+            NativePlanCalendar(
+                id: 2,
+                name: "Developer Calendar",
+                parentUniqueID: 1,
+                type: "RESOURCE",
+                personal: true,
+                sunday: .nonWorking(),
+                monday: .nonWorking(),
+                tuesday: .nonWorking(),
+                wednesday: .nonWorking(),
+                thursday: .nonWorking(),
+                friday: .nonWorking(),
+                saturday: .nonWorking(),
+                exceptions: []
+            )
+        ]
+
+        nativePlan.tasks = [
+            NativePlanTask(
+                id: 1,
+                name: "Implementation",
+                startDate: startDate,
+                finishDate: finishDate,
+                durationDays: 5,
+                outlineLevel: 1,
+                isMilestone: false,
+                manuallyScheduled: false,
+                percentComplete: 0,
+                priority: 500,
+                notes: "",
+                predecessorTaskIDs: [],
+                baselineStartDate: nil,
+                baselineFinishDate: nil,
+                baselineDurationDays: nil,
+                fixedCost: 0,
+                baselineCost: nil,
+                actualCost: nil,
+                actualStartDate: nil,
+                actualFinishDate: nil,
+                constraintType: nil,
+                constraintDate: nil,
+                calendarUniqueID: nil,
+                isActive: true,
+                agileType: "Story",
+                boardStatus: "Backlog",
+                storyPoints: nil,
+                sprintID: nil,
+                epicName: "",
+                tags: []
+            )
+        ]
+        nativePlan.resources = [
+            NativePlanResource(
+                id: 10,
+                name: "Developer",
+                type: "Work",
+                maxUnits: 100,
+                standardRate: 0,
+                overtimeRate: 0,
+                costPerUse: 0,
+                emailAddress: "",
+                group: "",
+                initials: "",
+                notes: "",
+                calendarUniqueID: 2,
+                accrueAt: "end",
+                active: true
+            )
+        ]
+        nativePlan.assignments = [
+            NativePlanAssignment(
+                id: 1,
+                taskID: 1,
+                resourceID: 10,
+                units: 100,
+                workSeconds: 40 * 3600,
+                actualWorkSeconds: nil,
+                remainingWorkSeconds: nil,
+                overtimeWorkSeconds: nil,
+                notes: ""
+            )
+        ]
+
+        let project = nativePlan.asProjectModel()
+        let resourceCalendar = try XCTUnwrap(project.calendars.first { $0.uniqueID == 2 })
+        XCTAssertTrue(resourceCalendar.resolvedIsWorkingDay(weekday: 2, calendarsByID: Dictionary(nonThrowingUniquePairs: project.calendars.compactMap { calendar in
+            calendar.uniqueID.map { ($0, calendar) }
+        })))
+
+        let workloads = WorkloadCalculator.compute(
+            resources: project.resources,
+            assignments: project.assignments,
+            tasks: project.tasks,
+            calendars: project.calendars,
+            defaultCalendarID: project.properties.defaultCalendarUniqueId,
+            dateRange: GanttDateHelpers.dateRange(for: project.tasks)
+        )
+
+        let workload = try XCTUnwrap(workloads.first)
+        XCTAssertGreaterThan(workload.weeklyLoads.map(\.capacity).max() ?? 0, 0)
+        XCTAssertGreaterThan(workload.weeklyLoads.map(\.totalHours).reduce(0, +), 0)
+    }
+
+    func testDownloadedSDPWorkloadUsesInheritedResourceCalendarsWhenFixtureAvailable() throws {
+        let sdpURL = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Downloads", isDirectory: true)
+            .appendingPathComponent("SDP.mppplan")
+
+        guard FileManager.default.fileExists(atPath: sdpURL.path) else {
+            throw XCTSkip("No downloaded SDP.mppplan fixture available.")
+        }
+
+        let data = try Data(contentsOf: sdpURL)
+        let nativePlan = try NativeProjectPlan.decode(from: data)
+        guard !nativePlan.tasks.isEmpty else {
+            throw XCTSkip("Downloaded SDP.mppplan fixture is currently an empty recovered document snapshot.")
+        }
+
+        let project = nativePlan.asProjectModel()
+        let resourceIDs = Set(project.resources.compactMap(\.uniqueID))
+        let assignedResourceIDs = Set(project.assignments.compactMap(\.resourceUniqueID))
+        XCTAssertTrue(assignedResourceIDs.isSubset(of: resourceIDs))
+
+        let workloads = WorkloadCalculator.compute(
+            resources: project.resources,
+            assignments: project.assignments,
+            tasks: project.tasks,
+            calendars: project.calendars,
+            defaultCalendarID: project.properties.defaultCalendarUniqueId,
+            dateRange: GanttDateHelpers.dateRange(for: project.tasks)
+        )
+
+        XCTAssertFalse(workloads.isEmpty)
+        XCTAssertTrue(workloads.contains { workload in
+            workload.weeklyLoads.contains { $0.capacity > 0 && $0.totalHours > 0 }
+        })
+    }
+
+    @MainActor
     func testPortfolioProjectSynchronizerPersistsPortfolioMetadata() throws {
         var nativePlan = NativeProjectPlan.empty()
         nativePlan.title = "Portfolio Metadata"
@@ -314,7 +609,10 @@ final class PerformanceHelpersTests: XCTestCase {
         XCTAssertEqual(summary.intakeCount, 1)
         XCTAssertEqual(summary.onHoldCount, 1)
         XCTAssertEqual(summary.cancelledCount, 0)
-        XCTAssertEqual(summary.reviewDueCount, 2)
+        // Only pausedPlan is due: its next review (last review 30 days ago + 7-day cadence)
+        // is overdue. approvedPlan's next review (3 days ago + 14-day cadence) is 11 days
+        // out, beyond the 7-day due-soon horizon, and intakePlan's is 30 days out.
+        XCTAssertEqual(summary.reviewDueCount, 1)
         XCTAssertEqual(summary.rankedProjects.first?.title, "Approved Delivery")
         XCTAssertEqual(summary.rankedProjects.last?.title, "Paused Program")
         XCTAssertEqual(summary.projectInsights.first(where: { $0.title == "Paused Program" })?.archiveReason, "Awaiting steering committee decision")

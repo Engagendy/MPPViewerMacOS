@@ -114,6 +114,114 @@ final class MPPConverterService {
         #endif
     }
 
+    func exportMSPDI(planJSON: Data) async throws -> Data {
+        #if DEBUG
+        do {
+            return try await exportMSPDIDirectly(planJSON: planJSON)
+        } catch {
+            return try await exportMSPDIViaXPC(planJSON: planJSON)
+        }
+        #else
+        do {
+            return try await exportMSPDIViaXPC(planJSON: planJSON)
+        } catch MPPConverterError.xpcConnectionFailed, MPPConverterError.conversionTimedOut {
+            return try await exportMSPDIDirectly(planJSON: planJSON)
+        } catch {
+            throw error
+        }
+        #endif
+    }
+
+    private func exportMSPDIDirectly(planJSON: Data) async throws -> Data {
+        let javaPath = locateJava()
+        let jarPath = locateJAR()
+
+        guard FileManager.default.fileExists(atPath: javaPath) else {
+            throw MPPConverterError.conversionFailed(
+                "Java runtime not found. Searched bundled JRE and system paths."
+            )
+        }
+        guard FileManager.default.fileExists(atPath: jarPath) else {
+            throw MPPConverterError.conversionFailed(
+                "MPXJ converter JAR not found in the app bundle. The app may be damaged."
+            )
+        }
+
+        let inputURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("json")
+        let outputURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("xml")
+
+        defer {
+            try? FileManager.default.removeItem(at: inputURL)
+            try? FileManager.default.removeItem(at: outputURL)
+        }
+
+        try planJSON.write(to: inputURL, options: .atomic)
+        try await runProcess(
+            javaPath: javaPath,
+            jarPath: jarPath,
+            jarArguments: ["--plan-to-mspdi", inputURL.path, outputURL.path]
+        )
+
+        let data = try Data(contentsOf: outputURL)
+        guard !data.isEmpty else {
+            throw MPPConverterError.conversionFailed("MSPDI export produced an empty output file.")
+        }
+        return data
+    }
+
+    private func exportMSPDIViaXPC(planJSON: Data) async throws -> Data {
+        return try await withCheckedThrowingContinuation { continuation in
+            let completion = OneShotCompletion()
+            let connection = NSXPCConnection(serviceName: "com.mppviewer.MPPConverterXPC")
+            connection.remoteObjectInterface = NSXPCInterface(with: MPPConverterXPCProtocol.self)
+            connection.resume()
+
+            let timeout = DispatchWorkItem {
+                completion.complete {
+                    connection.invalidate()
+                    continuation.resume(throwing: MPPConverterError.conversionTimedOut(
+                        "The converter helper did not reply within \(Int(Self.conversionTimeoutSeconds)) seconds."
+                    ))
+                }
+            }
+            DispatchQueue.global(qos: .utility).asyncAfter(
+                deadline: .now() + Self.conversionTimeoutSeconds,
+                execute: timeout
+            )
+
+            guard let proxy = connection.remoteObjectProxyWithErrorHandler({ _ in
+                completion.complete {
+                    timeout.cancel()
+                    connection.invalidate()
+                    continuation.resume(throwing: MPPConverterError.xpcConnectionFailed)
+                }
+            }) as? MPPConverterXPCProtocol else {
+                completion.complete {
+                    timeout.cancel()
+                    connection.invalidate()
+                    continuation.resume(throwing: MPPConverterError.xpcConnectionFailed)
+                }
+                return
+            }
+
+            proxy.exportPlanToMSPDI(planJSON) { data, errorMessage in
+                completion.complete {
+                    timeout.cancel()
+                    connection.invalidate()
+                    if let data = data {
+                        continuation.resume(returning: data)
+                    } else {
+                        continuation.resume(throwing: MPPConverterError.conversionFailed(errorMessage ?? "Unknown error"))
+                    }
+                }
+            }
+        }
+    }
+
     // MARK: - XPC Service Path
 
     private func convertViaXPC(mppFileURL: URL) async throws -> Data {
@@ -152,13 +260,20 @@ final class MPPConverterService {
                 execute: timeout
             )
 
-            let proxy = connection.remoteObjectProxyWithErrorHandler { error in
+            guard let proxy = connection.remoteObjectProxyWithErrorHandler({ error in
                 completion.complete {
                     timeout.cancel()
                     connection.invalidate()
                     continuation.resume(throwing: MPPConverterError.xpcConnectionFailed)
                 }
-            } as! MPPConverterXPCProtocol
+            }) as? MPPConverterXPCProtocol else {
+                completion.complete {
+                    timeout.cancel()
+                    connection.invalidate()
+                    continuation.resume(throwing: MPPConverterError.xpcConnectionFailed)
+                }
+                return
+            }
 
             proxy.convertMPPData(inputData, fileExtension: mppFileURL.pathExtension) { data, errorMessage in
                 completion.complete {
@@ -366,6 +481,14 @@ final class MPPConverterService {
         inputPath: String,
         outputPath: String
     ) async throws {
+        try await runProcess(javaPath: javaPath, jarPath: jarPath, jarArguments: [inputPath, outputPath])
+    }
+
+    private func runProcess(
+        javaPath: String,
+        jarPath: String,
+        jarArguments: [String]
+    ) async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             let completion = OneShotCompletion()
             let process = Process()
@@ -373,11 +496,13 @@ final class MPPConverterService {
             // issues with directly executing bundled binaries
             process.executableURL = URL(fileURLWithPath: "/bin/sh")
 
-            let escapedJava = javaPath.replacingOccurrences(of: "'", with: "'\\''")
-            let escapedJar = jarPath.replacingOccurrences(of: "'", with: "'\\''")
-            let escapedInput = inputPath.replacingOccurrences(of: "'", with: "'\\''")
-            let escapedOutput = outputPath.replacingOccurrences(of: "'", with: "'\\''")
-            process.arguments = ["-c", "'\(escapedJava)' -jar '\(escapedJar)' '\(escapedInput)' '\(escapedOutput)'"]
+            func shellQuoted(_ value: String) -> String {
+                "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
+            }
+            let command = ([javaPath, "-jar", jarPath] + jarArguments)
+                .map(shellQuoted)
+                .joined(separator: " ")
+            process.arguments = ["-c", command]
 
             let outputCapture: ProcessOutputCapture
             do {

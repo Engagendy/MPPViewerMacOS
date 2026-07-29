@@ -173,7 +173,7 @@ struct DependencyGraphExplorerView: View {
             } label: {
                 Image(systemName: "scope")
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.accessoryBar)
             Divider().frame(height: 24)
             Text("Zoom")
                 .font(.caption)
@@ -189,14 +189,14 @@ struct DependencyGraphExplorerView: View {
             } label: {
                 Image(systemName: "arrow.up.left.and.down.right.magnifyingglass")
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.accessoryBar)
             Button {
                 highlightMode.toggle()
             } label: {
                 Image(systemName: "wand.and.stars")
             .foregroundStyle(highlightMode ? Color.accentColor : Color.secondary)
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.accessoryBar)
         }
         .padding(.horizontal)
         .padding(.vertical, 8)

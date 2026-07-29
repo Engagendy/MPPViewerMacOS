@@ -4,8 +4,10 @@ import SwiftData
 
 struct PlanEditorView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.undoManager) private var undoManager
     let planModel: PortfolioProjectPlan
     @State private var plan: NativeProjectPlan
+    @State private var suppressUndoRegistration = false
     @State private var analysis: NativePlanAnalysis
     @State private var isInitializing = true
     @State private var hasInitialized = false
@@ -25,6 +27,7 @@ struct PlanEditorView: View {
     @State private var gridTextDrafts: [PlannerGridCellKey: String] = [:]
     @State private var gridAssignmentDrafts: [Int: PlannerGridAssignmentDraft] = [:]
     @State private var gridDraftCommitWorkItem: DispatchWorkItem?
+    @State private var collapsedGridTaskIDs: Set<Int> = []
     @State private var refreshCounter = 0
     @State private var lastObservedPlanHash = 0
     @State private var planSummaryMetrics: PlannerSummaryMetrics = .empty
@@ -65,7 +68,7 @@ struct PlanEditorView: View {
     private let finishColumnWidth: CGFloat = 110
     private let durationColumnWidth: CGFloat = 51
     private let percentColumnWidth: CGFloat = 51
-    private let milestoneColumnWidth: CGFloat = 44
+    private let milestoneColumnWidth: CGFloat = 76
     private let predecessorsColumnWidth: CGFloat = 91
     private let resourceColumnWidth: CGFloat = 122
     private let assignmentUnitsColumnWidth: CGFloat = 62
@@ -79,6 +82,36 @@ struct PlanEditorView: View {
     private var selectedTaskIndex: Int? {
         guard let selectedTaskID else { return nil }
         return taskIndex(for: selectedTaskID)
+    }
+
+    private var visibleGridRowModels: [PlannerGridRowModel] {
+        var visibleRows: [PlannerGridRowModel] = []
+        var collapsedOutlineLevel: Int?
+
+        for row in gridRowModels {
+            if let hiddenLevel = collapsedOutlineLevel {
+                if row.outlineLevel > hiddenLevel {
+                    continue
+                }
+                collapsedOutlineLevel = nil
+            }
+
+            visibleRows.append(row)
+
+            if row.isSummary && collapsedGridTaskIDs.contains(row.id) {
+                collapsedOutlineLevel = row.outlineLevel
+            }
+        }
+
+        return visibleRows
+    }
+
+    private var canExpandGridTasks: Bool {
+        !collapsedGridTaskIDs.isEmpty
+    }
+
+    private var canCollapseGridTasks: Bool {
+        gridRowModels.contains { $0.isSummary && !collapsedGridTaskIDs.contains($0.id) }
     }
 
     private var currentProject: ProjectModel {
@@ -97,8 +130,8 @@ struct PlanEditorView: View {
         analysis.diagnosticItems
     }
 
-    init(planModel: PortfolioProjectPlan) {
-        let initialPlan = planModel.editorSnapshotForUI()
+    init(planModel: PortfolioProjectPlan, initialPlan: NativeProjectPlan? = nil) {
+        let initialPlan = initialPlan ?? planModel.editorSnapshotForUI()
         self.planModel = planModel
         self._plan = State(initialValue: initialPlan)
         self._analysis = State(initialValue: NativePlanAnalysis.placeholder)
@@ -328,6 +361,9 @@ struct PlanEditorView: View {
         .onChange(of: planModel.updatedAt) { _, _ in
             syncPlanFromModelIfNeeded()
         }
+        .onChange(of: plan) { oldPlan, _ in
+            registerPlanUndo(from: oldPlan)
+        }
         .onDisappear {
             commitInspectorEdits()
             persistPlanImmediately()
@@ -479,7 +515,9 @@ struct PlanEditorView: View {
             canOutdent: canOutdentSelectedTask(),
             canMoveUp: canMoveSelectedTaskUp(),
             canMoveDown: canMoveSelectedTaskDown(),
-            rowModels: gridRowModels,
+            canExpandTasks: canExpandGridTasks,
+            canCollapseTasks: canCollapseGridTasks,
+            rowModels: visibleGridRowModels,
             gridLayoutForWidth: gridLayout(for:),
             onImportTasks: { taskImportSession = CSVExporter.selectTaskImportSession() },
             onImportAssignments: { assignmentImportSession = CSVExporter.selectAssignmentImportSession() },
@@ -500,6 +538,7 @@ struct PlanEditorView: View {
                 plan.captureBaseline()
                 notePlanMutation(needsGrid: true, needsAnalysis: true)
             },
+            onExportMSPDI: { MSPDIExporter.exportWithSavePanel(plan: plan) },
             onAddTask: { addTask(focus: .name) },
             onIndent: indentSelectedTask,
             onOutdent: outdentSelectedTask,
@@ -507,6 +546,8 @@ struct PlanEditorView: View {
             onMoveUp: moveSelectedTaskUp,
             onMoveDown: moveSelectedTaskDown,
             onDelete: deleteSelectedTask,
+            onExpandTasks: expandAllGridTasks,
+            onCollapseTasks: collapseAllGridTasks,
             makeHeader: taskGridHeader(layout:),
             makeRow: taskGridRow(row:layout:)
         )
@@ -552,7 +593,7 @@ struct PlanEditorView: View {
             taskHeaderCell("Finish", width: layout.finish, alignment: .leading)
             taskHeaderCell("Dur", width: layout.duration, alignment: .center)
             taskHeaderCell("%", width: layout.percent, alignment: .center)
-            taskHeaderCell("MS", width: layout.milestone, alignment: .center)
+            taskHeaderCell("Milestone", width: layout.milestone, alignment: .center)
             taskHeaderCell("Preds", width: layout.predecessors, alignment: .leading)
             taskHeaderCell("Resource", width: layout.resource, alignment: .leading)
             taskHeaderCell("Units", width: layout.assignmentUnits, alignment: .center)
@@ -568,6 +609,7 @@ struct PlanEditorView: View {
             row: row,
             layout: layout,
             isSelected: selectedTaskID == row.id,
+            isCollapsed: collapsedGridTaskIDs.contains(row.id),
             resourceOptions: gridResourceOptions,
             nameValue: gridTextDrafts[PlannerGridCellKey(taskID: row.id, column: .name)] ?? row.name,
             startDateValue: liveTask?.startDate ?? row.startDate,
@@ -627,6 +669,9 @@ struct PlanEditorView: View {
             onFocusAssignmentUnits: {
                 focusGridTask(row.id)
                 clearPendingFocusIfNeeded(taskID: row.id, column: .assignmentUnits)
+            },
+            onToggleCollapse: {
+                toggleGridTaskCollapse(row.id)
             },
             onTap: {
                 selectedTaskID = row.id
@@ -710,6 +755,7 @@ struct PlanEditorView: View {
                                         Label("Left", systemImage: "decrease.indent")
                                     }
                                     .buttonStyle(.bordered)
+                                    .hoverHighlight()
                                     .disabled(!canOutdentSelectedTask())
 
                                     Button {
@@ -718,6 +764,7 @@ struct PlanEditorView: View {
                                         Label("Right", systemImage: "increase.indent")
                                     }
                                     .buttonStyle(.bordered)
+                                    .hoverHighlight()
                                     .disabled(!canIndentSelectedTask())
                                 }
 
@@ -1121,6 +1168,7 @@ struct PlanEditorView: View {
                                     syncInspectorTaskDraft(force: true)
                                 }
                                 .buttonStyle(.bordered)
+                                .hoverHighlight()
                                 .disabled(plan.tasks.isEmpty)
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -1387,7 +1435,7 @@ struct PlanEditorView: View {
                                                     } label: {
                                                         Label("Remove", systemImage: "trash")
                                                     }
-                                                    .buttonStyle(.borderless)
+                                                    .buttonStyle(.accessoryBar)
                                                 }
                                             }
                                             .padding(.vertical, 4)
@@ -1400,6 +1448,7 @@ struct PlanEditorView: View {
                                         Label("Add Assignment", systemImage: "plus")
                                     }
                                     .buttonStyle(.bordered)
+                                    .hoverHighlight()
                                 }
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -1425,7 +1474,7 @@ struct PlanEditorView: View {
                     systemImage: "square.and.pencil",
                     description: Text("Select a task to edit its schedule, progress, dependencies, and notes.")
                 )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .topAlignedEmptyState()
             }
         }
     }
@@ -1659,7 +1708,7 @@ struct PlanEditorView: View {
         guard metadataNeedsFullSync || !dirtyTaskIDs.isEmpty else { return }
 
         if metadataNeedsFullSync {
-            planModel.update(from: plan)
+            planModel.update(from: plan, in: modelContext)
         } else {
             let tasksByLegacyID = Dictionary(nonThrowingUniquePairs: planModel.tasks.map { ($0.legacyID, $0) })
             let resourcesByLegacyID = Dictionary(nonThrowingUniquePairs: planModel.resources.map { ($0.legacyID, $0) })
@@ -1680,14 +1729,14 @@ struct PlanEditorView: View {
                 }
 
                 let nativeAssignments = assignmentsByTaskID[taskID] ?? []
-                taskModel.syncAssignments(from: nativeAssignments, resourcesByLegacyID: resourcesByLegacyID)
+                taskModel.syncAssignments(from: nativeAssignments, resourcesByLegacyID: resourcesByLegacyID, in: modelContext)
             }
 
             planModel.updatedAt = Date()
             planModel.refreshPortfolioMetrics(from: plan)
         }
 
-        try? modelContext.save()
+        modelContext.saveReportingFailures()
         dirtyTaskIDs.removeAll()
         metadataNeedsFullSync = false
     }
@@ -1702,11 +1751,54 @@ struct PlanEditorView: View {
             || !gridAssignmentDrafts.isEmpty
     }
 
+    private func registerPlanUndo(from previousPlan: NativeProjectPlan) {
+        if suppressUndoRegistration {
+            suppressUndoRegistration = false
+            return
+        }
+        guard hasInitialized else { return }
+        undoManager?.registerUndo(withTarget: planModel) { _ in
+            restorePlanSnapshot(previousPlan)
+        }
+        undoManager?.setActionName("Plan Edit")
+    }
+
+    private func restorePlanSnapshot(_ snapshot: NativeProjectPlan) {
+        let current = plan
+        undoManager?.registerUndo(withTarget: planModel) { _ in
+            restorePlanSnapshot(current)
+        }
+        undoManager?.setActionName("Plan Edit")
+
+        // Discard in-flight drafts so they cannot overwrite the restored state.
+        inspectorTaskDraftWorkItem?.cancel()
+        inspectorTaskDraftIsDirty = false
+        inspectorAssignmentDraftWorkItem?.cancel()
+        inspectorAssignmentDraftsAreDirty = false
+        gridDraftCommitWorkItem?.cancel()
+        gridTextDrafts.removeAll()
+        gridAssignmentDrafts.removeAll()
+
+        suppressUndoRegistration = true
+        plan = snapshot
+        lastObservedPlanHash = planRefreshHash(for: snapshot)
+        refreshPlanLookupCaches()
+        metadataNeedsFullSync = true
+        schedulePlanPersistence()
+        pendingGridRefresh = true
+        pendingFullGridRefresh = true
+        pendingChangedGridTaskIDs.removeAll()
+        pendingAnalysisRefresh = true
+        refreshCounter += 1
+    }
+
     private func syncPlanFromModelIfNeeded() {
         guard !hasPendingPlanPersistence() else { return }
-        let modelSnapshot = planModel.editorSnapshotForUI()
+        guard let modelSnapshot = try? planModel.asNativePlan(in: modelContext) else { return }
         let snapshotHash = planRefreshHash(for: modelSnapshot)
         guard snapshotHash != lastObservedPlanHash else { return }
+        // External refresh, not a user edit — keep it off the undo stack.
+        suppressUndoRegistration = true
         plan = modelSnapshot
         refreshPlanLookupCaches()
         lastObservedPlanHash = snapshotHash
@@ -1969,6 +2061,63 @@ struct PlanEditorView: View {
         selectedTaskID = movingTasks.first?.id
     }
 
+    private func toggleGridTaskCollapse(_ taskID: Int) {
+        guard gridRowModelCache[taskID]?.isSummary == true || gridRowModels.contains(where: { $0.id == taskID && $0.isSummary }) else {
+            selectedTaskID = taskID
+            return
+        }
+
+        if collapsedGridTaskIDs.contains(taskID) {
+            collapsedGridTaskIDs.remove(taskID)
+        } else {
+            collapsedGridTaskIDs.insert(taskID)
+        }
+
+        selectedTaskID = taskID
+    }
+
+    private func expandAllGridTasks() {
+        collapsedGridTaskIDs.removeAll()
+    }
+
+    private func collapseAllGridTasks() {
+        collapsedGridTaskIDs = Set(gridRowModels.filter(\.isSummary).map(\.id))
+        reconcileSelectedTaskAfterCollapse()
+    }
+
+    private func reconcileSelectedTaskAfterCollapse() {
+        guard let selectedTaskID else {
+            self.selectedTaskID = visibleGridRowModels.first?.id
+            return
+        }
+
+        self.selectedTaskID = visibleTaskID(for: selectedTaskID)
+    }
+
+    private func visibleTaskID(for taskID: Int) -> Int? {
+        guard let index = taskIndex(for: taskID),
+              plan.tasks.indices.contains(index) else {
+            return visibleGridRowModels.first?.id
+        }
+
+        var level = plan.tasks[index].outlineLevel
+        var candidate = index - 1
+        var collapsedAncestorID: Int?
+
+        while candidate >= 0 {
+            let candidateTask = plan.tasks[candidate]
+            if candidateTask.outlineLevel < level {
+                if collapsedGridTaskIDs.contains(candidateTask.id) {
+                    collapsedAncestorID = candidateTask.id
+                }
+                level = candidateTask.outlineLevel
+            }
+            candidate -= 1
+        }
+
+        return collapsedAncestorID ?? taskID
+    }
+
     private func subtreeRange(for index: Int) -> Range<Int> {
         let baseLevel = plan.tasks[index].outlineLevel
         var endIndex = index + 1
@@ -2058,6 +2207,8 @@ struct PlanEditorView: View {
         var primaryAssignmentsByTaskID: [Int: NativePlanAssignment] = [:]
         let resourceNamesByID = Dictionary(nonThrowingUniquePairs: plan.resources.map { ($0.id, $0.name) })
 
+        collapsedGridTaskIDs.formIntersection(validTaskIDs)
+
         for assignment in plan.assignments where primaryAssignmentsByTaskID[assignment.taskID] == nil {
             primaryAssignmentsByTaskID[assignment.taskID] = assignment
         }
@@ -2115,9 +2266,75 @@ struct PlanEditorView: View {
             },
             set: { newValue in
                 gridTextDrafts[key] = newValue
+                syncSelectedInspectorFromGridDrafts(taskID: taskID)
                 scheduleGridDraftCommit(reschedule: column.requiresReschedule)
             }
         )
+    }
+
+    private func syncSelectedInspectorFromGridDrafts(taskID: Int) {
+        guard selectedTaskID == taskID,
+              !inspectorTaskDraftIsDirty,
+              let index = taskIndex(for: taskID),
+              plan.tasks.indices.contains(index) else { return }
+
+        var draft = plan.tasks[index]
+        let validIDs = validTaskIDs.isEmpty ? Set(plan.tasks.map(\.id)) : validTaskIDs
+        for (key, value) in gridTextDrafts where key.taskID == taskID {
+            _ = applyGridTextDraft(value, column: key.column, to: &draft, validTaskIDs: validIDs)
+        }
+        inspectorTaskDraft = draft
+    }
+
+    private func syncSelectedInspectorFromLiveTask(taskID: Int) {
+        guard selectedTaskID == taskID,
+              !inspectorTaskDraftIsDirty,
+              let index = taskIndex(for: taskID),
+              plan.tasks.indices.contains(index) else { return }
+
+        inspectorTaskDraft = plan.tasks[index]
+    }
+
+    @discardableResult
+    private func applyGridTextDraft(
+        _ draftValue: String,
+        column: PlannerGridColumn,
+        to task: inout NativePlanTask,
+        validTaskIDs: Set<Int>
+    ) -> Bool {
+        switch column {
+        case .name:
+            task.name = draftValue
+            return false
+        case .duration:
+            let digits = draftValue.filter(\.isNumber)
+            let parsed = Int(digits) ?? (task.isMilestone ? 0 : 1)
+            task.durationDays = max(1, parsed)
+            if task.isMilestone {
+                task.finishDate = task.startDate
+            } else if task.manuallyScheduled {
+                task.finishDate = finishDateForDuration(
+                    task: task,
+                    startDate: task.startDate,
+                    durationDays: task.durationDays
+                )
+            }
+            return true
+        case .percent:
+            let digits = draftValue.filter(\.isNumber)
+            let parsed = Double(digits) ?? 0
+            task.percentComplete = min(100, max(0, parsed))
+            return false
+        case .predecessors:
+            let parsed = draftValue
+                .split(separator: ",")
+                .compactMap { Int($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
+                .filter { $0 != task.id && validTaskIDs.contains($0) }
+            task.predecessorTaskIDs = Array(Set(parsed)).sorted()
+            return true
+        case .assignmentUnits:
+            return false
+        }
     }
 
     private func scheduleGridDraftCommit(reschedule: Bool) {
@@ -2151,37 +2368,8 @@ struct PlanEditorView: View {
             for (key, draftValue) in textDrafts {
                 guard let index = taskIndex(for: key.taskID) else { continue }
                 changedTaskIDs.insert(key.taskID)
-
-                switch key.column {
-                case .name:
-                    plan.tasks[index].name = draftValue
-                case .duration:
-                    let digits = draftValue.filter(\.isNumber)
-                    let parsed = Int(digits) ?? (plan.tasks[index].isMilestone ? 0 : 1)
-                    plan.tasks[index].durationDays = max(1, parsed)
-                    if plan.tasks[index].isMilestone {
-                        plan.tasks[index].finishDate = plan.tasks[index].startDate
-                    } else if plan.tasks[index].manuallyScheduled {
-                        plan.tasks[index].finishDate = finishDateForDuration(
-                            task: plan.tasks[index],
-                            startDate: plan.tasks[index].startDate,
-                            durationDays: plan.tasks[index].durationDays
-                        )
-                    }
+                if applyGridTextDraft(draftValue, column: key.column, to: &plan.tasks[index], validTaskIDs: validIDs) {
                     shouldReschedule = true
-                case .percent:
-                    let digits = draftValue.filter(\.isNumber)
-                    let parsed = Double(digits) ?? 0
-                    plan.tasks[index].percentComplete = min(100, max(0, parsed))
-                case .predecessors:
-                    let parsed = draftValue
-                        .split(separator: ",")
-                        .compactMap { Int($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
-                        .filter { $0 != key.taskID && validIDs.contains($0) }
-                    plan.tasks[index].predecessorTaskIDs = Array(Set(parsed)).sorted()
-                    shouldReschedule = true
-                case .assignmentUnits:
-                    break
                 }
             }
         }
@@ -2238,6 +2426,7 @@ struct PlanEditorView: View {
                     plan.tasks[index].finishDate = normalized
                 }
 
+                syncSelectedInspectorFromLiveTask(taskID: taskID)
                 reschedulePlan(changedTaskIDs: [taskID])
             }
         )
@@ -2258,6 +2447,7 @@ struct PlanEditorView: View {
                     plan.tasks[index].finishDate = normalized
                     plan.tasks[index].durationDays = max(1, durationDaysFromDates(for: plan.tasks[index], finishDate: normalized))
                 }
+                syncSelectedInspectorFromLiveTask(taskID: taskID)
                 reschedulePlan(changedTaskIDs: [taskID])
             }
         )
@@ -2276,6 +2466,7 @@ struct PlanEditorView: View {
                     plan.tasks[index].finishDate = plan.tasks[index].startDate
                     plan.tasks[index].durationDays = 1
                 }
+                syncSelectedInspectorFromLiveTask(taskID: taskID)
                 reschedulePlan(changedTaskIDs: [taskID])
             }
         )
@@ -2856,7 +3047,7 @@ struct PlanEditorView: View {
                 HStack(spacing: 8) {
                     PlannerDateField(date: binding)
                     Button("Clear", role: .destructive, action: clear)
-                        .buttonStyle(.borderless)
+                        .buttonStyle(.accessoryBar)
                 }
             } else {
                 HStack(spacing: 8) {
@@ -2865,6 +3056,7 @@ struct PlanEditorView: View {
                         .foregroundStyle(.secondary)
                     Button("Use Scheduled", action: setCurrent)
                         .buttonStyle(.bordered)
+                        .hoverHighlight()
                 }
             }
         }
@@ -3158,35 +3350,41 @@ private struct PlannerHeaderView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline) {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Plan Builder")
                         .font(.title2)
                         .fontWeight(.semibold)
+                        .fixedSize()
                     Text("Create and save native project plans, then use the existing analysis views to review them.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
 
+                Spacer(minLength: 12)
+
                 FinancialTermsButton()
-
-                Spacer()
-
-                HStack(spacing: 18) {
-                    ForEach(metrics) { metric in
-                        VStack(alignment: .trailing, spacing: 2) {
-                            Text(metric.value)
-                                .font(.headline)
-                                .monospacedDigit()
-                            Text(metric.label)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
+                    .fixedSize()
             }
 
-            HStack(spacing: 10) {
+            // Metrics reflow as whole cells on narrow windows instead of
+            // squeezing into hyphenated columns.
+            FlowLayout(spacing: 18, lineSpacing: 10) {
+                ForEach(metrics) { metric in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(metric.value)
+                            .font(.headline)
+                            .monospacedDigit()
+                        Text(metric.label)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .fixedSize()
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            FlowLayout(spacing: 10, lineSpacing: 6) {
                 ForEach(signalChips) { chip in
                     HStack(spacing: 6) {
                         Circle()
@@ -3200,32 +3398,38 @@ private struct PlannerHeaderView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
+                    .fixedSize()
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
                     .background(chip.color.opacity(0.08))
                     .clipShape(Capsule())
                 }
-                Spacer(minLength: 0)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
-            HStack(alignment: .top, spacing: 12) {
+            FlowLayout(spacing: 12, lineSpacing: 10) {
                 TextField("Project Title", text: $title)
                     .textFieldStyle(.roundedBorder)
+                    .frame(width: 240)
 
                 TextField("Manager", text: $manager)
                     .textFieldStyle(.roundedBorder)
+                    .frame(width: 200)
 
                 TextField("Company", text: $company)
                     .textFieldStyle(.roundedBorder)
+                    .frame(width: 200)
 
-                VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
                     Text("Status Date")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .fixedSize()
                     PlannerDateField(date: $statusDate)
                         .frame(width: 150)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(16)
     }
@@ -3239,6 +3443,8 @@ private struct PlannerTaskListPane<RowContent: View, HeaderContent: View>: View 
     let canOutdent: Bool
     let canMoveUp: Bool
     let canMoveDown: Bool
+    let canExpandTasks: Bool
+    let canCollapseTasks: Bool
     let rowModels: [PlannerGridRowModel]
     let gridLayoutForWidth: (CGFloat) -> PlannerGridLayout
     let onImportTasks: () -> Void
@@ -3257,6 +3463,7 @@ private struct PlannerTaskListPane<RowContent: View, HeaderContent: View>: View 
     let onExportBaselineTemplateCSV: () -> Void
     let onExportBaselineTemplateExcel: () -> Void
     let onCaptureBaseline: () -> Void
+    let onExportMSPDI: () -> Void
     let onAddTask: () -> Void
     let onIndent: () -> Void
     let onOutdent: () -> Void
@@ -3264,6 +3471,8 @@ private struct PlannerTaskListPane<RowContent: View, HeaderContent: View>: View 
     let onMoveUp: () -> Void
     let onMoveDown: () -> Void
     let onDelete: () -> Void
+    let onExpandTasks: () -> Void
+    let onCollapseTasks: () -> Void
     let makeHeader: (PlannerGridLayout) -> HeaderContent
     let makeRow: (PlannerGridRowModel, PlannerGridLayout) -> RowContent
 
@@ -3325,7 +3534,7 @@ private struct PlannerTaskListPane<RowContent: View, HeaderContent: View>: View 
                         .help("Import tasks from CSV or Excel-compatible spreadsheet")
                     toolbarButton("Import Assignments", systemImage: "person.2.badge.plus", action: onImportAssignments)
                         .help("Import task-resource assignments from CSV or Excel-compatible spreadsheet")
-                    toolbarButton("Import Dependencies", systemImage: "arrow.triangle.branch", width: 138, action: onImportDependencies)
+                    toolbarButton("Import Dependencies", systemImage: "arrow.triangle.branch", action: onImportDependencies)
                         .help("Import predecessor links from CSV or Excel-compatible spreadsheet")
                     toolbarButton("Import Constraints", systemImage: "calendar.badge.exclamationmark", action: onImportConstraints)
                         .help("Import scheduling constraints from CSV or Excel-compatible spreadsheet")
@@ -3352,27 +3561,60 @@ private struct PlannerTaskListPane<RowContent: View, HeaderContent: View>: View 
                     } label: {
                         wrappedToolbarLabel("Templates", systemImage: "tablecells.badge.ellipsis")
                     }
-                    .menuStyle(.borderlessButton)
+                    .menuStyle(.button)
+                    .buttonStyle(.bordered)
+                    .hoverHighlight()
+                    .fixedSize()
                     .help("Export ready-made task, assignment, dependency, constraint, and baseline import templates")
 
                     Button(action: onCaptureBaseline) {
                         wrappedToolbarLabel("Capture Baseline", systemImage: "camera.macro")
                     }
                     .buttonStyle(.bordered)
+                    .hoverHighlight()
                     .disabled(tasksEmpty)
                     .help("Store the current scheduled dates as the working baseline")
+
+                    Button(action: onExportMSPDI) {
+                        wrappedToolbarLabel("Export MS Project XML", systemImage: "square.and.arrow.up")
+                    }
+                    .buttonStyle(.bordered)
+                    .hoverHighlight()
+                    .disabled(tasksEmpty)
+                    .help("Export this plan as MSPDI XML that Microsoft Project can open")
+
+                    Divider()
+                        .frame(height: 16)
 
                     Button(action: onAddTask) {
                         wrappedToolbarLabel("Add Task", systemImage: "plus")
                     }
                     .buttonStyle(.borderedProminent)
+                    .hoverHighlight()
                     .keyboardShortcut(.return, modifiers: [.command])
                     .help("Add task below selected row (Command-Return)")
+
+                    Button(action: onExpandTasks) {
+                        Image(systemName: "chevron.down.square")
+                    }
+                    .buttonStyle(.accessoryBar)
+                    .disabled(!canExpandTasks)
+                    .help("Expand all task groups")
+
+                    Button(action: onCollapseTasks) {
+                        Image(systemName: "chevron.right.square")
+                    }
+                    .buttonStyle(.accessoryBar)
+                    .disabled(!canCollapseTasks)
+                    .help("Collapse task groups")
+
+                    Divider()
+                        .frame(height: 16)
 
                     Button(action: onIndent) {
                         Image(systemName: "increase.indent")
                     }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.accessoryBar)
                     .keyboardShortcut("]", modifiers: [.command])
                     .disabled(!canIndent)
                     .help("Make selected task a child of the previous task (Command-])")
@@ -3380,7 +3622,7 @@ private struct PlannerTaskListPane<RowContent: View, HeaderContent: View>: View 
                     Button(action: onOutdent) {
                         Image(systemName: "decrease.indent")
                     }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.accessoryBar)
                     .keyboardShortcut("[", modifiers: [.command])
                     .disabled(!canOutdent)
                     .help("Promote selected task one level (Command-[)")
@@ -3388,28 +3630,31 @@ private struct PlannerTaskListPane<RowContent: View, HeaderContent: View>: View 
                     Button(action: onDuplicate) {
                         Image(systemName: "plus.square.on.square")
                     }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.accessoryBar)
                     .disabled(!selectedTaskAvailable)
                     .help("Duplicate selected task")
 
                     Button(action: onMoveUp) {
                         Image(systemName: "arrow.up")
                     }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.accessoryBar)
                     .disabled(!canMoveUp)
                     .help("Move selected task block up")
 
                     Button(action: onMoveDown) {
                         Image(systemName: "arrow.down")
                     }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.accessoryBar)
                     .disabled(!canMoveDown)
                     .help("Move selected task block down")
+
+                    Divider()
+                        .frame(height: 16)
 
                     Button(role: .destructive, action: onDelete) {
                         Image(systemName: "trash")
                     }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.accessoryBar)
                     .disabled(!selectedTaskAvailable)
                     .help("Delete selected task")
 
@@ -3436,11 +3681,12 @@ private struct PlannerTaskListPane<RowContent: View, HeaderContent: View>: View 
         .background(Color(nsColor: .windowBackgroundColor))
     }
 
-    private func toolbarButton(_ title: String, systemImage: String, width: CGFloat = 120, action: @escaping () -> Void) -> some View {
+    private func toolbarButton(_ title: String, systemImage: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            wrappedToolbarLabel(title, systemImage: systemImage, width: width)
+            wrappedToolbarLabel(title, systemImage: systemImage)
         }
         .buttonStyle(.bordered)
+        .hoverHighlight()
     }
 
     private func shortcutHint(_ shortcut: String, description: String) -> some View {
@@ -3458,15 +3704,14 @@ private struct PlannerTaskListPane<RowContent: View, HeaderContent: View>: View 
         }
     }
 
-    private func wrappedToolbarLabel(_ title: String, systemImage: String, width: CGFloat = 120) -> some View {
+    private func wrappedToolbarLabel(_ title: String, systemImage: String) -> some View {
         HStack(spacing: 6) {
             Image(systemName: systemImage)
             Text(title)
-                .lineLimit(2)
-                .multilineTextAlignment(.leading)
+                .lineLimit(1)
         }
         .font(.caption)
-        .frame(width: width, alignment: .leading)
+        .fixedSize()
     }
 }
 
@@ -3509,6 +3754,7 @@ private struct PlannerGridRowView: View, Equatable {
     let row: PlannerGridRowModel
     let layout: PlannerGridLayout
     let isSelected: Bool
+    let isCollapsed: Bool
     let resourceOptions: [PlannerGridResourceOption]
     let nameValue: String
     let startDateValue: Date
@@ -3549,6 +3795,7 @@ private struct PlannerGridRowView: View, Equatable {
     let onFocusPercent: () -> Void
     let onFocusPredecessors: () -> Void
     let onFocusAssignmentUnits: () -> Void
+    let onToggleCollapse: () -> Void
     let onTap: () -> Void
 
     static func == (lhs: PlannerGridRowView, rhs: PlannerGridRowView) -> Bool {
@@ -3557,6 +3804,7 @@ private struct PlannerGridRowView: View, Equatable {
         return lhs.row == rhs.row &&
         lhs.layout == rhs.layout &&
         lhs.isSelected == rhs.isSelected &&
+        lhs.isCollapsed == rhs.isCollapsed &&
         resourceOptionsEquivalent &&
         lhs.nameValue == rhs.nameValue &&
         lhs.startDateValue == rhs.startDateValue &&
@@ -3584,18 +3832,22 @@ private struct PlannerGridRowView: View, Equatable {
             }
 
             cell(width: layout.name, alignment: .leading) {
-                HStack(spacing: 6) {
+                HStack(spacing: 4) {
                     Color.clear
                         .frame(width: CGFloat(max(0, row.outlineLevel - 1)) * 14, height: 1)
 
                     if row.isSummary {
-                        Image(systemName: "folder.fill")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else if row.isMilestone {
-                        Image(systemName: "diamond.fill")
-                            .font(.caption2)
-                            .foregroundStyle(.orange)
+                        Button(action: onToggleCollapse) {
+                            Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .frame(width: 14, height: 20)
+                        }
+                        .buttonStyle(.plain)
+                        .help(isCollapsed ? "Expand task group" : "Collapse task group")
+                    } else {
+                        Color.clear
+                            .frame(width: 14, height: 1)
                     }
 
                     PlannerGridTextField(
@@ -3651,15 +3903,10 @@ private struct PlannerGridRowView: View, Equatable {
             }
 
             cell(width: layout.milestone, alignment: .center) {
-                if isSelected {
-                    Toggle("", isOn: $milestone)
-                        .labelsHidden()
-                        .toggleStyle(.checkbox)
-                } else if milestoneValue {
-                    Image(systemName: "checkmark")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                Toggle("", isOn: $milestone)
+                    .labelsHidden()
+                    .toggleStyle(.checkbox)
+                    .controlSize(.small)
             }
 
             cell(width: layout.predecessors, alignment: .leading) {

@@ -13,6 +13,7 @@ struct WorkloadView: View {
     @State private var cachedDateRange: (start: Date, end: Date)?
     @State private var cachedTotalDays: Int = 0
     @State private var mondayOffsets: [Int] = []
+    @State private var isLoadingWorkloads = false
 
     private var dateRange: (start: Date, end: Date) {
         cachedDateRange ?? (start: Date(), end: Date())
@@ -22,6 +23,23 @@ struct WorkloadView: View {
 
     private var timelineWidth: CGFloat {
         CGFloat(cachedTotalDays) * pixelsPerDay
+    }
+
+    private var timelineScrollableWidth: CGFloat {
+        max(timelineWidth, timelineViewportWidth)
+    }
+
+    private var workloadRefreshKey: String {
+        var parts: [String] = []
+        parts.append(project.properties.projectTitle ?? "")
+        parts.append(String(project.tasks.count))
+        parts.append(String(project.resources.count))
+        parts.append(String(project.assignments.count))
+        parts.append(String(project.calendars.count))
+        parts.append(project.properties.startDate ?? "")
+        parts.append(project.properties.finishDate ?? "")
+        parts.append(project.properties.defaultCalendarUniqueId.map(String.init) ?? "")
+        return parts.joined(separator: "|")
     }
 
     @Environment(\.colorScheme) var colorScheme
@@ -82,17 +100,25 @@ struct WorkloadView: View {
 
             Divider()
 
-            if workloads.isEmpty {
+            if isLoadingWorkloads && workloads.isEmpty {
+                ContentUnavailableView(
+                    "Loading Workload",
+                    systemImage: "person.badge.clock",
+                    description: Text("Calculating resource allocation for this plan.")
+                )
+                .topAlignedEmptyState()
+            } else if workloads.isEmpty {
                 ContentUnavailableView(
                     "No Resource Data",
                     systemImage: "person.badge.clock",
                     description: Text("No work resources with assignments found.")
                 )
+                .topAlignedEmptyState()
             } else {
                 GeometryReader { geometry in
                     let viewportWidth = max(geometry.size.width - nameColumnWidth - 1, 1)
 
-                    ScrollView([.horizontal, .vertical]) {
+                    ScrollView([.horizontal, .vertical], showsIndicators: true) {
                         HStack(alignment: .top, spacing: 0) {
                             // Left pane: resource names
                             VStack(alignment: .leading, spacing: 0) {
@@ -128,12 +154,12 @@ struct WorkloadView: View {
                                 GanttHeaderView(
                                     dateRange: dateRange,
                                     pixelsPerDay: pixelsPerDay,
-                                    totalWidth: timelineWidth
+                                    totalWidth: timelineScrollableWidth
                                 )
 
                                 workloadCanvas
                                     .frame(
-                                        width: timelineWidth,
+                                        width: timelineScrollableWidth,
                                         height: CGFloat(workloads.count) * rowHeight
                                     )
                             }
@@ -164,40 +190,8 @@ struct WorkloadView: View {
                 }
             }
         }
-        .task {
-            let range = GanttDateHelpers.dateRange(for: project.tasks)
-            let days = GanttDateHelpers.totalDays(for: range)
-            cachedDateRange = range
-            cachedTotalDays = days
-
-            // Pre-compute Monday day offsets for grid lines
-            let calendar = Calendar.current
-            var mondays: [Int] = []
-            var current = calendar.startOfDay(for: range.start)
-            // Find first Monday
-            let wd = calendar.component(.weekday, from: current)
-            let toMonday = (wd == 1) ? 1 : (9 - wd)
-            if toMonday > 0 && toMonday < 7 {
-                current = calendar.date(byAdding: .day, value: toMonday, to: current) ?? current
-            }
-            let startDay = calendar.startOfDay(for: range.start)
-            while current <= range.end {
-                let offset = calendar.dateComponents([.day], from: startDay, to: current).day ?? 0
-                if offset >= 0 && offset < days {
-                    mondays.append(offset)
-                }
-                current = calendar.date(byAdding: .day, value: 7, to: current) ?? range.end
-            }
-            mondayOffsets = mondays
-
-            workloads = WorkloadCalculator.compute(
-                resources: project.resources,
-                assignments: project.assignments,
-                tasks: project.tasks,
-                calendars: project.calendars,
-                defaultCalendarID: project.properties.defaultCalendarUniqueId,
-                dateRange: range
-            )
+        .task(id: workloadRefreshKey) {
+            await refreshWorkloads()
         }
         .transaction { transaction in
             transaction.animation = nil
@@ -212,6 +206,65 @@ struct WorkloadView: View {
 
     private func fittedPixelsPerDay(for viewportWidth: CGFloat) -> CGFloat {
         max(2, min(100, viewportWidth / CGFloat(max(totalDays, 1))))
+    }
+
+    @MainActor
+    private func refreshWorkloads() async {
+        // Debounce: .task(id:) cancels this task when the refresh key changes
+        // again, so rapid model edits coalesce into one recomputation.
+        if !workloads.isEmpty {
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled else { return }
+        }
+        isLoadingWorkloads = true
+
+        let tasks = project.tasks
+        let resources = project.resources
+        let assignments = project.assignments
+        let calendars = project.calendars
+        let defaultCalendarID = project.properties.defaultCalendarUniqueId
+
+        let result = await Task.detached(priority: .userInitiated) {
+            let range = GanttDateHelpers.dateRange(for: tasks)
+            let days = GanttDateHelpers.totalDays(for: range)
+            let mondays = Self.mondayOffsets(in: range, days: days)
+            let workloads = WorkloadCalculator.compute(
+                resources: resources,
+                assignments: assignments,
+                tasks: tasks,
+                calendars: calendars,
+                defaultCalendarID: defaultCalendarID,
+                dateRange: range
+            )
+            return (range, days, mondays, workloads)
+        }.value
+
+        cachedDateRange = result.0
+        cachedTotalDays = result.1
+        mondayOffsets = result.2
+        workloads = result.3
+        isLoadingWorkloads = false
+        applyAutoFitIfNeeded()
+    }
+
+    nonisolated private static func mondayOffsets(in range: (start: Date, end: Date), days: Int) -> [Int] {
+        let calendar = Calendar.current
+        var mondays: [Int] = []
+        var current = calendar.startOfDay(for: range.start)
+        let wd = calendar.component(.weekday, from: current)
+        let toMonday = (wd == 1) ? 1 : (9 - wd)
+        if toMonday > 0 && toMonday < 7 {
+            current = calendar.date(byAdding: .day, value: toMonday, to: current) ?? current
+        }
+        let startDay = calendar.startOfDay(for: range.start)
+        while current <= range.end {
+            let offset = calendar.dateComponents([.day], from: startDay, to: current).day ?? 0
+            if offset >= 0 && offset < days {
+                mondays.append(offset)
+            }
+            current = calendar.date(byAdding: .day, value: 7, to: current) ?? range.end
+        }
+        return mondays
     }
 
     // MARK: - Canvas

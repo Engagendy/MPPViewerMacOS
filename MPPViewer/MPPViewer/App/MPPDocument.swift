@@ -33,7 +33,7 @@ struct PlanningDocument: FileDocument {
             throw CocoaError(.fileReadCorruptFile)
         }
         self.fileURL = nil
-        let nativePlan = PlanningDocument.decodeNativePlanIfPossible(from: data)
+        let nativePlan = try PlanningDocument.decodeNativePlanIfPossible(from: data)
 
         if let nativePlan {
             editablePortfolioID = nativePlan.portfolioID
@@ -48,10 +48,18 @@ struct PlanningDocument: FileDocument {
         }
     }
 
-    private static func decodeNativePlanIfPossible(from data: Data) -> NativeProjectPlan? {
+    private static func decodeNativePlanIfPossible(from data: Data) throws -> NativeProjectPlan? {
         guard !data.isEmpty else { return nil }
         let trimmed = data.starts(with: [0xEF, 0xBB, 0xBF]) ? data.dropFirst(3) : data
-        return try? NativeProjectPlan.decode(from: Data(trimmed))
+        do {
+            return try NativeProjectPlan.decode(from: Data(trimmed))
+        } catch let error as NativePlanFormatError {
+            // A plan from a newer app version must fail loudly, not fall through
+            // to the binary .mpp import path with a confusing converter error.
+            throw error
+        } catch {
+            return nil
+        }
     }
 
     var isEditablePlan: Bool {
@@ -64,11 +72,17 @@ struct PlanningDocument: FileDocument {
 
     var nativePlan: NativeProjectPlan? {
         get {
+            // The seed is kept in sync by the setter and nilled by callers
+            // that write raw data directly, so prefer it and avoid a full
+            // JSON decode on every access.
+            if let editablePlanSeed {
+                return editablePlanSeed
+            }
             if let editablePlanData,
                let decoded = try? NativeProjectPlan.decode(from: editablePlanData) {
                 return decoded
             }
-            return editablePlanSeed
+            return nil
         }
         set {
             editablePortfolioID = newValue?.portfolioID

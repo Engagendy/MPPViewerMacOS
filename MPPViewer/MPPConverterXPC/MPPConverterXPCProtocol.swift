@@ -8,4 +8,7 @@ import Foundation
 
     /// Convert MPP file data to JSON data.
     func convertMPPData(_ inputData: Data, fileExtension: String, reply: @escaping (Data?, String?) -> Void)
+
+    /// Export a native-plan interchange JSON payload to MSPDI (MS Project XML) data.
+    func exportPlanToMSPDI(_ planJSON: Data, reply: @escaping (Data?, String?) -> Void)
 }

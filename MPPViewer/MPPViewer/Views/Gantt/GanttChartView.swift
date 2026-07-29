@@ -71,7 +71,7 @@ private struct GanttTaskPopover: View {
                     Image(systemName: "xmark")
                         .font(.caption)
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.accessoryBar)
                 .foregroundStyle(.secondary)
                 .keyboardShortcut(.cancelAction)
                 .help("Close")
@@ -307,6 +307,7 @@ private struct GanttTimelineViewportPreferenceKey: PreferenceKey {
 
 struct GanttChartView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.undoManager) private var undoManager
 
     let project: ProjectModel
     let searchText: String
@@ -332,6 +333,10 @@ struct GanttChartView: View {
     @State private var selectedDependency: GanttDependencySelection?
     @State private var interactionMode: GanttInteractionMode = .view
     @State private var inspectorTab: GanttInspectorTab = .task
+    @State private var nativeTaskSnapshot: [NativePlanTask]
+    @State private var nativeAssignmentSnapshot: [NativePlanAssignment]
+    @State private var nativeResourceSnapshot: [NativePlanResource]
+    @State private var searchDebounceWorkItem: DispatchWorkItem?
     @GestureState private var magnifyBy: CGFloat = 1.0
 
     private let exportTaskListWidth: CGFloat = 280
@@ -359,15 +364,15 @@ struct GanttChartView: View {
     }
 
     private var nativeTasks: [NativePlanTask] {
-        planModel?.nativeTasksForUI ?? []
+        nativeTaskSnapshot
     }
 
     private var nativeAssignments: [NativePlanAssignment] {
-        planModel?.nativeAssignmentsForUI ?? []
+        nativeAssignmentSnapshot
     }
 
     private var nativeResources: [NativePlanResource] {
-        planModel?.nativeResourcesForUI ?? []
+        nativeResourceSnapshot
     }
 
     private var isEditingEnabled: Bool {
@@ -420,6 +425,9 @@ struct GanttChartView: View {
         self.searchText = searchText
         self.planModel = planModel
         self._derivedContent = State(initialValue: GanttDerivedContent.build(project: project, searchText: searchText))
+        self._nativeTaskSnapshot = State(initialValue: planModel?.nativeTasksForUI ?? [])
+        self._nativeAssignmentSnapshot = State(initialValue: planModel?.nativeAssignmentsForUI ?? [])
+        self._nativeResourceSnapshot = State(initialValue: planModel?.nativeResourcesForUI ?? [])
     }
 
     var body: some View {
@@ -439,6 +447,7 @@ struct GanttChartView: View {
 
             if flatTasks.isEmpty {
                 ContentUnavailableView("No Tasks", systemImage: "chart.bar.xaxis")
+                    .topAlignedEmptyState()
             } else {
                 GeometryReader { geometry in
                     let viewportWidth = max(geometry.size.width, 1)
@@ -497,6 +506,7 @@ struct GanttChartView: View {
             }
         }
         .onAppear {
+            refreshNativeSnapshots()
             refreshDerivedContent()
             interactionMode = .view
             pendingDependencySourceTaskID = nil
@@ -505,10 +515,16 @@ struct GanttChartView: View {
                 selectedTaskID = flatTasks.first?.uniqueID
             }
         }
-        .onChange(of: derivedInput) { _, _ in
-            refreshDerivedContent()
+        .onChange(of: derivedInput) { oldValue, newValue in
+            if oldValue.tasks == newValue.tasks && oldValue.statusDate == newValue.statusDate {
+                // Search-only change: debounce so typing doesn't rebuild per keystroke.
+                scheduleSearchDebouncedRefresh()
+            } else {
+                refreshDerivedContent()
+            }
         }
         .onChange(of: planModel?.updatedAt) { _, _ in
+            refreshNativeSnapshots()
             refreshDerivedContent()
         }
         .onChange(of: interactionMode) { _, mode in
@@ -577,11 +593,53 @@ struct GanttChartView: View {
         if refreshMetrics {
             planModel.refreshPortfolioMetrics()
         }
-        try? modelContext.save()
+        modelContext.saveReportingFailures()
+        refreshNativeSnapshots()
+    }
+
+    private func refreshNativeSnapshots() {
+        guard let planModel else {
+            nativeTaskSnapshot = []
+            nativeAssignmentSnapshot = []
+            nativeResourceSnapshot = []
+            return
+        }
+
+        nativeTaskSnapshot = planModel.nativeTasksForUI
+        nativeAssignmentSnapshot = planModel.nativeAssignmentsForUI
+        nativeResourceSnapshot = planModel.nativeResourcesForUI
+    }
+
+    private func registerGanttUndoSnapshot() {
+        guard let planModel else { return }
+        let snapshot = planModel.asNativePlan()
+        undoManager?.registerUndo(withTarget: planModel) { _ in
+            restoreGanttPlanSnapshot(snapshot)
+        }
+        undoManager?.setActionName("Gantt Edit")
+    }
+
+    private func restoreGanttPlanSnapshot(_ snapshot: NativeProjectPlan) {
+        guard let planModel else { return }
+        let current = planModel.asNativePlan()
+        undoManager?.registerUndo(withTarget: planModel) { _ in
+            restoreGanttPlanSnapshot(current)
+        }
+        undoManager?.setActionName("Gantt Edit")
+
+        planModel.update(from: snapshot)
+        planModel.updatedAt = Date()
+        planModel.refreshPortfolioMetrics(from: snapshot)
+        modelContext.saveReportingFailures()
+        nativeTaskSnapshot = snapshot.tasks
+        nativeAssignmentSnapshot = snapshot.assignments
+        nativeResourceSnapshot = snapshot.resources
+        refreshDerivedContent()
     }
 
     private func withGanttTask(_ taskID: Int, refreshDerived: Bool = true, _ update: (PortfolioPlanTask) -> Void) {
         guard let task = planModel?.tasks.first(where: { $0.legacyID == taskID }) else { return }
+        registerGanttUndoSnapshot()
         update(task)
         persistGanttStoreChanges()
         if refreshDerived {
@@ -591,6 +649,7 @@ struct GanttChartView: View {
 
     private func withGanttAssignment(_ assignmentID: Int, refreshDerived: Bool = true, _ update: (PortfolioPlanAssignment) -> Void) {
         guard let assignment = planModel?.tasks.flatMap(\.assignments).first(where: { $0.legacyID == assignmentID }) else { return }
+        registerGanttUndoSnapshot()
         update(assignment)
         persistGanttStoreChanges()
         if refreshDerived {
@@ -601,9 +660,18 @@ struct GanttChartView: View {
     private func fullSyncGanttPlan(_ update: (inout NativeProjectPlan) -> Void) {
         guard let planModel else { return }
         var snapshot = planModel.asNativePlan()
+        undoManager?.registerUndo(withTarget: planModel) { [previous = snapshot] _ in
+            restoreGanttPlanSnapshot(previous)
+        }
+        undoManager?.setActionName("Gantt Edit")
         update(&snapshot)
         planModel.update(from: snapshot)
-        persistGanttStoreChanges(refreshMetrics: true)
+        planModel.updatedAt = Date()
+        planModel.refreshPortfolioMetrics(from: snapshot)
+        modelContext.saveReportingFailures()
+        nativeTaskSnapshot = snapshot.tasks
+        nativeAssignmentSnapshot = snapshot.assignments
+        nativeResourceSnapshot = snapshot.resources
         refreshDerivedContent()
     }
 
@@ -643,7 +711,7 @@ struct GanttChartView: View {
                     Label("Export PDF", systemImage: "square.and.arrow.up")
                         .font(.caption)
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.accessoryBar)
 
                 Button {
                     printGantt()
@@ -651,7 +719,7 @@ struct GanttChartView: View {
                     Label("Print", systemImage: "printer")
                         .font(.caption)
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.accessoryBar)
 
                 Divider().frame(height: 16)
 
@@ -660,6 +728,7 @@ struct GanttChartView: View {
                         .font(.caption)
                 }
                 .toggleStyle(.button)
+                .hoverHighlight()
                 .buttonStyle(.bordered)
                 .tint(criticalPathOnly ? .red : nil)
                 .help("Highlights tasks marked critical by the imported schedule and dims non-critical tasks.")
@@ -669,6 +738,7 @@ struct GanttChartView: View {
                         .font(.caption)
                 }
                 .toggleStyle(.button)
+                .hoverHighlight()
                 .buttonStyle(.bordered)
                 .tint(showDependencyLinks ? .blue : nil)
                 .help("Shows predecessor and successor dependency links between tasks.")
@@ -684,6 +754,7 @@ struct GanttChartView: View {
                         .font(.caption)
                 }
                 .toggleStyle(.button)
+                .hoverHighlight()
                 .buttonStyle(.bordered)
                 .tint(showBaseline ? .gray : nil)
                 .help("Shows the saved baseline schedule as gray bars below the current bars, with start/finish variance badges.")
@@ -717,13 +788,14 @@ struct GanttChartView: View {
             }
 
             if isNativeEditablePlan {
-                HStack(spacing: 10) {
+                HStack(spacing: 8) {
                     Button {
                         addTaskFromGantt()
                     } label: {
                         Label("Add Task", systemImage: "plus")
                     }
                     .buttonStyle(.bordered)
+                    .hoverHighlight()
                     .disabled(!isEditingEnabled)
                     .help("Insert a new task after the selected task or at the end of the plan.")
 
@@ -733,8 +805,11 @@ struct GanttChartView: View {
                         Label("Add Subtask", systemImage: "arrow.turn.down.right")
                     }
                     .buttonStyle(.bordered)
+                    .hoverHighlight()
                     .disabled(!isEditingEnabled || selectedTaskID == nil)
                     .help("Insert a child task under the selected task.")
+
+                    Divider().frame(height: 16)
 
                     Button {
                         indentSelectedTask()
@@ -742,6 +817,7 @@ struct GanttChartView: View {
                         Label("Indent", systemImage: "arrow.right.to.line")
                     }
                     .buttonStyle(.bordered)
+                    .hoverHighlight()
                     .disabled(!canIndentSelectedTask)
                     .help("Make the selected task a child of the row above.")
 
@@ -751,8 +827,11 @@ struct GanttChartView: View {
                         Label("Outdent", systemImage: "arrow.left.to.line")
                     }
                     .buttonStyle(.bordered)
+                    .hoverHighlight()
                     .disabled(!canOutdentSelectedTask)
                     .help("Promote the selected task up one outline level.")
+
+                    Divider().frame(height: 16)
 
                     Button {
                         linkSelectedTaskToNext()
@@ -760,6 +839,7 @@ struct GanttChartView: View {
                         Label("Link Next", systemImage: "link")
                     }
                     .buttonStyle(.bordered)
+                    .hoverHighlight()
                     .disabled(!canLinkSelectedTaskToNext)
                     .help("Create a finish-to-start dependency from the selected task to the next visible task.")
 
@@ -772,6 +852,7 @@ struct GanttChartView: View {
                         )
                     }
                     .buttonStyle(.borderedProminent)
+                    .hoverHighlight()
                     .disabled(!isEditingEnabled || selectedTaskID == nil)
                     .help("Start dependency linking for the selected task, then click the target row or bar.")
 
@@ -781,8 +862,11 @@ struct GanttChartView: View {
                         Label("Remove Link", systemImage: "link.badge.minus")
                     }
                     .buttonStyle(.bordered)
+                    .hoverHighlight()
                     .disabled(!canRemoveSelectedDependency)
                     .help("Remove the selected dependency arrow from the plan.")
+
+                    Divider().frame(height: 16)
 
                     Button(role: .destructive) {
                         deleteSelectedTask()
@@ -790,15 +874,16 @@ struct GanttChartView: View {
                         Label("Delete", systemImage: "trash")
                     }
                     .buttonStyle(.bordered)
+                    .hoverHighlight()
                     .disabled(!canDeleteSelectedTask)
                     .help("Delete the selected task and its child tasks from the plan.")
 
                     Spacer()
 
                     Text(editStatusText)
-                        .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+                .font(.caption)
             }
         }
         .padding(.horizontal)
@@ -862,6 +947,7 @@ struct GanttChartView: View {
                 Label("Remove Link", systemImage: "link.badge.minus")
             }
             .buttonStyle(.bordered)
+            .hoverHighlight()
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
@@ -1001,6 +1087,7 @@ struct GanttChartView: View {
                                 Label("Link Next", systemImage: "link")
                             }
                             .buttonStyle(.bordered)
+                            .hoverHighlight()
                             .disabled(!canLinkSelectedTaskToNext)
 
                             Button {
@@ -1012,6 +1099,7 @@ struct GanttChartView: View {
                                 )
                             }
                             .buttonStyle(.borderedProminent)
+                            .hoverHighlight()
                             .disabled(!isEditingEnabled || selectedTaskID == nil)
                         }
                     }
@@ -1063,6 +1151,7 @@ struct GanttChartView: View {
                                             Label("Add", systemImage: "plus")
                                         }
                                         .buttonStyle(.bordered)
+                                        .hoverHighlight()
                                         .help("Add a primary assignment using the first available resource.")
                                     } else {
                                         Button(role: .destructive) {
@@ -1071,6 +1160,7 @@ struct GanttChartView: View {
                                             Label("Clear", systemImage: "xmark")
                                         }
                                         .buttonStyle(.bordered)
+                                        .hoverHighlight()
                                         .help("Remove the primary assignment from the selected task.")
                                     }
                                 }
@@ -1134,7 +1224,7 @@ struct GanttChartView: View {
                                 Button("Clear", role: .destructive) {
                                     clearSelectedTaskActualStart()
                                 }
-                                .buttonStyle(.borderless)
+                                .buttonStyle(.accessoryBar)
                             }
 
                             HStack(spacing: 8) {
@@ -1145,7 +1235,7 @@ struct GanttChartView: View {
                                 Button("Clear", role: .destructive) {
                                     clearSelectedTaskActualFinish()
                                 }
-                                .buttonStyle(.borderless)
+                                .buttonStyle(.accessoryBar)
                             }
                         }
                     }
@@ -1628,7 +1718,7 @@ struct GanttChartView: View {
                 .font(.system(size: 10, weight: .semibold))
                 .frame(width: 18, height: 18)
         }
-        .buttonStyle(.borderless)
+        .buttonStyle(.accessoryBar)
         .foregroundStyle(destructive ? Color.red : Color.secondary)
         .help(help)
     }
@@ -1833,6 +1923,15 @@ struct GanttChartView: View {
         PerformanceMonitor.measure("Gantt.RefreshDerived") {
             derivedContent = GanttDerivedContent.build(project: project, searchText: searchText)
         }
+    }
+
+    private func scheduleSearchDebouncedRefresh() {
+        searchDebounceWorkItem?.cancel()
+        let workItem = DispatchWorkItem {
+            refreshDerivedContent()
+        }
+        searchDebounceWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: workItem)
     }
 
     private func addSubtaskFromGantt() {
@@ -2765,15 +2864,15 @@ struct GanttZoomControls: View {
     var body: some View {
         HStack(spacing: 8) {
             Button("Fit All", action: onFitAll)
-            .buttonStyle(.borderless)
+            .buttonStyle(.accessoryBar)
             .font(.caption)
 
             Button("Week", action: onShowWeek)
-            .buttonStyle(.borderless)
+            .buttonStyle(.accessoryBar)
             .font(.caption)
 
             Button("Month", action: onShowMonth)
-            .buttonStyle(.borderless)
+            .buttonStyle(.accessoryBar)
             .font(.caption)
 
             Divider().frame(height: 16)
@@ -2790,7 +2889,7 @@ struct GanttZoomControls: View {
                 Image(systemName: "plus.magnifyingglass")
             }
         }
-        .buttonStyle(.borderless)
+        .buttonStyle(.accessoryBar)
     }
 }
 

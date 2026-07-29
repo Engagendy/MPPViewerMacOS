@@ -8,8 +8,21 @@ import java.io.File;
 
 public class MppToJson {
     public static void main(String[] args) {
+        if (args.length >= 3 && "--plan-to-mspdi".equals(args[0])) {
+            try {
+                MspdiExport.run(args[1], args[2]);
+                System.out.println("OK");
+            } catch (Exception e) {
+                System.err.println("Error exporting MSPDI: " + e.getMessage());
+                e.printStackTrace(System.err);
+                System.exit(1);
+            }
+            return;
+        }
+
         if (args.length < 2) {
             System.err.println("Usage: MppToJson <input.mpp> <output.json>");
+            System.err.println("       MppToJson --plan-to-mspdi <plan.json> <output.xml>");
             System.exit(1);
         }
 

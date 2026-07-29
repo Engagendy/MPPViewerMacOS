@@ -68,6 +68,35 @@ struct NativePlanAnalysis {
         )
     }
 
+    static func buildPreview(from plan: NativeProjectPlan) -> NativePlanAnalysis {
+        let unscheduledResult = PlanScheduleResult(
+            tasks: plan.tasks,
+            criticalTaskIDs: [],
+            totalSlackSecondsByTaskID: [:]
+        )
+        let project = plan.asProjectModel(scheduleResult: unscheduledResult)
+        let evm = EVMCalculator.projectMetrics(tasks: project.tasks, statusDate: plan.statusDate)
+        let plannedCost = project.tasks
+            .filter { $0.summary != true }
+            .compactMap(\.cost)
+            .reduce(0, +)
+        return NativePlanAnalysis(
+            project: project,
+            evm: evm,
+            headerMetrics: HeaderMetrics(
+                plannedCost: plannedCost,
+                bac: evm.bac,
+                actualCost: evm.ac,
+                cpi: evm.cpi,
+                spi: evm.spi,
+                eac: evm.eac
+            ),
+            validationIssues: [],
+            diagnosticItems: [],
+            summaryParentTaskIDs: plan.summaryParentTaskIDs()
+        )
+    }
+
     static func build(fromProjection planModel: PortfolioProjectPlan) -> NativePlanAnalysis {
         let nativeTasks = planModel.nativeTasksForUI
         let nativeAssignments = planModel.nativeAssignmentsForUI
@@ -180,6 +209,115 @@ struct NativePlanAnalysis {
     }
 }
 
+/// Value snapshot of the plan fields the portfolio analytics builders read,
+/// captured on the main actor so summaries can be computed off the main
+/// thread without touching SwiftData objects. Member names intentionally
+/// mirror `PortfolioProjectPlan` / `PortfolioPlanTask` so builder bodies stay
+/// unchanged.
+struct PortfolioAnalyticsPlanSnapshot: Sendable {
+    struct Task: Sendable {
+        let uniqueID: UUID
+        let legacyID: Int
+        let name: String
+        let isMilestone: Bool
+        let isActive: Bool
+        let percentComplete: Double
+        let startDate: Date
+        let finishDate: Date
+        let baselineFinishDate: Date?
+        let boardStatus: String
+    }
+
+    let portfolioID: UUID
+    let title: String
+    let portfolioWorkspace: String?
+    let portfolioProgram: String?
+    let portfolioSponsor: String?
+    let portfolioHealth: String?
+    let portfolioStage: String?
+    let portfolioApprovalState: String?
+    let portfolioStrategicAlignment: Int?
+    let portfolioRiskScore: Int?
+    let portfolioReviewDate: Date?
+    let portfolioReviewCadenceDays: Int?
+    let portfolioArchiveReason: String?
+    let portfolioBudget: Double
+    let portfolioActualCost: Double
+    let isArchivedValue: Bool
+    let tasks: [Task]
+}
+
+struct PortfolioAnalyticsDependencySnapshot: Sendable {
+    let uniqueID: UUID
+    let sourcePlanID: UUID
+    let sourcePlanTitle: String
+    let sourceTaskUniqueID: UUID
+    let sourceTaskName: String
+    let targetPlanID: UUID
+    let targetPlanTitle: String
+    let targetTaskUniqueID: UUID
+    let targetTaskName: String
+    let relationType: String
+    let lagDays: Int
+    let note: String
+}
+
+extension PortfolioProjectPlan {
+    func analyticsSnapshot() -> PortfolioAnalyticsPlanSnapshot {
+        PortfolioAnalyticsPlanSnapshot(
+            portfolioID: portfolioID,
+            title: title,
+            portfolioWorkspace: portfolioWorkspace,
+            portfolioProgram: portfolioProgram,
+            portfolioSponsor: portfolioSponsor,
+            portfolioHealth: portfolioHealth,
+            portfolioStage: portfolioStage,
+            portfolioApprovalState: portfolioApprovalState,
+            portfolioStrategicAlignment: portfolioStrategicAlignment,
+            portfolioRiskScore: portfolioRiskScore,
+            portfolioReviewDate: portfolioReviewDate,
+            portfolioReviewCadenceDays: portfolioReviewCadenceDays,
+            portfolioArchiveReason: portfolioArchiveReason,
+            portfolioBudget: portfolioBudget,
+            portfolioActualCost: portfolioActualCost,
+            isArchivedValue: isArchivedValue,
+            tasks: tasks.map { task in
+                PortfolioAnalyticsPlanSnapshot.Task(
+                    uniqueID: task.uniqueID,
+                    legacyID: task.legacyID,
+                    name: task.name,
+                    isMilestone: task.isMilestone,
+                    isActive: task.isActive,
+                    percentComplete: task.percentComplete,
+                    startDate: task.startDate,
+                    finishDate: task.finishDate,
+                    baselineFinishDate: task.baselineFinishDate,
+                    boardStatus: task.boardStatus
+                )
+            }
+        )
+    }
+}
+
+extension PortfolioCrossProjectDependency {
+    func analyticsSnapshot() -> PortfolioAnalyticsDependencySnapshot {
+        PortfolioAnalyticsDependencySnapshot(
+            uniqueID: uniqueID,
+            sourcePlanID: sourcePlanID,
+            sourcePlanTitle: sourcePlanTitle,
+            sourceTaskUniqueID: sourceTaskUniqueID,
+            sourceTaskName: sourceTaskName,
+            targetPlanID: targetPlanID,
+            targetPlanTitle: targetPlanTitle,
+            targetTaskUniqueID: targetTaskUniqueID,
+            targetTaskName: targetTaskName,
+            relationType: relationType,
+            lagDays: lagDays,
+            note: note
+        )
+    }
+}
+
 struct PortfolioExecutiveSummary {
     struct ProjectInsight: Identifiable, Hashable {
         let planID: UUID
@@ -245,6 +383,10 @@ struct PortfolioExecutiveSummary {
     let upcomingMilestoneCount: Int
 
     static func build(plans: [PortfolioProjectPlan], now: Date = Date()) -> PortfolioExecutiveSummary {
+        build(snapshots: plans.map { $0.analyticsSnapshot() }, now: now)
+    }
+
+    static func build(snapshots plans: [PortfolioAnalyticsPlanSnapshot], now: Date = Date()) -> PortfolioExecutiveSummary {
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: now)
         let reviewHorizon = calendar.date(byAdding: .day, value: 7, to: today) ?? today
@@ -418,7 +560,7 @@ struct PortfolioExecutiveSummary {
     }
 
     private static func buildInsight(
-        for plan: PortfolioProjectPlan,
+        for plan: PortfolioAnalyticsPlanSnapshot,
         today: Date,
         reviewHorizon: Date,
         milestoneHorizon: Date,
@@ -536,12 +678,12 @@ struct PortfolioExecutiveSummary {
         )
     }
 
-    private static func milestoneSlipDays(for task: PortfolioPlanTask, calendar: Calendar) -> Int {
+    private static func milestoneSlipDays(for task: PortfolioAnalyticsPlanSnapshot.Task, calendar: Calendar) -> Int {
         guard let baselineFinishDate = task.baselineFinishDate else { return 0 }
         return max(0, calendar.dateComponents([.day], from: calendar.startOfDay(for: baselineFinishDate), to: calendar.startOfDay(for: task.finishDate)).day ?? 0)
     }
 
-    private static func scheduleSlipDays(for task: PortfolioPlanTask, calendar: Calendar) -> Int {
+    private static func scheduleSlipDays(for task: PortfolioAnalyticsPlanSnapshot.Task, calendar: Calendar) -> Int {
         milestoneSlipDays(for: task, calendar: calendar)
     }
 
@@ -590,6 +732,10 @@ struct PortfolioGovernanceSummary {
     let averageRiskScore: Int
 
     static func build(plans: [PortfolioProjectPlan], now: Date = Date()) -> PortfolioGovernanceSummary {
+        build(snapshots: plans.map { $0.analyticsSnapshot() }, now: now)
+    }
+
+    static func build(snapshots plans: [PortfolioAnalyticsPlanSnapshot], now: Date = Date()) -> PortfolioGovernanceSummary {
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: now)
         let dueSoonHorizon = calendar.date(byAdding: .day, value: 7, to: today) ?? today
@@ -629,7 +775,7 @@ struct PortfolioGovernanceSummary {
     }
 
     private static func buildInsight(
-        for plan: PortfolioProjectPlan,
+        for plan: PortfolioAnalyticsPlanSnapshot,
         today: Date,
         dueSoonHorizon: Date,
         calendar: Calendar
@@ -705,7 +851,7 @@ struct PortfolioGovernanceSummary {
         )
     }
 
-    private static func resolvedApprovalState(for plan: PortfolioProjectPlan) -> String {
+    private static func resolvedApprovalState(for plan: PortfolioAnalyticsPlanSnapshot) -> String {
         if let value = normalizedText(plan.portfolioApprovalState) {
             return value
         }
@@ -722,7 +868,7 @@ struct PortfolioGovernanceSummary {
         }
     }
 
-    private static func defaultRiskScore(for plan: PortfolioProjectPlan) -> Int {
+    private static func defaultRiskScore(for plan: PortfolioAnalyticsPlanSnapshot) -> Int {
         switch normalizedText(plan.portfolioHealth)?.lowercased() {
         case "red":
             return 80
@@ -829,7 +975,27 @@ struct PortfolioResourceCapacitySummary {
     let overloadedWeekCount: Int
     let doubleBookedWeekCount: Int
 
+    /// Lightweight value snapshot of a plan, captured on the main actor so the
+    /// heavy schedule + workload computation can run off the main thread.
+    struct PlanProjection: Sendable {
+        let title: String
+        let plan: NativeProjectPlan
+    }
+
+    static func projections(for plans: [PortfolioProjectPlan]) -> [PlanProjection] {
+        plans.map { plan in
+            PlanProjection(
+                title: trimmedOrFallback(plan.title, fallback: "Untitled Plan"),
+                plan: plan.asNativePlan()
+            )
+        }
+    }
+
     static func build(plans: [PortfolioProjectPlan], now: Date = Date()) -> PortfolioResourceCapacitySummary {
+        build(projections: projections(for: plans), now: now)
+    }
+
+    static func build(projections planProjections: [PlanProjection], now: Date = Date()) -> PortfolioResourceCapacitySummary {
         struct MutableWeek {
             var totalHours: Double = 0
             var capacityHours: Double = 0
@@ -848,12 +1014,11 @@ struct PortfolioResourceCapacitySummary {
         let calendar = Calendar.current
         var resourcesByKey: [String: MutableResource] = [:]
 
-        for plan in plans {
-            let projection = plan.asNativePlan()
-            let project = projection.asProjectModel()
+        for planProjection in planProjections {
+            let project = planProjection.plan.asProjectModel()
             guard !project.tasks.isEmpty else { continue }
 
-            let planTitle = trimmedOrFallback(plan.title, fallback: "Untitled Plan")
+            let planTitle = planProjection.title
             let dateRange = GanttDateHelpers.dateRange(for: project.tasks)
             let workloads = WorkloadCalculator.compute(
                 resources: project.resources,
@@ -1044,6 +1209,10 @@ struct PortfolioProgramRoadmapSummary {
     let overdueReviewCount: Int
 
     static func build(plans: [PortfolioProjectPlan], now: Date = Date()) -> PortfolioProgramRoadmapSummary {
+        build(snapshots: plans.map { $0.analyticsSnapshot() }, now: now)
+    }
+
+    static func build(snapshots plans: [PortfolioAnalyticsPlanSnapshot], now: Date = Date()) -> PortfolioProgramRoadmapSummary {
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: now)
         let roadmapHorizon = calendar.date(byAdding: .day, value: 60, to: today) ?? today
@@ -1173,7 +1342,7 @@ struct PortfolioProgramRoadmapSummary {
         )
     }
 
-    private static func milestoneSlipDays(for task: PortfolioPlanTask, calendar: Calendar) -> Int {
+    private static func milestoneSlipDays(for task: PortfolioAnalyticsPlanSnapshot.Task, calendar: Calendar) -> Int {
         guard let baselineFinishDate = task.baselineFinishDate else { return 0 }
         return max(0, calendar.dateComponents([.day], from: calendar.startOfDay(for: baselineFinishDate), to: calendar.startOfDay(for: task.finishDate)).day ?? 0)
     }
@@ -1228,12 +1397,24 @@ struct PortfolioDependencySummary {
         dependencies: [PortfolioCrossProjectDependency],
         now: Date = Date()
     ) -> PortfolioDependencySummary {
+        build(
+            snapshots: plans.map { $0.analyticsSnapshot() },
+            dependencySnapshots: dependencies.map { $0.analyticsSnapshot() },
+            now: now
+        )
+    }
+
+    static func build(
+        snapshots plans: [PortfolioAnalyticsPlanSnapshot],
+        dependencySnapshots dependencies: [PortfolioAnalyticsDependencySnapshot],
+        now: Date = Date()
+    ) -> PortfolioDependencySummary {
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: now)
         let dueSoonHorizon = calendar.date(byAdding: .day, value: 14, to: today) ?? today
 
         let planByID = Dictionary(nonThrowingUniquePairs: plans.map { ($0.portfolioID, $0) })
-        let taskByPlanAndID: [UUID: [UUID: PortfolioPlanTask]] = Dictionary(
+        let taskByPlanAndID: [UUID: [UUID: PortfolioAnalyticsPlanSnapshot.Task]] = Dictionary(
             uniqueKeysWithValues: plans.map { plan in
                 (plan.portfolioID, Dictionary(uniqueKeysWithValues: plan.tasks.map { ($0.uniqueID, $0) }))
             }
@@ -2380,6 +2561,7 @@ struct FinancialTermsButton: View {
             Label(title, systemImage: "text.book.closed")
         }
         .buttonStyle(.bordered)
+        .hoverHighlight()
         .popover(isPresented: $isPresented, arrowEdge: .bottom) {
             ScrollView {
                 FinancialTermsLegendView()
@@ -2772,6 +2954,7 @@ struct ContentView: View {
     @State private var isRefreshingEditableAnalysis = false
     @State private var isSavingNativePlan = false
     @State private var isMaterializingEditableWorkspace = false
+    @State private var transientEditablePortfolioPlan: PortfolioProjectPlan?
     @State private var editableAnalysisGeneration = 0
     @AppStorage("flaggedTaskIDs") private var flaggedTaskIDsData: Data = Data()
 
@@ -2858,7 +3041,13 @@ struct ContentView: View {
 
     private var activeDetailPortfolioPlan: PortfolioProjectPlan? {
         guard document.isEditablePlan else { return nil }
-        return effectiveWorkspacePortfolioPlan
+        if let effectiveWorkspacePortfolioPlan {
+            return effectiveWorkspacePortfolioPlan
+        }
+        if workspacePortfolioID == document.editablePortfolioID {
+            return transientEditablePortfolioPlan
+        }
+        return nil
     }
 
     private var workspacePortfolioBinding: Binding<UUID?> {
@@ -2894,7 +3083,64 @@ struct ContentView: View {
 
     private func portfolioPlan(for id: UUID?) -> PortfolioProjectPlan? {
         guard let editablePortfolioID = id ?? document.editablePortfolioID else { return nil }
+        if let documentPlan = document.nativePlan,
+           documentPlan.portfolioID == editablePortfolioID || document.editablePortfolioID == editablePortfolioID,
+           let recoveredPlan = recoverableStoredPlan(for: documentPlan) {
+            return recoveredPlan
+        }
         return portfolioPlans.first(where: { $0.portfolioID == editablePortfolioID })
+    }
+
+    private func isEmptyNativePlan(_ plan: NativeProjectPlan?) -> Bool {
+        guard let plan else { return true }
+        return plan.tasks.isEmpty && plan.resources.isEmpty && plan.assignments.isEmpty
+    }
+
+    private func normalizedPlanTitle(_ title: String) -> String {
+        title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    private func recoverableStoredPlan(for documentPlan: NativeProjectPlan?) -> PortfolioProjectPlan? {
+        guard document.isEditablePlan,
+              isEmptyNativePlan(documentPlan) else {
+            return nil
+        }
+
+        let populatedPlans = portfolioPlans.filter { !$0.isArchivedValue && $0.taskCount > 0 }
+        let documentTitle = normalizedPlanTitle(documentPlan?.title ?? "")
+        if !documentTitle.isEmpty,
+           let titleMatch = populatedPlans.first(where: { normalizedPlanTitle($0.title) == documentTitle }) {
+            return titleMatch
+        }
+
+        return populatedPlans.count == 1 ? populatedPlans.first : nil
+    }
+
+    private func shouldPreferStoredEditablePlan(_ storedPlan: NativeProjectPlan, over documentPlan: NativeProjectPlan?) -> Bool {
+        guard !storedPlan.tasks.isEmpty || !storedPlan.resources.isEmpty || !storedPlan.assignments.isEmpty else {
+            return false
+        }
+        guard let documentPlan else { return true }
+        guard isEmptyNativePlan(documentPlan) else { return false }
+        if documentPlan.portfolioID == storedPlan.portfolioID {
+            return true
+        }
+        let documentTitle = normalizedPlanTitle(documentPlan.title)
+        return !documentTitle.isEmpty && documentTitle == normalizedPlanTitle(storedPlan.title)
+    }
+
+    private func storedNativePlan(for portfolioPlan: PortfolioProjectPlan?) -> NativeProjectPlan? {
+        guard let portfolioPlan else { return nil }
+        return try? portfolioPlan.asNativePlan(in: modelContext)
+    }
+
+    private func preferredNativePlan(for portfolioPlan: PortfolioProjectPlan?) -> NativeProjectPlan? {
+        let documentPlan = document.nativePlan
+        if let storedPlan = storedNativePlan(for: portfolioPlan),
+           shouldPreferStoredEditablePlan(storedPlan, over: documentPlan) {
+            return storedPlan
+        }
+        return documentPlan ?? storedNativePlan(for: portfolioPlan)
     }
 
     private func normalizeEditablePlanResources(_ plan: PortfolioProjectPlan) {
@@ -2904,6 +3150,17 @@ struct ContentView: View {
     }
 
     private func seedNativePlanForEditableWorkspace() -> NativeProjectPlan? {
+        let documentPlan = document.nativePlan
+        if let recoveredPlan = recoverableStoredPlan(for: documentPlan),
+           let storedPlan = storedNativePlan(for: recoveredPlan) {
+            return storedPlan
+        }
+
+        if let storedPlan = preferredNativePlan(for: editablePortfolioPlan),
+           shouldPreferStoredEditablePlan(storedPlan, over: document.nativePlan) {
+            return storedPlan
+        }
+
         if let nativePlan = document.nativePlan {
             return nativePlan
         }
@@ -2925,8 +3182,14 @@ struct ContentView: View {
             return nil
         }
 
+        let documentPlan = document.nativePlan
         if let activePlanID = document.editablePortfolioID, seedPlan.portfolioID != activePlanID {
-            seedPlan.portfolioID = activePlanID
+            if shouldPreferStoredEditablePlan(seedPlan, over: documentPlan) {
+                document.editablePortfolioID = seedPlan.portfolioID
+                selectedWorkspacePortfolioID = seedPlan.portfolioID
+            } else {
+                seedPlan.portfolioID = activePlanID
+            }
         } else if document.editablePortfolioID == nil {
             document.editablePortfolioID = seedPlan.portfolioID
         }
@@ -2941,6 +3204,9 @@ struct ContentView: View {
             let message = "Failed to materialize editable workspace plan: \(error)"
             editableWorkspaceError = message
             print(message)
+            if case PortfolioProjectSynchronizerError.storeRecoveryRequired = error {
+                return nil
+            }
             print("Attempting repair and retrying editable plan materialization.")
             sanitizePortfolioStoreData()
 
@@ -2966,11 +3232,65 @@ struct ContentView: View {
             let resourceDescriptor = FetchDescriptor<PortfolioPlanResource>()
             let resources = try modelContext.fetch(resourceDescriptor)
             for resource in resources {
+                if resource.plan == nil {
+                    modelContext.delete(resource)
+                    didMutate = true
+                    continue
+                }
+
                 let normalized = resource.accrueAtValue
                 if resource.accrueAt != normalized {
                     resource.accrueAt = normalized
                     didMutate = true
                 }
+            }
+
+            let taskDescriptor = FetchDescriptor<PortfolioPlanTask>()
+            for task in try modelContext.fetch(taskDescriptor) where task.plan == nil {
+                modelContext.delete(task)
+                didMutate = true
+            }
+
+            let assignmentDescriptor = FetchDescriptor<PortfolioPlanAssignment>()
+            for assignment in try modelContext.fetch(assignmentDescriptor) where assignment.task == nil {
+                modelContext.delete(assignment)
+                didMutate = true
+            }
+
+            let calendarDescriptor = FetchDescriptor<PortfolioPlanCalendar>()
+            for calendar in try modelContext.fetch(calendarDescriptor) where calendar.plan == nil {
+                modelContext.delete(calendar)
+                didMutate = true
+            }
+
+            let sprintDescriptor = FetchDescriptor<PortfolioPlanSprint>()
+            for sprint in try modelContext.fetch(sprintDescriptor) where sprint.plan == nil {
+                modelContext.delete(sprint)
+                didMutate = true
+            }
+
+            let workflowDescriptor = FetchDescriptor<PortfolioWorkflowColumn>()
+            for column in try modelContext.fetch(workflowDescriptor) where column.plan == nil && column.typeWorkflow == nil {
+                modelContext.delete(column)
+                didMutate = true
+            }
+
+            let typeWorkflowDescriptor = FetchDescriptor<PortfolioTypeWorkflow>()
+            for typeWorkflow in try modelContext.fetch(typeWorkflowDescriptor) where typeWorkflow.plan == nil {
+                modelContext.delete(typeWorkflow)
+                didMutate = true
+            }
+
+            let statusSnapshotDescriptor = FetchDescriptor<PortfolioStatusSnapshot>()
+            for snapshot in try modelContext.fetch(statusSnapshotDescriptor) where snapshot.plan == nil {
+                modelContext.delete(snapshot)
+                didMutate = true
+            }
+
+            let sprintSnapshotDescriptor = FetchDescriptor<PortfolioSprintStatusSnapshot>()
+            for snapshot in try modelContext.fetch(sprintSnapshotDescriptor) where snapshot.snapshot == nil {
+                modelContext.delete(snapshot)
+                didMutate = true
             }
 
             let planDescriptor = FetchDescriptor<PortfolioProjectPlan>()
@@ -2979,6 +3299,25 @@ struct ContentView: View {
                 if plan.isArchived == nil {
                     plan.isArchived = false
                     didMutate = true
+                }
+            }
+
+            if let documentPlan = document.nativePlan,
+               isEmptyNativePlan(documentPlan) {
+                let documentTitle = normalizedPlanTitle(documentPlan.title)
+                let populatedReplacement = plans.first { plan in
+                    plan.taskCount > 0
+                        && normalizedPlanTitle(plan.title) == documentTitle
+                        && plan.portfolioID != documentPlan.portfolioID
+                }
+
+                if let populatedReplacement {
+                    for plan in plans where plan.portfolioID == documentPlan.portfolioID && plan.taskCount == 0 {
+                        modelContext.delete(plan)
+                        didMutate = true
+                    }
+                    document.editablePortfolioID = populatedReplacement.portfolioID
+                    selectedWorkspacePortfolioID = populatedReplacement.portfolioID
                 }
             }
 
@@ -3003,6 +3342,28 @@ struct ContentView: View {
 
     private func ensureEditablePortfolioPlanLoaded() {
         guard document.isEditablePlan else { return }
+        if let documentPlan = document.nativePlan,
+           let recoveredPlan = recoverableStoredPlan(for: documentPlan),
+           let nativePlan = storedNativePlan(for: recoveredPlan) {
+            normalizeEditablePlanResources(recoveredPlan)
+            selectedWorkspacePortfolioID = recoveredPlan.portfolioID
+            archiveEditablePlan(nativePlan)
+            refreshEditableAnalysis()
+            editableWorkspaceError = nil
+            return
+        }
+
+        if let existingPlan = editablePortfolioPlan,
+           let nativePlan = preferredNativePlan(for: existingPlan),
+           shouldPreferStoredEditablePlan(nativePlan, over: document.nativePlan) {
+            normalizeEditablePlanResources(existingPlan)
+            selectedWorkspacePortfolioID = nativePlan.portfolioID
+            archiveEditablePlan(nativePlan)
+            refreshEditableAnalysis()
+            editableWorkspaceError = nil
+            return
+        }
+
         if document.editablePlanSeed == nil,
            let existingPlan = editablePortfolioPlan {
             normalizeEditablePlanResources(existingPlan)
@@ -3020,7 +3381,11 @@ struct ContentView: View {
             editableWorkspaceError = nil
             return
         }
-        guard seedNativePlanForEditableWorkspace() != nil else { return }
+        guard let seedPlan = seedNativePlanForEditableWorkspace() else { return }
+
+        if transientEditablePortfolioPlan?.portfolioID != seedPlan.portfolioID {
+            transientEditablePortfolioPlan = PortfolioProjectPlan(nativePlan: seedPlan)
+        }
 
         isMaterializingEditableWorkspace = true
         Task { @MainActor in
@@ -3075,6 +3440,9 @@ struct ContentView: View {
     }
 
     private func defaultWorkspacePortfolioID() -> UUID? {
+        if let recoveredPlan = recoverableStoredPlan(for: document.nativePlan) {
+            return recoveredPlan.portfolioID
+        }
         if let editableID = document.editablePortfolioID {
             return editableID
         }
@@ -3127,8 +3495,16 @@ struct ContentView: View {
         NavigationSplitView(columnVisibility: $splitViewVisibility) {
             SidebarView(selection: $selectedNav, showsPlanner: document.isEditablePlan)
         } detail: {
-            detailContent
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // On macOS 26 the sidebar floats above a full-bleed detail pane
+            // that only receives a leading safe-area inset. GeometryReader
+            // reports the safe-area size, so pinning the content to that size
+            // keeps every page's scroll canvas inside the visible viewport
+            // instead of extending underneath the sidebar and off-screen.
+            GeometryReader { proxy in
+                detailContent
+                    .frame(width: proxy.size.width, height: proxy.size.height)
+                    .clipped()
+            }
         }
     }
 
@@ -3145,7 +3521,8 @@ struct ContentView: View {
         }
         .onChange(of: effectiveWorkspacePortfolioPlan?.updatedAt) { _, _ in
             refreshEditableAnalysis()
-            if document.isEditablePlan, let nativePlan = effectiveEditablePortfolioPlan?.asNativePlan() {
+            guard document.isEditablePlan, !isMaterializingEditableWorkspace else { return }
+            if let nativePlan = editableNativePlanSnapshotForArchiving() {
                 archiveEditablePlan(nativePlan)
             }
         }
@@ -3169,6 +3546,7 @@ struct ContentView: View {
                 }
                 .labelStyle(.iconOnly)
                 .buttonStyle(.borderedProminent)
+                .hoverHighlight()
                 .tint(isFocusMode ? .orange : .accentColor)
                 .help(isFocusMode ? "Exit focus mode and restore the sidebar." : "Enter focus mode and hide the sidebar.")
             }
@@ -3329,7 +3707,10 @@ struct ContentView: View {
             DashboardView(project: project)
         case .planner:
             if let portfolioPlan {
-                PlanEditorView(planModel: portfolioPlan)
+                let initialPlan = portfolioPlan.portfolioID == document.editablePortfolioID
+                    ? preferredNativePlan(for: portfolioPlan)
+                    : nil
+                PlanEditorView(planModel: portfolioPlan, initialPlan: initialPlan)
             } else if document.isEditablePlan {
                 VStack(spacing: 12) {
                     ProgressView()
@@ -3499,11 +3880,10 @@ struct ContentView: View {
 
         let nativePlan: NativeProjectPlan?
         if document.isEditablePlan,
-           workspacePortfolioID == document.editablePortfolioID,
-           let documentPlan = document.nativePlan {
-            nativePlan = documentPlan
+           workspacePortfolioID == document.editablePortfolioID {
+            nativePlan = preferredNativePlan(for: effectiveWorkspacePortfolioPlan ?? editablePortfolioPlan)
         } else if let editablePortfolioPlan = effectiveWorkspacePortfolioPlan {
-            nativePlan = editablePortfolioPlan.asNativePlan()
+            nativePlan = preferredNativePlan(for: editablePortfolioPlan)
         } else {
             nativePlan = document.nativePlan
         }
@@ -3515,6 +3895,9 @@ struct ContentView: View {
         }
 
         isRefreshingEditableAnalysis = true
+        if document.isEditablePlan {
+            editableAnalysis = NativePlanAnalysis.buildPreview(from: nativePlan)
+        }
         Task {
             let builtAnalysis = await NativePlanAnalysis.buildAsync(from: nativePlan)
             await MainActor.run {
@@ -3523,6 +3906,24 @@ struct ContentView: View {
                 isRefreshingEditableAnalysis = false
             }
         }
+    }
+
+    private func editableNativePlanSnapshotForArchiving() -> NativeProjectPlan? {
+        guard let editablePortfolioPlan = effectiveEditablePortfolioPlan else {
+            return document.nativePlan
+        }
+        if let storedPlan = storedNativePlan(for: editablePortfolioPlan) {
+            return storedPlan
+        }
+
+        let documentPlan = document.nativePlan
+        if let documentPlan,
+           documentPlan.tasks.isEmpty,
+           documentPlan.resources.isEmpty,
+           documentPlan.assignments.isEmpty {
+            return nil
+        }
+        return documentPlan
     }
 
     private func shouldOpenDashboardForCurrentSelection() -> Bool {
@@ -3569,9 +3970,10 @@ struct ContentView: View {
                     Label("Convert to Native Plan", systemImage: "arrow.trianglehead.2.clockwise.rotate.90.page.on.clipboard")
                 }
                 .buttonStyle(.borderedProminent)
+                .hoverHighlight()
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .topAlignedEmptyState()
     }
 
     @MainActor
@@ -3730,6 +4132,7 @@ struct ResourceDiagnosticsView: View {
                     systemImage: "person.crop.circle.badge.checkmark",
                     description: Text("No resource over-allocation risks were detected by the current diagnostics.")
                 )
+                .topAlignedEmptyState()
             } else {
                 Table(items) {
                     TableColumn("Alert") { item in
@@ -3755,6 +4158,7 @@ struct ResourceDiagnosticsView: View {
                                 Text(taskName).lineLimit(2)
                             }
                             .buttonStyle(.plain)
+                            .hoverHighlight()
                         } else {
                             Text(item.taskName ?? "")
                         }
@@ -3839,6 +4243,7 @@ struct ProjectDiagnosticsView: View {
                     systemImage: "stethoscope",
                     description: Text("No dependency or constraint hotspots were detected by the current diagnostics.")
                 )
+                .topAlignedEmptyState()
             } else {
                 Table(items) {
                     TableColumn("Category") { item in
@@ -3860,6 +4265,7 @@ struct ProjectDiagnosticsView: View {
                                 Text(taskID).monospacedDigit()
                             }
                             .buttonStyle(.plain)
+                            .hoverHighlight()
                         } else {
                             Text("")
                         }
@@ -3874,6 +4280,7 @@ struct ProjectDiagnosticsView: View {
                                 Text(taskName).lineLimit(2)
                             }
                             .buttonStyle(.plain)
+                            .hoverHighlight()
                         } else {
                             Text(item.taskName ?? "Project")
                         }
@@ -3966,7 +4373,7 @@ struct ProjectValidationView: View {
                 } label: {
                     Label("Export CSV", systemImage: "tablecells")
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.accessoryBar)
 
                 Divider().frame(height: 16)
 
@@ -4013,6 +4420,7 @@ struct ProjectValidationView: View {
                                     .monospacedDigit()
                             }
                             .buttonStyle(.plain)
+                            .hoverHighlight()
                         } else {
                             Text(issue.taskID ?? "")
                                 .monospacedDigit()
@@ -4029,6 +4437,7 @@ struct ProjectValidationView: View {
                                     .lineLimit(2)
                             }
                             .buttonStyle(.plain)
+                            .hoverHighlight()
                         } else {
                             Text(issue.taskName ?? "Project")
                                 .lineLimit(2)
@@ -4798,6 +5207,7 @@ struct CriticalPathView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .hoverHighlight()
     }
 
     private func meta(_ label: String, _ value: String) -> some View {
@@ -4976,7 +5386,7 @@ struct StatusCenterView: View {
         if refreshMetrics {
             planModel.refreshPortfolioMetrics()
         }
-        try? modelContext.save()
+        modelContext.saveReportingFailures()
         refreshDerivedContent()
     }
 
@@ -4995,49 +5405,59 @@ struct StatusCenterView: View {
     }
 
     private var statusHeader: some View {
-        HStack(alignment: .center, spacing: 14) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Status Center")
-                    .font(.title2.weight(.semibold))
-                Text("Update actuals, variance, and earned value as of the current status date.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            Picker("Filter", selection: $filter) {
-                ForEach(StatusTaskFilter.allCases) { option in
-                    Text(option.rawValue).tag(option)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Status Center")
+                        .font(.title2.weight(.semibold))
+                        .fixedSize()
+                    Text("Update actuals, variance, and earned value as of the current status date.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
+
+                Spacer(minLength: 12)
+
+                FinancialTermsButton()
+                    .fixedSize()
             }
-            .pickerStyle(.segmented)
-            .frame(width: 440)
 
-            TextField("Search Tasks", text: $searchText)
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 180)
+            // Controls reflow as whole units on narrow windows instead of
+            // squeezing the segmented filter and truncating buttons.
+            FlowLayout(spacing: 12, lineSpacing: 10) {
+                Picker("Filter", selection: $filter) {
+                    ForEach(StatusTaskFilter.allCases) { option in
+                        Text(option.rawValue).tag(option)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 440)
 
-            DatePicker("Status Date", selection: statusDateBinding, displayedComponents: .date)
-                .labelsHidden()
-                .help("Sets the control date used by earned value and variance calculations.")
+                TextField("Search Tasks", text: $searchText)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 180)
 
-            Button("Today") {
-                statusDateBinding.wrappedValue = Calendar.current.startOfDay(for: Date())
+                DatePicker("Status Date", selection: statusDateBinding, displayedComponents: .date)
+                    .labelsHidden()
+                    .fixedSize()
+                    .help("Sets the control date used by earned value and variance calculations.")
+
+                Button("Today") {
+                    statusDateBinding.wrappedValue = Calendar.current.startOfDay(for: Date())
+                }
+                .help("Move the status date to today.")
+
+                Button("Apply Status Defaults") {
+                    applyStatusDefaults()
+                }
+                .help("Fill missing actual dates for tasks that have already started or finished by the current status date.")
+
+                Button("Capture Snapshot") {
+                    captureStatusSnapshot()
+                }
+                .help("Save the current status date, EVM state, and sprint position as a reporting-period snapshot.")
             }
-            .help("Move the status date to today.")
-
-            Button("Apply Status Defaults") {
-                applyStatusDefaults()
-            }
-            .help("Fill missing actual dates for tasks that have already started or finished by the current status date.")
-
-            Button("Capture Snapshot") {
-                captureStatusSnapshot()
-            }
-            .help("Save the current status date, EVM state, and sprint position as a reporting-period snapshot.")
-
-            FinancialTermsButton()
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.horizontal)
         .padding(.vertical, 10)
@@ -5108,6 +5528,7 @@ struct StatusCenterView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .hoverHighlight()
                     .tag(task.uniqueID)
                     .listRowInsets(EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12))
                 }
@@ -5388,7 +5809,7 @@ struct StatusCenterView: View {
                                 Button("Use Date") {
                                     statusDateBinding.wrappedValue = snapshot.statusDate
                                 }
-                                .buttonStyle(.borderless)
+                                .buttonStyle(.accessoryBar)
                             }
 
                             HStack(spacing: 18) {
@@ -5447,6 +5868,7 @@ struct StatusCenterView: View {
             )
         }
         .buttonStyle(.plain)
+        .hoverHighlight()
     }
 
     private func refreshDerivedContent() {
@@ -6182,7 +6604,7 @@ struct AgileBoardView: View {
         if refreshMetrics {
             planModel.refreshPortfolioMetrics()
         }
-        try? modelContext.save()
+        modelContext.saveReportingFailures()
     }
 
     private func withAgileTask(_ taskID: Int, _ update: (PortfolioPlanTask) -> Void) {
@@ -6250,6 +6672,7 @@ struct AgileBoardView: View {
                         Label("Add Story", systemImage: "plus")
                     }
                     .buttonStyle(.borderedProminent)
+                    .hoverHighlight()
 
                     Button {
                         addSprint()
@@ -6257,6 +6680,7 @@ struct AgileBoardView: View {
                         Label("Add Sprint", systemImage: "calendar.badge.plus")
                     }
                     .buttonStyle(.bordered)
+                    .hoverHighlight()
                 }
 
                 Divider()
@@ -6309,6 +6733,7 @@ struct AgileBoardView: View {
                 headerControlLabel(title: "Scope", value: boardSprintScopeTitle, systemImage: "line.3.horizontal.decrease.circle")
             }
             .buttonStyle(.plain)
+            .hoverHighlight()
             .help("Focus the board on all work, backlog-only items, or a single sprint.")
 
             Menu {
@@ -6321,6 +6746,7 @@ struct AgileBoardView: View {
                 headerControlLabel(title: "Swimlanes", value: boardSwimlaneTitle, systemImage: "rectangle.split.3x1")
             }
             .buttonStyle(.plain)
+            .hoverHighlight()
             .help("Group the board by sprint, epic, or parent work item.")
 
             if boardSwimlaneMode != .none {
@@ -6328,12 +6754,14 @@ struct AgileBoardView: View {
                     collapsedSwimlaneKeys.removeAll()
                 }
                 .buttonStyle(.bordered)
+                .hoverHighlight()
                 .controlSize(.small)
 
                 Button("Collapse All") {
                     collapsedSwimlaneKeys = Set(laneDisplays.flatMap { $0.groups.map(\.key) })
                 }
                 .buttonStyle(.bordered)
+                .hoverHighlight()
                 .controlSize(.small)
             }
 
@@ -6344,6 +6772,7 @@ struct AgileBoardView: View {
                 Label("Add Bucket", systemImage: "rectangle.badge.plus")
             }
             .buttonStyle(.bordered)
+            .hoverHighlight()
 
             Button {
                 workflowDesignerScope = .shared
@@ -6353,6 +6782,7 @@ struct AgileBoardView: View {
                 Label("Workflow", systemImage: "slider.horizontal.3")
             }
             .buttonStyle(.bordered)
+            .hoverHighlight()
 
             Button {
                 showsInspector.toggle()
@@ -6360,6 +6790,7 @@ struct AgileBoardView: View {
                 Label(showsInspector ? "Hide Details" : "Show Details", systemImage: "sidebar.right")
             }
             .buttonStyle(.bordered)
+            .hoverHighlight()
 
             Toggle("Detailed Cards", isOn: $showsDetailedBoardCards)
                 .toggleStyle(.switch)
@@ -6429,6 +6860,7 @@ struct AgileBoardView: View {
                     createBucket()
                 }
                 .buttonStyle(.borderedProminent)
+                .hoverHighlight()
                 .disabled(newBucketName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
@@ -6463,6 +6895,7 @@ struct AgileBoardView: View {
                     Label(workflowDesignerScope.title, systemImage: "point.3.connected.trianglepath.dotted")
                 }
                 .buttonStyle(.bordered)
+                .hoverHighlight()
 
                 Spacer()
 
@@ -6472,6 +6905,7 @@ struct AgileBoardView: View {
                         resetTypeWorkflowOverride(itemType: itemType)
                     }
                     .buttonStyle(.bordered)
+                    .hoverHighlight()
                     .help("Remove the override for this item type and fall back to the shared workflow.")
                 }
             }
@@ -6548,6 +6982,7 @@ struct AgileBoardView: View {
                     saveWorkflowDesigner()
                 }
                 .buttonStyle(.borderedProminent)
+                .hoverHighlight()
             }
         }
         .padding(20)
@@ -6576,7 +7011,7 @@ struct AgileBoardView: View {
                     } label: {
                         Image(systemName: "chevron.left")
                     }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.accessoryBar)
                     .disabled(laneIndex == nil || laneIndex == 0)
                     .help("Move this bucket left.")
 
@@ -6585,7 +7020,7 @@ struct AgileBoardView: View {
                     } label: {
                         Image(systemName: "chevron.right")
                     }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.accessoryBar)
                     .disabled(laneIndex == nil || laneIndex == boardColumns.count - 1)
                     .help("Move this bucket right.")
 
@@ -6594,7 +7029,7 @@ struct AgileBoardView: View {
                     } label: {
                         Image(systemName: "trash")
                     }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.accessoryBar)
                     .disabled(boardColumns.count <= 1)
                     .help("Delete this bucket and move its tasks to a neighboring lane.")
                 }
@@ -6667,6 +7102,7 @@ struct AgileBoardView: View {
                     }
                 }
                 .buttonStyle(.plain)
+                .hoverHighlight()
                 .padding(.horizontal, 8)
                 .padding(.vertical, 8)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -7000,6 +7436,7 @@ struct AgileBoardView: View {
                             }
                         }
                         .buttonStyle(.plain)
+                        .hoverHighlight()
                         .tag(sprint.id)
                     }
                 }
@@ -7120,6 +7557,7 @@ struct AgileBoardView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .hoverHighlight()
 
             if isExpanded.wrappedValue {
                 content()
@@ -8918,7 +9356,9 @@ struct PortfolioDashboardView: View {
     )
     @State private var isPortfolioDerivedContentLoading = true
     @State private var isResourceCapacityLoading = true
+    @State private var resourceCapacityGeneration = 0
     @State private var portfolioDerivedRefreshWorkItem: DispatchWorkItem?
+    @State private var portfolioDerivedGeneration = 0
     @State private var resourceCapacityRefreshWorkItem: DispatchWorkItem?
 
     private var filteredPlans: [PortfolioProjectPlan] {
@@ -9178,10 +9618,12 @@ struct PortfolioDashboardView: View {
 
                     GroupBox("Registry") {
                         VStack(alignment: .leading, spacing: 12) {
-                            HStack(spacing: 12) {
+                            // Whole controls reflow to new lines on narrow
+                            // windows instead of hyphenating or truncating.
+                            FlowLayout(spacing: 12, lineSpacing: 10) {
                                 TextField("Search registry", text: $searchText)
                                     .textFieldStyle(.roundedBorder)
-                                    .frame(maxWidth: 260)
+                                    .frame(width: 220)
 
                                 Picker("Scope", selection: $registryScope) {
                                     ForEach(RegistryScope.allCases) { scope in
@@ -9189,7 +9631,7 @@ struct PortfolioDashboardView: View {
                                     }
                                 }
                                 .pickerStyle(.segmented)
-                                .frame(maxWidth: 280)
+                                .frame(width: 240)
 
                                 Picker("Health", selection: $healthScope) {
                                     ForEach(HealthScope.allCases) { scope in
@@ -9197,6 +9639,7 @@ struct PortfolioDashboardView: View {
                                     }
                                 }
                                 .pickerStyle(.menu)
+                                .fixedSize()
 
                                 Picker("Approval", selection: $approvalScope) {
                                     ForEach(ApprovalScope.allCases) { scope in
@@ -9204,6 +9647,7 @@ struct PortfolioDashboardView: View {
                                     }
                                 }
                                 .pickerStyle(.menu)
+                                .fixedSize()
 
                                 Picker("Group", selection: $registryGrouping) {
                                     ForEach(RegistryGrouping.allCases) { grouping in
@@ -9211,23 +9655,27 @@ struct PortfolioDashboardView: View {
                                     }
                                 }
                                 .pickerStyle(.menu)
+                                .fixedSize()
 
                                 Button {
                                     showImportPicker = true
                                 } label: {
                                     Label("Import Plan(s)", systemImage: "square.and.arrow.down")
+                                        .fixedSize()
                                 }
                                 .buttonStyle(.borderedProminent)
+                                .hoverHighlight()
 
                                 Button {
                                     createBlankPortfolioPlan()
                                 } label: {
                                     Label("New Blank Plan", systemImage: "doc.badge.plus")
+                                        .fixedSize()
                                 }
                                 .buttonStyle(.bordered)
-
-                                Spacer()
+                                .hoverHighlight()
                             }
+                            .frame(maxWidth: .infinity, alignment: .leading)
 
                             if visiblePlans.isEmpty {
                                 if isPortfolioDerivedContentLoading && !plans.isEmpty {
@@ -9564,6 +10012,7 @@ struct PortfolioDashboardView: View {
                                     updateMetadataDate(\.portfolioReviewDate, value: nil)
                                 }
                                 .buttonStyle(.bordered)
+                                .hoverHighlight()
                                 .disabled(selected.portfolioReviewDate == nil)
                                 Spacer()
                             }
@@ -9776,6 +10225,7 @@ struct PortfolioDashboardView: View {
                                         Label("Add Link", systemImage: "link.badge.plus")
                                     }
                                     .buttonStyle(.borderedProminent)
+                                    .hoverHighlight()
                                     .disabled(!canCreateDependency)
                                 }
                             }
@@ -9824,12 +10274,14 @@ struct PortfolioDashboardView: View {
                                 Label("Open In Workspace", systemImage: "arrow.up.right.square")
                             }
                             .buttonStyle(.borderedProminent)
+                            .hoverHighlight()
                             .disabled(activePortfolioID == selected.portfolioID)
 
                             Button(selected.isArchivedValue ? "Restore" : "Archive") {
                                 toggleArchive(for: selected)
                             }
                             .buttonStyle(.bordered)
+                            .hoverHighlight()
 
                             Button(role: .destructive) {
                                 deletePortfolioPlan(selected)
@@ -9898,7 +10350,7 @@ struct PortfolioDashboardView: View {
                 systemImage: "doc.text.magnifyingglass",
                 description: Text("Select a project from the portfolio registry to inspect or open it in the workspace.")
             )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .topAlignedEmptyState()
         }
     }
 
@@ -10184,10 +10636,10 @@ struct PortfolioDashboardView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                HStack(spacing: 12) {
+                FlowLayout(spacing: 12, lineSpacing: 10) {
                     TextField("Preset name", text: $reviewPresetName)
                         .textFieldStyle(.roundedBorder)
-                        .frame(maxWidth: 260)
+                        .frame(width: 220)
 
                     Picker("Cadence", selection: $reviewPresetCadenceDays) {
                         ForEach(Self.reviewCadenceOptions, id: \.self) { days in
@@ -10195,33 +10647,37 @@ struct PortfolioDashboardView: View {
                         }
                     }
                     .pickerStyle(.menu)
+                    .fixedSize()
 
                     Button(selectedReviewPreset == nil ? "Save Preset" : "Update Preset") {
                         saveOrUpdateReviewPreset()
                     }
                     .buttonStyle(.borderedProminent)
+                    .hoverHighlight()
 
                     Button("Apply Preset") {
                         applySelectedReviewPreset()
                     }
                     .buttonStyle(.bordered)
+                    .hoverHighlight()
                     .disabled(selectedReviewPreset == nil)
 
                     Button("Capture Review") {
                         captureCurrentPortfolioReview()
                     }
                     .buttonStyle(.bordered)
+                    .hoverHighlight()
 
                     Button("Export Review Pack") {
                         exportPortfolioReviewPack(currentReviewPayload)
                     }
                     .buttonStyle(.bordered)
-
-                    Spacer()
+                    .hoverHighlight()
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
 
                 if let selectedReviewPreset {
-                    HStack(spacing: 10) {
+                    FlowLayout(spacing: 10, lineSpacing: 6) {
                         detailChip("Selected", selectedReviewPreset.name)
                         detailChip("Cadence", "\(selectedReviewPreset.cadenceDays)d")
                         detailChip("Scope", selectedReviewPreset.registryScope)
@@ -10263,17 +10719,20 @@ struct PortfolioDashboardView: View {
                         captureCurrentPortfolioReview()
                     }
                     .buttonStyle(.borderedProminent)
+                    .hoverHighlight()
 
                     if let selectedReviewSnapshot {
                         Button("Apply Snapshot Scope") {
                             applyReviewSnapshot(selectedReviewSnapshot)
                         }
                         .buttonStyle(.bordered)
+                        .hoverHighlight()
 
                         Button("Export Snapshot") {
                             exportPortfolioReviewPack(selectedReviewSnapshot.payload, snapshotTitleOverride: selectedReviewSnapshot.title)
                         }
                         .buttonStyle(.bordered)
+                        .hoverHighlight()
                     }
 
                     if let delta = selectedReviewDelta {
@@ -10281,6 +10740,7 @@ struct PortfolioDashboardView: View {
                             exportPortfolioReviewDelta(delta, baselineTitle: selectedReviewSnapshot?.title ?? "Baseline Review")
                         }
                         .buttonStyle(.bordered)
+                        .hoverHighlight()
                     }
 
                     Spacer()
@@ -10303,6 +10763,7 @@ struct PortfolioDashboardView: View {
                                 Label("Delete", systemImage: "trash")
                             }
                             .buttonStyle(.bordered)
+                            .hoverHighlight()
                         }
 
                         HStack(spacing: 10) {
@@ -10530,7 +10991,7 @@ struct PortfolioDashboardView: View {
                 } label: {
                     Image(systemName: "trash")
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.accessoryBar)
             }
         }
     }
@@ -10572,11 +11033,13 @@ struct PortfolioDashboardView: View {
                     selectReviewPreset(preset)
                 }
                 .buttonStyle(.bordered)
+                .hoverHighlight()
 
                 Button("Apply") {
                     applyReviewPreset(preset)
                 }
                 .buttonStyle(.bordered)
+                .hoverHighlight()
 
                 Button(role: .destructive) {
                     deleteReviewPreset(preset)
@@ -10584,6 +11047,7 @@ struct PortfolioDashboardView: View {
                     Image(systemName: "trash")
                 }
                 .buttonStyle(.bordered)
+                .hoverHighlight()
             }
         }
         .padding(12)
@@ -10639,6 +11103,7 @@ struct PortfolioDashboardView: View {
             )
         }
         .buttonStyle(.plain)
+        .hoverHighlight()
     }
 
     private func reviewDeltaPill(_ title: String, _ delta: Int, accent: Color) -> some View {
@@ -10916,7 +11381,7 @@ struct PortfolioDashboardView: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
 
-                    HStack(spacing: 8) {
+                    FlowLayout(spacing: 8, lineSpacing: 6) {
                         detailChip("Workspace", trimmedOrFallback(plan.portfolioWorkspace ?? "", fallback: "Unassigned"))
                         detailChip("Program", trimmedOrFallback(plan.portfolioProgram ?? "", fallback: "Unassigned"))
                         if let priority = normalizedMetadata(plan.portfolioPriorityBand) {
@@ -10941,6 +11406,7 @@ struct PortfolioDashboardView: View {
                             Label("Open", systemImage: "arrow.up.right.square")
                         }
                         .buttonStyle(.borderedProminent)
+                        .hoverHighlight()
                         .disabled(activePortfolioID == plan.portfolioID)
 
                         Button {
@@ -10949,6 +11415,7 @@ struct PortfolioDashboardView: View {
                             Label(plan.isArchivedValue ? "Restore" : "Archive", systemImage: plan.isArchivedValue ? "archivebox.badge.plus" : "archivebox")
                         }
                         .buttonStyle(.bordered)
+                        .hoverHighlight()
 
                         Button(role: .destructive) {
                             deletePortfolioPlan(plan)
@@ -10956,11 +11423,12 @@ struct PortfolioDashboardView: View {
                             Image(systemName: "trash")
                         }
                         .buttonStyle(.bordered)
+                        .hoverHighlight()
                     }
                 }
             }
 
-            HStack(spacing: 10) {
+            FlowLayout(spacing: 10, lineSpacing: 6) {
                 Label("\(plan.taskCount) tasks", systemImage: "list.bullet")
                 Label("\(activeTaskCount) active", systemImage: "play.circle")
                 Label("\(overdueTaskCount) overdue", systemImage: "exclamationmark.triangle")
@@ -10971,9 +11439,8 @@ struct PortfolioDashboardView: View {
             .font(.caption)
             .foregroundStyle(.secondary)
             .lineLimit(1)
-            .minimumScaleFactor(0.85)
 
-            HStack(spacing: 10) {
+            FlowLayout(spacing: 10, lineSpacing: 6) {
                 detailChip("Resources", "\(plan.resources.count)")
                 detailChip("Calendars", "\(plan.calendars.count)")
                 detailChip("Sprints", "\(plan.sprints.count)")
@@ -11019,11 +11486,13 @@ struct PortfolioDashboardView: View {
         HStack(spacing: 6) {
             Text(title)
                 .font(.caption.weight(.semibold))
+                .lineLimit(1)
             Text(value)
                 .font(.caption.monospacedDigit())
                 .lineLimit(1)
                 .truncationMode(.tail)
         }
+        .fixedSize()
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(Color(nsColor: .controlBackgroundColor), in: Capsule())
@@ -11217,12 +11686,12 @@ struct PortfolioDashboardView: View {
         let settings = currentReviewViewSettings
         if let selectedReviewPreset {
             selectedReviewPreset.update(name: name, viewSettings: settings)
-            try? modelContext.save()
+            modelContext.saveReportingFailures()
             importStatusMessage = "Updated review preset \(selectedReviewPreset.name)."
         } else {
             let preset = PortfolioReviewPreset(name: name, viewSettings: settings)
             modelContext.insert(preset)
-            try? modelContext.save()
+            modelContext.saveReportingFailures()
             selectedReviewPresetID = preset.uniqueID
             reviewPresetName = preset.name
             importStatusMessage = "Saved review preset \(preset.name)."
@@ -11235,7 +11704,7 @@ struct PortfolioDashboardView: View {
         let title = reviewSnapshotTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         let snapshot = PortfolioReviewSnapshot(title: title, preset: selectedReviewPreset, payload: payload)
         modelContext.insert(snapshot)
-        try? modelContext.save()
+        modelContext.saveReportingFailures()
         selectedReviewSnapshotID = snapshot.uniqueID
         reviewSnapshotTitle = snapshot.title
         importStatusMessage = "Captured portfolio review \(snapshot.title)."
@@ -11253,7 +11722,7 @@ struct PortfolioDashboardView: View {
     private func deleteReviewSnapshot(_ snapshot: PortfolioReviewSnapshot) {
         let deletedID = snapshot.uniqueID
         modelContext.delete(snapshot)
-        try? modelContext.save()
+        modelContext.saveReportingFailures()
         if selectedReviewSnapshotID == deletedID {
             selectedReviewSnapshotID = reviewSnapshots.first(where: { $0.uniqueID != deletedID })?.uniqueID
         }
@@ -11263,7 +11732,7 @@ struct PortfolioDashboardView: View {
     private func deleteReviewPreset(_ preset: PortfolioReviewPreset) {
         let deletedID = preset.uniqueID
         modelContext.delete(preset)
-        try? modelContext.save()
+        modelContext.saveReportingFailures()
         if selectedReviewPresetID == deletedID {
             selectedReviewPresetID = reviewPresets.first(where: { $0.uniqueID != deletedID })?.uniqueID
         }
@@ -11527,7 +11996,7 @@ struct PortfolioDashboardView: View {
         guard selectedPlan[keyPath: keyPath] != value else { return }
         selectedPlan[keyPath: keyPath] = value
         selectedPlan.updatedAt = Date()
-        try? modelContext.save()
+        modelContext.saveReportingFailures()
     }
 
     private func updateMetadataDate(_ keyPath: ReferenceWritableKeyPath<PortfolioProjectPlan, Date?>, value: Date?) {
@@ -11535,7 +12004,7 @@ struct PortfolioDashboardView: View {
         guard selectedPlan[keyPath: keyPath] != value else { return }
         selectedPlan[keyPath: keyPath] = value
         selectedPlan.updatedAt = Date()
-        try? modelContext.save()
+        modelContext.saveReportingFailures()
     }
 
     private func updateMetadataInt(_ keyPath: ReferenceWritableKeyPath<PortfolioProjectPlan, Int?>, value: Int?) {
@@ -11543,7 +12012,7 @@ struct PortfolioDashboardView: View {
         guard selectedPlan[keyPath: keyPath] != value else { return }
         selectedPlan[keyPath: keyPath] = value
         selectedPlan.updatedAt = Date()
-        try? modelContext.save()
+        modelContext.saveReportingFailures()
     }
 
     private func scopeMatches(_ plan: PortfolioProjectPlan) -> Bool {
@@ -11561,7 +12030,7 @@ struct PortfolioDashboardView: View {
         for plan in plans where plan.isArchived == nil {
             plan.isArchived = false
         }
-        try? modelContext.save()
+        modelContext.saveReportingFailures()
     }
 
     private func searchMatches(_ plan: PortfolioProjectPlan) -> Bool {
@@ -11627,43 +12096,83 @@ struct PortfolioDashboardView: View {
     }
 
     private func refreshPortfolioDerivedContent() {
+        // Everything the UI needs as live SwiftData objects plus the cheap
+        // metadata rollups stays on the main actor.
         let visiblePlans = filteredPlans
-        let executive = PortfolioExecutiveSummary.build(plans: visiblePlans)
-        let governance = PortfolioGovernanceSummary.build(plans: visiblePlans)
-        let roadmap = PortfolioProgramRoadmapSummary.build(plans: visiblePlans)
-        let dependencies = PortfolioDependencySummary.build(plans: visiblePlans, dependencies: crossProjectDependencies)
-        let activeTasks = visiblePlans
-            .flatMap(taskSnapshots(for:))
-            .filter { $0.isActive && $0.percentComplete < 100 }
-            .sorted {
-                if $0.finishDate != $1.finishDate {
-                    return $0.finishDate < $1.finishDate
-                }
-                return $0.id < $1.id
-            }
-        let today = Calendar.current.startOfDay(for: Date())
+        let groupedVisiblePlans = buildGroupedVisiblePlans(from: visiblePlans)
         let archivedCount = plans.filter(\.isArchivedValue).count
+        let activeCount = plans.count - archivedCount
+        let workspaceCount = Set(visiblePlans.compactMap { normalizedMetadata($0.portfolioWorkspace) }).count
+        let programCount = Set(visiblePlans.compactMap { normalizedMetadata($0.portfolioProgram) }).count
+        let atRiskProjectCount = visiblePlans.filter(isAtRisk).count
+        let totalPortfolioBudget = visiblePlans.reduce(0) { $0 + $1.portfolioBudget }
+        let totalPortfolioActualCost = visiblePlans.reduce(0) { $0 + $1.portfolioActualCost }
 
-        derivedContent = PortfolioDerivedContent(
-            visiblePlans: visiblePlans,
-            groupedVisiblePlans: buildGroupedVisiblePlans(from: visiblePlans),
-            archivedCount: archivedCount,
-            activeCount: plans.count - archivedCount,
-            workspaceCount: Set(visiblePlans.compactMap { normalizedMetadata($0.portfolioWorkspace) }).count,
-            programCount: Set(visiblePlans.compactMap { normalizedMetadata($0.portfolioProgram) }).count,
-            atRiskProjectCount: visiblePlans.filter(isAtRisk).count,
-            totalPortfolioBudget: visiblePlans.reduce(0) { $0 + $1.portfolioBudget },
-            totalPortfolioActualCost: visiblePlans.reduce(0) { $0 + $1.portfolioActualCost },
-            activeTasks: activeTasks,
-            overdueTaskCount: activeTasks.filter { Calendar.current.startOfDay(for: $0.finishDate) < today }.count,
-            executiveSummary: executive,
-            governanceSummary: governance,
-            programRoadmapSummary: roadmap,
-            dependencySummary: dependencies,
-            executiveInsightsByPlanID: Dictionary(uniqueKeysWithValues: executive.projectInsights.map { ($0.planID, $0) }),
-            governanceInsightsByPlanID: Dictionary(uniqueKeysWithValues: governance.projectInsights.map { ($0.planID, $0) })
-        )
-        isPortfolioDerivedContentLoading = false
+        // Snapshot the fields the summary builders read so the heavy
+        // per-task analysis can run off the main thread.
+        let planSnapshots = visiblePlans.map { $0.analyticsSnapshot() }
+        let dependencySnapshots = crossProjectDependencies.map { $0.analyticsSnapshot() }
+
+        portfolioDerivedGeneration += 1
+        let generation = portfolioDerivedGeneration
+
+        Task.detached(priority: .userInitiated) {
+            let executive = PortfolioExecutiveSummary.build(snapshots: planSnapshots)
+            let governance = PortfolioGovernanceSummary.build(snapshots: planSnapshots)
+            let roadmap = PortfolioProgramRoadmapSummary.build(snapshots: planSnapshots)
+            let dependencies = PortfolioDependencySummary.build(
+                snapshots: planSnapshots,
+                dependencySnapshots: dependencySnapshots
+            )
+            let today = Calendar.current.startOfDay(for: Date())
+            let activeTasks = planSnapshots
+                .flatMap { plan in
+                    plan.tasks.map { task in
+                        TaskSnapshot(
+                            id: "\(plan.portfolioID.uuidString)-\(task.legacyID)",
+                            planID: plan.portfolioID,
+                            planTitle: trimmedOrFallback(plan.title, fallback: "Untitled Plan"),
+                            name: trimmedOrFallback(task.name, fallback: "Untitled Task"),
+                            boardStatus: task.boardStatus,
+                            finishDate: max(task.startDate, task.finishDate),
+                            isActive: task.isActive,
+                            percentComplete: task.percentComplete
+                        )
+                    }
+                }
+                .filter { $0.isActive && $0.percentComplete < 100 }
+                .sorted {
+                    if $0.finishDate != $1.finishDate {
+                        return $0.finishDate < $1.finishDate
+                    }
+                    return $0.id < $1.id
+                }
+            let overdueTaskCount = activeTasks.filter { Calendar.current.startOfDay(for: $0.finishDate) < today }.count
+
+            await MainActor.run {
+                guard generation == portfolioDerivedGeneration else { return }
+                derivedContent = PortfolioDerivedContent(
+                    visiblePlans: visiblePlans,
+                    groupedVisiblePlans: groupedVisiblePlans,
+                    archivedCount: archivedCount,
+                    activeCount: activeCount,
+                    workspaceCount: workspaceCount,
+                    programCount: programCount,
+                    atRiskProjectCount: atRiskProjectCount,
+                    totalPortfolioBudget: totalPortfolioBudget,
+                    totalPortfolioActualCost: totalPortfolioActualCost,
+                    activeTasks: activeTasks,
+                    overdueTaskCount: overdueTaskCount,
+                    executiveSummary: executive,
+                    governanceSummary: governance,
+                    programRoadmapSummary: roadmap,
+                    dependencySummary: dependencies,
+                    executiveInsightsByPlanID: Dictionary(uniqueKeysWithValues: executive.projectInsights.map { ($0.planID, $0) }),
+                    governanceInsightsByPlanID: Dictionary(uniqueKeysWithValues: governance.projectInsights.map { ($0.planID, $0) })
+                )
+                isPortfolioDerivedContentLoading = false
+            }
+        }
     }
 
     private func schedulePortfolioDerivedContentRefresh(delay: TimeInterval = 0.08) {
@@ -11677,8 +12186,21 @@ struct PortfolioDashboardView: View {
     }
 
     private func refreshResourceCapacitySummary() {
-        resourceCapacitySummary = PortfolioResourceCapacitySummary.build(plans: filteredPlans)
-        isResourceCapacityLoading = false
+        // Snapshot SwiftData plans into value types on the main actor, then run
+        // the schedule + workload computation off the main thread so the
+        // portfolio UI stays responsive.
+        resourceCapacityGeneration += 1
+        let generation = resourceCapacityGeneration
+        let projections = PortfolioResourceCapacitySummary.projections(for: filteredPlans)
+
+        Task.detached(priority: .userInitiated) {
+            let summary = PortfolioResourceCapacitySummary.build(projections: projections)
+            await MainActor.run {
+                guard generation == resourceCapacityGeneration else { return }
+                resourceCapacitySummary = summary
+                isResourceCapacityLoading = false
+            }
+        }
     }
 
     private func scheduleResourceCapacityRefresh(delay: TimeInterval = 0.12) {
@@ -11712,7 +12234,7 @@ struct PortfolioDashboardView: View {
     private func toggleArchive(for plan: PortfolioProjectPlan) {
         plan.isArchived = !(plan.isArchivedValue)
         plan.updatedAt = Date()
-        try? modelContext.save()
+        modelContext.saveReportingFailures()
         if plan.isArchivedValue, activePortfolioID == plan.portfolioID {
             activePortfolioID = filteredPlans.first?.portfolioID
         }
@@ -11723,7 +12245,7 @@ struct PortfolioDashboardView: View {
         let deletedID = plan.portfolioID
         removeCrossProjectDependencies(for: [deletedID])
         modelContext.delete(plan)
-        try? modelContext.save()
+        modelContext.saveReportingFailures()
         if activePortfolioID == deletedID {
             activePortfolioID = filteredPlans.first(where: { $0.portfolioID != deletedID })?.portfolioID
         }
@@ -11937,7 +12459,7 @@ struct PortfolioDashboardView: View {
             note: normalizedNote
         )
         modelContext.insert(dependency)
-        try? modelContext.save()
+        modelContext.saveReportingFailures()
         dependencyNote = ""
         importStatusMessage = "Added dependency \(sourceTask.name) -> \(targetTask.name)."
     }
@@ -11945,7 +12467,7 @@ struct PortfolioDashboardView: View {
     private func deleteCrossProjectDependency(id: UUID) {
         guard let dependency = crossProjectDependencies.first(where: { $0.uniqueID == id }) else { return }
         modelContext.delete(dependency)
-        try? modelContext.save()
+        modelContext.saveReportingFailures()
     }
 
     private func removeCrossProjectDependencies(for planIDs: [UUID]) {
@@ -11954,7 +12476,7 @@ struct PortfolioDashboardView: View {
         for dependency in crossProjectDependencies where identifiers.contains(dependency.sourcePlanID) || identifiers.contains(dependency.targetPlanID) {
             modelContext.delete(dependency)
         }
-        try? modelContext.save()
+        modelContext.saveReportingFailures()
     }
 
     private func normalizeCrossProjectDependencies() {
@@ -11987,7 +12509,7 @@ struct PortfolioDashboardView: View {
         }
 
         if didChange {
-            try? modelContext.save()
+            modelContext.saveReportingFailures()
         }
     }
 }

@@ -6,7 +6,7 @@ struct NativeCalendarEditorView: View {
 
     let planModel: PortfolioProjectPlan
 
-    @State private var reviewProject: ProjectModel
+    @State private var reviewCalendars: [ProjectCalendar]
     @State private var selectedCalendarID: Int?
     @State private var displayMonth = Date()
     @State private var mode: NativeCalendarScreenMode = .review
@@ -26,12 +26,50 @@ struct NativeCalendarEditorView: View {
     ]
 
     private var orderedCalendars: [PortfolioPlanCalendar] {
-        planModel.calendars.sorted { lhs, rhs in
+        contextBackedCalendars.sorted { lhs, rhs in
             if lhs.legacyID == rhs.legacyID {
                 return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
             }
             return lhs.legacyID < rhs.legacyID
         }
+    }
+
+    private var contextBackedCalendars: [PortfolioPlanCalendar] {
+        let identifier = planModel.portfolioID
+        let descriptor = FetchDescriptor<PortfolioPlanCalendar>(
+            predicate: #Predicate { calendar in
+                calendar.plan?.portfolioID == identifier
+            },
+            sortBy: [SortDescriptor(\.legacyID)]
+        )
+        if let calendars = try? modelContext.fetch(descriptor),
+           !calendars.isEmpty {
+            return calendars
+        }
+        return planModel.calendars
+    }
+
+    private var contextBackedResources: [PortfolioPlanResource] {
+        let identifier = planModel.portfolioID
+        let descriptor = FetchDescriptor<PortfolioPlanResource>(
+            predicate: #Predicate { resource in
+                resource.plan?.portfolioID == identifier
+            },
+            sortBy: [SortDescriptor(\.legacyID)]
+        )
+        if let resources = try? modelContext.fetch(descriptor) {
+            return resources
+        }
+        return planModel.resources
+    }
+
+    private var calendarRefreshKey: String {
+        [
+            planModel.portfolioID.uuidString,
+            String(planModel.updatedAt.timeIntervalSinceReferenceDate.bitPattern),
+            String(orderedCalendars.count),
+            planModel.defaultCalendarUniqueID.map(String.init) ?? ""
+        ].joined(separator: "|")
     }
 
     private var selectedCalendar: PortfolioPlanCalendar? {
@@ -41,7 +79,7 @@ struct NativeCalendarEditorView: View {
 
     init(planModel: PortfolioProjectPlan) {
         self.planModel = planModel
-        self._reviewProject = State(initialValue: planModel.projectModelForUI())
+        self._reviewCalendars = State(initialValue: planModel.calendars.map { $0.asNativeCalendar().asProjectCalendar() })
     }
 
     var body: some View {
@@ -165,14 +203,20 @@ struct NativeCalendarEditorView: View {
                             systemImage: "calendar",
                             description: Text("Create or select a calendar to define working time and leave exceptions.")
                         )
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .topAlignedEmptyState()
                     }
                 }
             } else {
-                CalendarView(calendars: reviewProject.calendars)
+                CalendarView(calendars: reviewCalendars)
             }
         }
         .onAppear {
+            refreshReviewProject()
+            if selectedCalendarID == nil {
+                selectedCalendarID = orderedCalendars.first?.legacyID
+            }
+        }
+        .task(id: calendarRefreshKey) {
             refreshReviewProject()
             if selectedCalendarID == nil {
                 selectedCalendarID = orderedCalendars.first?.legacyID
@@ -185,11 +229,11 @@ struct NativeCalendarEditorView: View {
             CalendarCSVImportMappingSheet(
                 session: session,
                 onImport: { mappedSession in
-                    let snapshot = planModel.editorSnapshotForUI()
+                    let snapshot = (try? planModel.asNativePlan(in: modelContext)) ?? planModel.editorSnapshotForUI()
                     if let result = CSVExporter.applyCalendarImport(mappedSession, into: snapshot) {
-                        planModel.update(from: result.plan)
+                        planModel.update(from: result.plan, in: modelContext)
                         planModel.updatedAt = Date()
-                        try? modelContext.save()
+                        modelContext.saveReportingFailures()
                         refreshReviewProject()
                         selectedCalendarID = result.plan.calendars.last?.id
                         lastCalendarImportSession = mappedSession
@@ -249,8 +293,8 @@ struct NativeCalendarEditorView: View {
     @MainActor
     private func persist() {
         planModel.updatedAt = Date()
-        planModel.refreshPortfolioMetrics()
-        try? modelContext.save()
+        planModel.refreshPortfolioMetrics(from: try? planModel.asNativePlan(in: modelContext))
+        modelContext.saveReportingFailures()
         refreshReviewProject()
     }
 
@@ -296,7 +340,7 @@ struct NativeCalendarEditorView: View {
         calendar.plan = planModel
         planModel.calendars.append(calendar)
         planModel.updatedAt = Date()
-        try? modelContext.save()
+        modelContext.saveReportingFailures()
         refreshReviewProject()
         return calendar.legacyID
     }
@@ -477,7 +521,7 @@ struct NativeCalendarEditorView: View {
                 Button(role: .destructive, action: onDelete) {
                     Label("Remove", systemImage: "trash")
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.accessoryBar)
             }
         }
         .padding(.vertical, 4)
@@ -528,7 +572,7 @@ struct NativeCalendarEditorView: View {
             planModel.defaultCalendarUniqueID = orderedCalendars.first(where: { $0.legacyID != removedID })?.legacyID
         }
 
-        for resource in planModel.resources where resource.calendarUniqueID == removedID {
+        for resource in contextBackedResources where resource.calendarUniqueID == removedID {
             resource.calendarUniqueID = nil
         }
 
@@ -542,7 +586,7 @@ struct NativeCalendarEditorView: View {
     }
 
     private func refreshReviewProject() {
-        reviewProject = planModel.projectModelForUI()
+        reviewCalendars = orderedCalendars.map { $0.asNativeCalendar().asProjectCalendar() }
     }
 
     private func defaultCalendarBinding() -> Binding<Int?> {
