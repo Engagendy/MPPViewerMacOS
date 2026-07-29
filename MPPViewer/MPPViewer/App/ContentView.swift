@@ -12125,14 +12125,18 @@ struct PortfolioDashboardView: View {
                 dependencySnapshots: dependencySnapshots
             )
             let today = Calendar.current.startOfDay(for: Date())
+            func trimmedOrFallbackOffMain(_ value: String, fallback: String) -> String {
+                let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                return trimmed.isEmpty ? fallback : trimmed
+            }
             let activeTasks = planSnapshots
                 .flatMap { plan in
                     plan.tasks.map { task in
                         TaskSnapshot(
                             id: "\(plan.portfolioID.uuidString)-\(task.legacyID)",
                             planID: plan.portfolioID,
-                            planTitle: trimmedOrFallback(plan.title, fallback: "Untitled Plan"),
-                            name: trimmedOrFallback(task.name, fallback: "Untitled Task"),
+                            planTitle: trimmedOrFallbackOffMain(plan.title, fallback: "Untitled Plan"),
+                            name: trimmedOrFallbackOffMain(task.name, fallback: "Untitled Task"),
                             boardStatus: task.boardStatus,
                             finishDate: max(task.startDate, task.finishDate),
                             isActive: task.isActive,

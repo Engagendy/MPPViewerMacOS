@@ -4164,7 +4164,7 @@ struct ExecutiveModeView: View {
 
     private func exportExecutiveSummary(stats: ProjectStats) {
         let validationIssues = projectAnalysis?.validationIssues ?? ProjectValidator.validate(project: project)
-        var lines: [String] = [
+        let lines: [String] = [
             "# \(project.properties.projectTitle ?? "Project") Executive Summary",
             "",
             "Generated: \(ISO8601DateFormatter().string(from: Date()))",
