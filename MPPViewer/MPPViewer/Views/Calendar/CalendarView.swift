@@ -17,7 +17,7 @@ struct CalendarView: View {
             ContentUnavailableView("No Calendars", systemImage: "calendar", description: Text("This project has no calendars defined."))
                 .topAlignedEmptyState()
         } else {
-            HSplitView {
+            HStack(spacing: 0) {
                 // Calendar list
                 List(calendars, selection: Binding(
                     get: { selectedCalendar?.id },
@@ -35,7 +35,9 @@ struct CalendarView: View {
                     .tag(cal.id)
                 }
                 .listStyle(.sidebar)
-                .frame(minWidth: 180, maxWidth: 250)
+                .frame(width: 220)
+
+                Divider()
 
                 // Calendar grid
                 if let cal = selectedCalendar ?? calendars.first {

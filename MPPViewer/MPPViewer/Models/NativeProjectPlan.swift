@@ -2793,6 +2793,7 @@ final class PortfolioProjectPlan {
         NativePlanAnalysis.build(fromProjection: self)
     }
 
+    @MainActor
     func buildAnalysisForUIAsync() async -> NativePlanAnalysis {
         await NativePlanAnalysis.buildAsync(fromProjection: self)
     }

@@ -114,7 +114,7 @@ struct NativeResourcesEditorView: View {
             Divider()
 
             if mode == .edit {
-                HSplitView {
+                HStack(spacing: 0) {
                     List(orderedResources, selection: $selectedResourceID) { resource in
                         VStack(alignment: .leading, spacing: 4) {
                             Text(resource.name.isEmpty ? "Unnamed Resource" : resource.name)
@@ -134,7 +134,9 @@ struct NativeResourcesEditorView: View {
                         .tag(resource.legacyID)
                     }
                     .listStyle(.sidebar)
-                    .frame(minWidth: 220, idealWidth: 260)
+                    .frame(width: 260)
+
+                    Divider()
 
                     if let selectedResource {
                         resourceInspector(for: selectedResource)

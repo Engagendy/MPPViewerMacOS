@@ -166,6 +166,11 @@ struct NativePlanAnalysis {
         }.value
     }
 
+    /// Reads SwiftData model properties, so it must stay on the main actor;
+    /// running it on the cooperative pool races main-thread fetches and
+    /// crashes inside SwiftData accessors. Only the pure value computation in
+    /// `buildAsync(from:)` runs detached.
+    @MainActor
     static func buildAsync(fromProjection planModel: PortfolioProjectPlan) async -> NativePlanAnalysis {
         let nativeTasks = planModel.nativeTasksForUI
         let nativeAssignments = planModel.nativeAssignmentsForUI

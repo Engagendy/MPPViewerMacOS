@@ -172,7 +172,7 @@ struct NativeCalendarEditorView: View {
             Divider()
 
             if mode == .edit {
-                HSplitView {
+                HStack(spacing: 0) {
                     List(orderedCalendars, selection: $selectedCalendarID) { calendar in
                         VStack(alignment: .leading, spacing: 4) {
                             Text(calendar.name)
@@ -192,7 +192,9 @@ struct NativeCalendarEditorView: View {
                         .tag(calendar.legacyID)
                     }
                     .listStyle(.sidebar)
-                    .frame(minWidth: 220, idealWidth: 260)
+                    .frame(width: 260)
+
+                    Divider()
 
                     if let selectedCalendar {
                         calendarInspector(for: selectedCalendar)
