@@ -396,7 +396,7 @@ struct GanttBarView: View {
 
     private var editTooltipText: String {
         guard isEditable else { return tooltipText }
-        return tooltipText + "\n\nDrag the bar to move. Grab the larger edge handles to change start or finish. Double-click for task details. Control-click a task bar to start dependency linking instantly."
+        return tooltipText + "\n\nDrag the bar to move. Grab the larger edge handles to change start or finish. Double-click for task details. Command-click to select several bars, then move them together with the arrow keys (Shift for a week) or by dragging any selected bar. Control-click a task bar to start dependency linking instantly."
     }
 
     private var tooltipText: String {

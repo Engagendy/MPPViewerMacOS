@@ -325,6 +325,8 @@ struct GanttChartView: View {
     @State private var showBaseline: Bool = false
     @State private var showDependencyLinks: Bool = true
     @State private var selectedTaskID: Int?
+    @State private var multiSelectedTaskIDs: Set<Int> = []
+    @FocusState private var isChartFocused: Bool
     @State private var detailPopoverTaskID: Int?
     @State private var detailPopoverAnchor: CGPoint = .zero
     @State private var detailPopoverVisibleRect: CGRect = .zero
@@ -531,15 +533,28 @@ struct GanttChartView: View {
             if mode == .view {
                 pendingDependencySourceTaskID = nil
                 selectedDependency = nil
+                multiSelectedTaskIDs = []
             }
+        }
+        .focusable(true)
+        .focusEffectDisabled()
+        .focused($isChartFocused)
+        .onKeyPress(keys: [.leftArrow, .rightArrow], phases: .down) { press in
+            guard isEditingEnabled else { return .ignored }
+            let magnitude = press.modifiers.contains(.shift) ? 7 : 1
+            let delta = press.key == .leftArrow ? -magnitude : magnitude
+            return nudgeSelectedTasks(dayDelta: delta) ? .handled : .ignored
         }
         .onChange(of: derivedContent.taskIDs) { _, ids in
             guard !ids.isEmpty else {
                 selectedTaskID = nil
+                multiSelectedTaskIDs = []
                 pendingDependencySourceTaskID = nil
                 selectedDependency = nil
                 return
             }
+
+            multiSelectedTaskIDs = multiSelectedTaskIDs.intersection(ids)
 
             if let selectedTaskID, ids.contains(selectedTaskID) {
                 return
@@ -1482,6 +1497,7 @@ struct GanttChartView: View {
                 editableTaskIDs: editableTaskIDs,
                 isEditModeActive: isEditingEnabled,
                 selectedTaskID: selectedTaskID,
+                selectedTaskIDs: effectiveSelectedTaskIDs,
                 selectedDependency: selectedDependency,
                 pendingLinkSourceTaskID: pendingDependencySourceTaskID,
                 onMoveTask: planModel == nil ? nil : moveNativeTask,
@@ -1559,7 +1575,7 @@ struct GanttChartView: View {
     }
 
     private func taskListRow(_ task: ProjectTask, width: CGFloat) -> some View {
-        let isSelected = selectedTaskID == task.uniqueID
+        let isSelected = selectedTaskID == task.uniqueID || effectiveSelectedTaskIDs.contains(task.uniqueID)
         let isPendingSource = pendingDependencySourceTaskID == task.uniqueID
         let isLinkTarget = pendingDependencySourceTaskID != nil && !isPendingSource
         let rowIndent = CGFloat(max(0, (task.outlineLevel ?? 1) - 1)) * 16
@@ -1769,8 +1785,42 @@ struct GanttChartView: View {
             }
 
             selectedDependency = nil
-            selectedTaskID = taskID
+
+            // Command-click builds a multi-selection in edit mode so several
+            // bars can be nudged together with the arrow keys or one drag.
+            if isEditingEnabled, NSEvent.modifierFlags.contains(.command) {
+                var selection = effectiveSelectedTaskIDs
+                if selection.contains(taskID) {
+                    selection.remove(taskID)
+                } else {
+                    selection.insert(taskID)
+                }
+                multiSelectedTaskIDs = selection
+                selectedTaskID = selection.contains(taskID) ? taskID : selection.first
+            } else {
+                multiSelectedTaskIDs = [taskID]
+                selectedTaskID = taskID
+            }
+            isChartFocused = true
         }
+    }
+
+    private var effectiveSelectedTaskIDs: Set<Int> {
+        if !multiSelectedTaskIDs.isEmpty {
+            return multiSelectedTaskIDs
+        }
+        if let selectedTaskID {
+            return [selectedTaskID]
+        }
+        return []
+    }
+
+    private func nudgeSelectedTasks(dayDelta: Int) -> Bool {
+        guard isEditingEnabled else { return false }
+        let movable = effectiveSelectedTaskIDs.intersection(editableTaskIDs)
+        guard !movable.isEmpty else { return false }
+        moveNativeTasks(movable, dayDelta: dayDelta)
+        return true
     }
 
     private func startLinkingFromTask(_ taskID: Int) {
@@ -2621,21 +2671,33 @@ struct GanttChartView: View {
     }
 
     private func moveNativeTask(_ taskID: Int, dayDelta: Int) {
-        guard dayDelta != 0, planModel != nil else { return }
+        // Dragging one bar of a multi-selection moves the whole selection.
+        let selection = effectiveSelectedTaskIDs
+        if selection.count > 1, selection.contains(taskID) {
+            moveNativeTasks(selection.intersection(editableTaskIDs), dayDelta: dayDelta)
+            selectedTaskID = taskID
+            return
+        }
+        moveNativeTasks([taskID], dayDelta: dayDelta)
+        selectedTaskID = taskID
+    }
+
+    private func moveNativeTasks(_ taskIDs: Set<Int>, dayDelta: Int) {
+        guard dayDelta != 0, !taskIDs.isEmpty, planModel != nil else { return }
 
         PerformanceMonitor.measure("Gantt.MoveTask") {
             fullSyncGanttPlan { workingPlan in
-                guard let taskIndex = workingPlan.tasks.firstIndex(where: { $0.id == taskID }) else { return }
-                var task = workingPlan.tasks[taskIndex]
                 let calendar = Calendar.current
-                task.startDate = calendar.date(byAdding: .day, value: dayDelta, to: task.startDate) ?? task.startDate
-                task.finishDate = calendar.date(byAdding: .day, value: dayDelta, to: task.finishDate) ?? task.finishDate
-                task.startDate = calendar.startOfDay(for: task.startDate)
-                task.finishDate = task.isMilestone ? task.startDate : calendar.startOfDay(for: task.finishDate)
-                task.manuallyScheduled = true
-                workingPlan.tasks[taskIndex] = task
+                for taskIndex in workingPlan.tasks.indices where taskIDs.contains(workingPlan.tasks[taskIndex].id) {
+                    var task = workingPlan.tasks[taskIndex]
+                    task.startDate = calendar.date(byAdding: .day, value: dayDelta, to: task.startDate) ?? task.startDate
+                    task.finishDate = calendar.date(byAdding: .day, value: dayDelta, to: task.finishDate) ?? task.finishDate
+                    task.startDate = calendar.startOfDay(for: task.startDate)
+                    task.finishDate = task.isMilestone ? task.startDate : calendar.startOfDay(for: task.finishDate)
+                    task.manuallyScheduled = true
+                    workingPlan.tasks[taskIndex] = task
+                }
                 workingPlan.reschedule()
-                selectedTaskID = taskID
             }
         }
     }
@@ -3070,6 +3132,7 @@ struct GanttCanvasView: View {
     var editableTaskIDs: Set<Int> = []
     var isEditModeActive: Bool = false
     var selectedTaskID: Int? = nil
+    var selectedTaskIDs: Set<Int> = []
     var selectedDependency: GanttDependencySelection? = nil
     var pendingLinkSourceTaskID: Int? = nil
     var onMoveTask: ((Int, Int) -> Void)? = nil
@@ -3100,6 +3163,7 @@ struct GanttCanvasView: View {
         editableTaskIDs: Set<Int> = [],
         isEditModeActive: Bool = false,
         selectedTaskID: Int? = nil,
+        selectedTaskIDs: Set<Int> = [],
         selectedDependency: GanttDependencySelection? = nil,
         pendingLinkSourceTaskID: Int? = nil,
         onMoveTask: ((Int, Int) -> Void)? = nil,
@@ -3124,6 +3188,7 @@ struct GanttCanvasView: View {
         self.editableTaskIDs = editableTaskIDs
         self.isEditModeActive = isEditModeActive
         self.selectedTaskID = selectedTaskID
+        self.selectedTaskIDs = selectedTaskIDs
         self.selectedDependency = selectedDependency
         self.pendingLinkSourceTaskID = pendingLinkSourceTaskID
         self.onMoveTask = onMoveTask
@@ -3260,7 +3325,7 @@ struct GanttCanvasView: View {
                     rowHeight: rowHeight,
                     coordinateSpaceName: canvasCoordinateSpaceName,
                     isEditable: true,
-                    isSelected: selectedTaskID == row.task.uniqueID,
+                    isSelected: selectedTaskID == row.task.uniqueID || selectedTaskIDs.contains(row.task.uniqueID),
                     isLinkSource: pendingLinkSourceTaskID == row.task.uniqueID,
                     onMoveTask: { dayDelta in
                         onMoveTask?(row.task.uniqueID, dayDelta)
