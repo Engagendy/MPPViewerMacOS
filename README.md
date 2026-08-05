@@ -329,7 +329,7 @@ The Xcode project is configured for App Store/Xcode Cloud builds with:
 - Product name: `MPPViewer`
 - Bundle identifier: `com.mppviewer.MPPViewer`
 - Team ID: `7JM77223V5`
-- Version: `2.4.1`
+- Version: `2.5.0`
 - Build: `226`
 - App Store sandbox entitlements: `MPPViewer/MPPViewer/MPPViewer.entitlements`
 

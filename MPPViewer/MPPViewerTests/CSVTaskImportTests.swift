@@ -54,4 +54,19 @@ final class CSVTaskImportTests: XCTestCase {
         XCTAssertEqual(feature?.durationDays, 60)
         XCTAssertEqual(feature?.outlineLevel, 2)
     }
+
+    func testCustomFieldsRoundTripAndSurfaceInProjectModel() throws {
+        var plan = NativeProjectPlan.empty()
+        var task = plan.makeTask(name: "Wage Protection System")
+        task.customFields = ["Domain": "Payments", "Workstream": "Phase 2"]
+        plan.tasks.append(task)
+
+        let decoded = try NativeProjectPlan.decode(from: plan.encodedData())
+        XCTAssertEqual(decoded.tasks.first?.customFields["Domain"], "Payments")
+
+        let project = decoded.asProjectModel()
+        let projectTask = project.tasks.first(where: { $0.name == "Wage Protection System" })
+        XCTAssertEqual(projectTask?.customFields?["Domain"]?.displayString, "Payments")
+        XCTAssertEqual(projectTask?.customFields?["Workstream"]?.displayString, "Phase 2")
+    }
 }

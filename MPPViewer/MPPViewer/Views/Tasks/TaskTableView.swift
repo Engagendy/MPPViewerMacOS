@@ -22,9 +22,14 @@ struct TaskTableView: View {
     @AppStorage("taskInspectorWidth") private var storedInspectorWidth = 360.0
     @AppStorage(ReviewNotesStore.key) private var taskReviewNotesData: Data = Data()
 
+    // Typing in the search field used to walk the whole task tree per
+    // keystroke; debounce so the filter runs once the user pauses.
+    @State private var debouncedSearchText = ""
+    @State private var searchDebounceTask: Task<Void, Never>?
+
     private var searchedTasks: [ProjectTask] {
-        guard !searchText.isEmpty else { return tasks }
-        return filterTasks(tasks, searchText: searchText.lowercased())
+        guard !debouncedSearchText.isEmpty else { return tasks }
+        return filterTasks(tasks, searchText: debouncedSearchText.lowercased())
     }
 
     private var hasStructuredFilters: Bool {
@@ -96,8 +101,22 @@ struct TaskTableView: View {
         .help(title)
     }
 
+    // Decoding the annotations JSON is too expensive to repeat for every row
+    // and every filter pass, so cache it and refresh only when the data blob
+    // actually changes.
+    @State private var cachedReviewAnnotations: [Int: TaskReviewAnnotation] = [:]
+    @State private var cachedReviewAnnotationsData: Data = Data()
+
     private var reviewAnnotations: [Int: TaskReviewAnnotation] {
-        ReviewNotesStore.decodeAnnotations(taskReviewNotesData)
+        if cachedReviewAnnotationsData == taskReviewNotesData {
+            return cachedReviewAnnotations
+        }
+        return ReviewNotesStore.decodeAnnotations(taskReviewNotesData)
+    }
+
+    private func refreshReviewAnnotationCache() {
+        cachedReviewAnnotations = ReviewNotesStore.decodeAnnotations(taskReviewNotesData)
+        cachedReviewAnnotationsData = taskReviewNotesData
     }
 
     private var availableCustomFieldKeys: [String] {
@@ -139,11 +158,30 @@ struct TaskTableView: View {
         availableCustomFieldKeys.filter { visibleCustomColumns.contains($0) }
     }
 
+    // Built once per data change instead of doing linear scans per row.
+    private var assignmentsByTaskID: [Int: [ResourceAssignment]] {
+        Dictionary(grouping: assignments, by: { $0.taskUniqueID ?? -1 })
+    }
+
+    private var resourceNamesByID: [Int: String] {
+        Dictionary(uniqueKeysWithValues: resources.compactMap { resource in
+            guard let id = resource.uniqueID else { return nil }
+            return (id, resource.name ?? "Resource \(id)")
+        })
+    }
+
     private func resourceNamesText(for task: ProjectTask) -> String {
-        assignments
-            .filter { $0.taskUniqueID == task.uniqueID }
+        resourceNamesText(for: task, assignmentsByTaskID: assignmentsByTaskID, resourceNamesByID: resourceNamesByID)
+    }
+
+    private func resourceNamesText(
+        for task: ProjectTask,
+        assignmentsByTaskID: [Int: [ResourceAssignment]],
+        resourceNamesByID: [Int: String]
+    ) -> String {
+        (assignmentsByTaskID[task.uniqueID] ?? [])
             .compactMap { assignment in
-                resources.first(where: { $0.uniqueID == assignment.resourceUniqueID })?.name
+                assignment.resourceUniqueID.flatMap { resourceNamesByID[$0] }
             }
             .joined(separator: ", ")
     }
@@ -618,7 +656,24 @@ struct TaskTableView: View {
                 navigateToTaskID?.wrappedValue = nil
             }
         }
+        .onChange(of: taskReviewNotesData) { _, _ in
+            refreshReviewAnnotationCache()
+        }
+        .onChange(of: searchText) { _, newValue in
+            searchDebounceTask?.cancel()
+            if newValue.isEmpty {
+                debouncedSearchText = ""
+                return
+            }
+            searchDebounceTask = Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 200_000_000)
+                guard !Task.isCancelled else { return }
+                debouncedSearchText = newValue
+            }
+        }
         .onAppear {
+            refreshReviewAnnotationCache()
+            debouncedSearchText = searchText
             filterCriteria.applyPreset(TaskViewPreset(rawValue: selectedTaskViewPresetRaw) ?? .none)
             if let selectedTaskID, dependencyBreadcrumbs.isEmpty {
                 dependencyBreadcrumbs = [selectedTaskID]
@@ -724,6 +779,7 @@ struct TaskTableView: View {
 
     private func applyFilterCriteria(_ tasks: [ProjectTask]) -> [ProjectTask] {
         let today = Calendar.current.startOfDay(for: Date())
+        let annotations = reviewAnnotations
         var result: [ProjectTask] = []
         for task in tasks {
             if filterCriteria.matches(
@@ -731,7 +787,7 @@ struct TaskTableView: View {
                 assignments: assignments,
                 resources: resources,
                 flaggedTaskIDs: flaggedTaskIDs,
-                annotations: reviewAnnotations,
+                annotations: annotations,
                 today: today
             ) {
                 result.append(task)
@@ -743,7 +799,7 @@ struct TaskTableView: View {
                     assignments: assignments,
                     resources: resources,
                     flaggedTaskIDs: flaggedTaskIDs,
-                    annotations: reviewAnnotations,
+                    annotations: annotations,
                     today: today
                 ) {
                     if !result.contains(where: { $0.uniqueID == task.uniqueID }) {
@@ -757,6 +813,7 @@ struct TaskTableView: View {
 
     private func matchingTaskIDs(in tasks: [ProjectTask]) -> Set<Int> {
         let today = Calendar.current.startOfDay(for: Date())
+        let annotations = reviewAnnotations
         var result = Set<Int>()
 
         func visit(_ task: ProjectTask) {
@@ -765,7 +822,7 @@ struct TaskTableView: View {
                 assignments: assignments,
                 resources: resources,
                 flaggedTaskIDs: flaggedTaskIDs,
-                annotations: reviewAnnotations,
+                annotations: annotations,
                 today: today
             ) {
                 result.insert(task.uniqueID)
@@ -892,6 +949,8 @@ struct TaskTableView: View {
         var groups: [String: [ProjectTask]] = [:]
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
+        let assignmentsByTaskID = self.assignmentsByTaskID
+        let resourceNamesByID = self.resourceNamesByID
 
         for task in flat {
             let key: String
@@ -899,11 +958,12 @@ struct TaskTableView: View {
             case .none:
                 key = ""
             case .resource:
-                let taskAssignments = assignments.filter { $0.taskUniqueID == task.uniqueID }
-                let resourceNames = taskAssignments.compactMap { a in
-                    resources.first(where: { $0.uniqueID == a.resourceUniqueID })?.name
-                }
-                key = resourceNames.isEmpty ? "Unassigned" : resourceNames.joined(separator: ", ")
+                let names = resourceNamesText(
+                    for: task,
+                    assignmentsByTaskID: assignmentsByTaskID,
+                    resourceNamesByID: resourceNamesByID
+                )
+                key = names.isEmpty ? "Unassigned" : names
             case .outlineLevel:
                 key = "Level \(task.outlineLevel ?? 0)"
             case .status:

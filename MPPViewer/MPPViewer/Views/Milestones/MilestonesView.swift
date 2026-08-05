@@ -7,25 +7,47 @@ struct MilestonesView: View {
 
     @State private var preparedItems: [MilestoneItem]
     @State private var sortOrder = [KeyPathComparator(\MilestoneItem.sortDate, order: .forward)]
+    @State private var cachedSortedItems: [MilestoneItem] = []
 
+    // Sorting on every access made the toolbar chips and table re-sort the
+    // list six times per render; sort once per data/sort change instead.
     private var items: [MilestoneItem] {
-        preparedItems.sorted(using: sortOrder)
+        cachedSortedItems.isEmpty && !preparedItems.isEmpty
+            ? preparedItems.sorted(using: sortOrder)
+            : cachedSortedItems
     }
 
-    private var completedCount: Int {
-        items.filter { $0.percentComplete >= 100 }.count
+    private struct MilestoneCounts {
+        var completed = 0
+        var upcoming = 0
+        var overdue = 0
+        var atRisk = 0
     }
 
-    private var upcomingCount: Int {
-        items.filter { $0.percentComplete < 100 && $0.date != nil && $0.date! >= Date() }.count
+    // Counts don't depend on the sort order, so derive them from the
+    // unsorted list in a single pass.
+    private var counts: MilestoneCounts {
+        var counts = MilestoneCounts()
+        let now = Date()
+        for item in preparedItems {
+            if item.percentComplete >= 100 {
+                counts.completed += 1
+            } else if let date = item.date {
+                if date >= now {
+                    counts.upcoming += 1
+                } else {
+                    counts.overdue += 1
+                }
+            }
+            if item.healthLevel == .high || item.healthLevel == .medium {
+                counts.atRisk += 1
+            }
+        }
+        return counts
     }
 
-    private var overdueCount: Int {
-        items.filter { $0.percentComplete < 100 && $0.date != nil && $0.date! < Date() }.count
-    }
-
-    private var atRiskCount: Int {
-        items.filter { $0.healthLevel == .high || $0.healthLevel == .medium }.count
+    private func refreshSortedItems() {
+        cachedSortedItems = preparedItems.sorted(using: sortOrder)
     }
 
     init(tasks: [ProjectTask], allTasks: [Int: ProjectTask], searchText: String) {
@@ -49,10 +71,11 @@ struct MilestonesView: View {
 
                 // Status summary chips
                 HStack(spacing: 12) {
-                    statusChip(count: completedCount, label: "Completed", color: .green)
-                    statusChip(count: upcomingCount, label: "Upcoming", color: .blue)
-                    statusChip(count: overdueCount, label: "Overdue", color: .red)
-                    statusChip(count: atRiskCount, label: "At Risk", color: .orange)
+                    let counts = self.counts
+                    statusChip(count: counts.completed, label: "Completed", color: .green)
+                    statusChip(count: counts.upcoming, label: "Upcoming", color: .blue)
+                    statusChip(count: counts.overdue, label: "Overdue", color: .red)
+                    statusChip(count: counts.atRisk, label: "At Risk", color: .orange)
                 }
             }
             .padding(.horizontal)
@@ -146,9 +169,14 @@ struct MilestonesView: View {
         }
         .onAppear {
             preparedItems = Self.buildItems(tasks: tasks, allTasks: allTasks, searchText: searchText)
+            refreshSortedItems()
         }
         .onChange(of: searchText) { _, newValue in
             preparedItems = Self.buildItems(tasks: tasks, allTasks: allTasks, searchText: newValue)
+            refreshSortedItems()
+        }
+        .onChange(of: sortOrder) { _, _ in
+            refreshSortedItems()
         }
     }
 

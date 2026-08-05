@@ -963,7 +963,8 @@ struct NativeProjectPlan: Codable, Hashable {
                 actualCost: hierarchy.isSummary ? nil : financials?.actualCost,
                 bcws: hierarchy.isSummary ? nil : financials?.plannedValue,
                 bcwp: hierarchy.isSummary ? nil : financials?.earnedValue,
-                acwp: hierarchy.isSummary ? nil : financials?.actualCost
+                acwp: hierarchy.isSummary ? nil : financials?.actualCost,
+                customFields: task.customFields.isEmpty ? nil : task.customFields.mapValues { AnyCodable($0) }
             )
         }
 
@@ -1248,6 +1249,7 @@ struct NativePlanTask: Codable, Identifiable, Hashable {
     var sprintID: Int?
     var epicName: String
     var tags: [String]
+    var customFields: [String: String]
 
     enum CodingKeys: String, CodingKey {
         case uniqueID
@@ -1281,6 +1283,7 @@ struct NativePlanTask: Codable, Identifiable, Hashable {
         case sprintID
         case epicName
         case tags
+        case customFields
     }
 
     init(
@@ -1314,6 +1317,7 @@ struct NativePlanTask: Codable, Identifiable, Hashable {
         sprintID: Int?,
         epicName: String,
         tags: [String],
+        customFields: [String: String] = [:],
         uniqueID: UUID = UUID()
     ) {
         self.uniqueID = uniqueID
@@ -1347,6 +1351,7 @@ struct NativePlanTask: Codable, Identifiable, Hashable {
         self.sprintID = sprintID
         self.epicName = epicName
         self.tags = tags
+        self.customFields = customFields
     }
 
     init(from decoder: Decoder) throws {
@@ -1382,6 +1387,7 @@ struct NativePlanTask: Codable, Identifiable, Hashable {
         sprintID = try container.decodeIfPresent(Int.self, forKey: .sprintID)
         epicName = try container.decodeIfPresent(String.self, forKey: .epicName) ?? ""
         tags = try container.decodeIfPresent([String].self, forKey: .tags) ?? []
+        customFields = try container.decodeIfPresent([String: String].self, forKey: .customFields) ?? [:]
         let normalizedStart = Calendar.current.startOfDay(for: min(startDate, finishDate))
         let normalizedFinish = Calendar.current.startOfDay(for: max(startDate, finishDate))
         startDate = normalizedStart
@@ -3189,6 +3195,7 @@ final class PortfolioPlanTask {
     var sprintID: Int?
     var epicName: String
     var tags: [String]
+    var customFields: [String: String]?
     var orderIndex: Int
     var isCollapsed: Bool
     var isHiddenInGantt: Bool
@@ -3230,6 +3237,7 @@ final class PortfolioPlanTask {
         self.sprintID = nativeTask.sprintID
         self.epicName = nativeTask.epicName
         self.tags = nativeTask.tags
+        self.customFields = nativeTask.customFields.isEmpty ? nil : nativeTask.customFields
         self.orderIndex = orderIndex
         self.isCollapsed = false
         self.isHiddenInGantt = false
@@ -3268,6 +3276,7 @@ final class PortfolioPlanTask {
         sprintID = nativeTask.sprintID
         epicName = nativeTask.epicName
         tags = nativeTask.tags
+        customFields = nativeTask.customFields.isEmpty ? nil : nativeTask.customFields
         self.orderIndex = orderIndex
     }
 
@@ -3339,6 +3348,7 @@ final class PortfolioPlanTask {
             sprintID: sprintID,
             epicName: epicName,
             tags: tags,
+            customFields: customFields ?? [:],
             uniqueID: uniqueID
         )
     }

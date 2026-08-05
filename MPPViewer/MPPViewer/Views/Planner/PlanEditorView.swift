@@ -16,6 +16,12 @@ struct PlanEditorView: View {
     @State private var dirtyTaskIDs: Set<Int> = []
     @State private var metadataNeedsFullSync = false
     @State private var inspectorTaskDraft: NativePlanTask?
+    @State private var newCustomFieldName = ""
+    @State private var pendingCustomFieldRemoval: String?
+    @AppStorage("plannerGridHiddenColumns") private var plannerGridHiddenColumnsRaw = ""
+    @AppStorage("plannerGridCustomColumns") private var plannerGridCustomColumnsRaw = ""
+    @AppStorage("plannerGridExtraColumns") private var plannerGridExtraColumnsRaw = ""
+    @State private var showGridColumnPicker = false
     @State private var inspectorTaskDraftWorkItem: DispatchWorkItem?
     @State private var inspectorTaskDraftNeedsReschedule = false
     @State private var inspectorTaskDraftIsDirty = false
@@ -589,17 +595,83 @@ struct PlanEditorView: View {
         HStack(spacing: 0) {
             taskHeaderCell("ID", width: layout.id, alignment: .leading)
             taskHeaderCell("Task Name", width: layout.name, alignment: .leading)
-            taskHeaderCell("Start", width: layout.start, alignment: .leading)
-            taskHeaderCell("Finish", width: layout.finish, alignment: .leading)
-            taskHeaderCell("Dur", width: layout.duration, alignment: .center)
-            taskHeaderCell("%", width: layout.percent, alignment: .center)
-            taskHeaderCell("Milestone", width: layout.milestone, alignment: .center)
-            taskHeaderCell("Preds", width: layout.predecessors, alignment: .leading)
-            taskHeaderCell("Resource", width: layout.resource, alignment: .leading)
-            taskHeaderCell("Units", width: layout.assignmentUnits, alignment: .center)
+            if layout.start > 0 { taskHeaderCell("Start", width: layout.start, alignment: .leading) }
+            if layout.finish > 0 { taskHeaderCell("Finish", width: layout.finish, alignment: .leading) }
+            if layout.duration > 0 { taskHeaderCell("Dur", width: layout.duration, alignment: .center) }
+            if layout.percent > 0 { taskHeaderCell("%", width: layout.percent, alignment: .center) }
+            if layout.milestone > 0 { taskHeaderCell("Milestone", width: layout.milestone, alignment: .center) }
+            if layout.predecessors > 0 { taskHeaderCell("Preds", width: layout.predecessors, alignment: .leading) }
+            if layout.resource > 0 { taskHeaderCell("Resource", width: layout.resource, alignment: .leading) }
+            if layout.assignmentUnits > 0 { taskHeaderCell("Units", width: layout.assignmentUnits, alignment: .center) }
+            ForEach(Array(layout.extraColumns.enumerated()), id: \.offset) { index, name in
+                taskHeaderCell(name, width: layout.extraWidths[index], alignment: .leading)
+            }
+            ForEach(layout.customColumns, id: \.self) { name in
+                taskHeaderCell(name, width: layout.custom, alignment: .leading)
+            }
         }
         .frame(height: 30)
         .background(Color(nsColor: .controlBackgroundColor))
+        .overlay(alignment: .trailing) {
+            gridColumnPickerButton
+                .padding(.trailing, 4)
+        }
+    }
+
+    private var gridColumnPickerButton: some View {
+        Button {
+            showGridColumnPicker.toggle()
+        } label: {
+            Image(systemName: "slider.horizontal.3")
+                .font(.caption)
+        }
+        .buttonStyle(.borderless)
+        .help("Choose which columns are visible in the grid")
+        .popover(isPresented: $showGridColumnPicker) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Grid Columns")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .padding(.bottom, 4)
+                ForEach(Self.hideableGridColumns, id: \.key) { column in
+                    Toggle(column.title, isOn: Binding(
+                        get: { !hiddenGridColumns.contains(column.key) },
+                        set: { setGridColumn(column.key, hidden: !$0) }
+                    ))
+                    .font(.caption)
+                }
+
+                Text("More Columns")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .padding(.top, 8)
+                    .padding(.bottom, 4)
+                ForEach(Self.optionalGridColumns, id: \.key) { column in
+                    Toggle(column.key, isOn: Binding(
+                        get: { visibleExtraGridColumns.contains(column.key) },
+                        set: { setGridExtraColumn(column.key, visible: $0) }
+                    ))
+                    .font(.caption)
+                }
+
+                if !planCustomFieldNames.isEmpty {
+                    Text("Custom Fields")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .padding(.top, 8)
+                        .padding(.bottom, 4)
+                    ForEach(planCustomFieldNames, id: \.self) { name in
+                        Toggle(name, isOn: Binding(
+                            get: { visibleGridCustomColumns.contains(name) },
+                            set: { setGridCustomColumn(name, visible: $0) }
+                        ))
+                        .font(.caption)
+                    }
+                }
+            }
+            .padding()
+            .frame(minWidth: 170)
+        }
     }
 
     private func taskGridRow(row: PlannerGridRowModel, layout: PlannerGridLayout) -> some View {
@@ -634,6 +706,14 @@ struct PlanEditorView: View {
             predecessorsText: gridTextBinding(taskID: row.id, column: .predecessors, fallback: row.predecessorText),
             primaryAssignmentResourceID: primaryAssignmentResourceBinding(for: row.id, fallback: row.primaryAssignmentResourceID),
             primaryAssignmentUnitsText: primaryAssignmentUnitsTextBinding(for: row.id, fallback: row.primaryAssignmentUnitsText),
+            customValues: layout.customColumns.map { liveTask?.customFields[$0] ?? "" },
+            onCommitCustomField: { fieldName, value in
+                updateTaskCustomField(taskID: row.id, fieldName: fieldName, value: value)
+            },
+            extraValues: layout.extraColumns.map { extraGridColumnValue($0, task: liveTask) },
+            onCommitExtraColumn: { columnName, value in
+                updateTaskExtraColumn(taskID: row.id, columnName: columnName, value: value)
+            },
             shouldFocusName: shouldFocus(taskID: row.id, column: .name),
             shouldFocusDuration: shouldFocus(taskID: row.id, column: .duration),
             shouldFocusPercent: shouldFocus(taskID: row.id, column: .percent),
@@ -1465,6 +1545,80 @@ struct PlanEditorView: View {
                                 .frame(minHeight: 160)
                                 .font(.body)
                         }
+
+                        GroupBox("Custom Fields") {
+                            VStack(alignment: .leading, spacing: 8) {
+                                let fieldNames = planCustomFieldNames
+
+                                if fieldNames.isEmpty {
+                                    Text("Add your own attributes, like Domain or Workstream. A field is added to every task in the plan, appears as an optional column in the Tasks view, and is searchable.")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+
+                                ForEach(fieldNames, id: \.self) { fieldName in
+                                    HStack(spacing: 8) {
+                                        Text(fieldName)
+                                            .font(.caption)
+                                            .frame(width: 110, alignment: .leading)
+                                            .lineLimit(1)
+                                            .help(fieldName)
+
+                                        TextField("Value", text: inspectorTaskDraftBinding(
+                                            defaultValue: taskDraft.customFields[fieldName] ?? "",
+                                            get: { $0.customFields[fieldName] ?? "" },
+                                            set: { $0.customFields[fieldName] = $1 }
+                                        ))
+                                        .textFieldStyle(.roundedBorder)
+
+                                        Button {
+                                            pendingCustomFieldRemoval = fieldName
+                                        } label: {
+                                            Image(systemName: "trash")
+                                        }
+                                        .buttonStyle(.borderless)
+                                        .help("Remove this field from all tasks")
+                                    }
+                                }
+
+                                HStack(spacing: 8) {
+                                    TextField("Field name (e.g. Domain)", text: $newCustomFieldName)
+                                        .textFieldStyle(.roundedBorder)
+                                        .frame(width: 160)
+                                        .onSubmit(addCustomFieldToAllTasks)
+
+                                    Button {
+                                        addCustomFieldToAllTasks()
+                                    } label: {
+                                        Label("Add Field", systemImage: "plus")
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .hoverHighlight()
+                                    .disabled(trimmedNewCustomFieldName.isEmpty)
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .confirmationDialog(
+                            "Remove `\(pendingCustomFieldRemoval ?? "")` from all tasks?",
+                            isPresented: Binding(
+                                get: { pendingCustomFieldRemoval != nil },
+                                set: { if !$0 { pendingCustomFieldRemoval = nil } }
+                            ),
+                            titleVisibility: .visible
+                        ) {
+                            Button("Remove Field", role: .destructive) {
+                                if let fieldName = pendingCustomFieldRemoval {
+                                    removeCustomFieldFromAllTasks(fieldName)
+                                }
+                                pendingCustomFieldRemoval = nil
+                            }
+                            Button("Cancel", role: .cancel) {
+                                pendingCustomFieldRemoval = nil
+                            }
+                        } message: {
+                            Text("The field and every task's value for it will be deleted. This can be undone with Cmd+Z.")
+                        }
                     }
                     .padding(16)
                 }
@@ -1532,6 +1686,104 @@ struct PlanEditorView: View {
             inspectorAssignmentDrafts = liveAssignments
             inspectorAssignmentDraftsAreDirty = false
         }
+    }
+
+    private var trimmedNewCustomFieldName: String {
+        newCustomFieldName.trimmingCharacters(in: .whitespaces)
+    }
+
+    private var planCustomFieldNames: [String] {
+        var names = Set<String>()
+        for task in plan.tasks {
+            names.formUnion(task.customFields.keys)
+        }
+        if let draft = inspectorTaskDraft {
+            names.formUnion(draft.customFields.keys)
+        }
+        return names.sorted()
+    }
+
+    private func addCustomFieldToAllTasks() {
+        let fieldName = trimmedNewCustomFieldName
+        guard !fieldName.isEmpty else { return }
+        for index in plan.tasks.indices where plan.tasks[index].customFields[fieldName] == nil {
+            plan.tasks[index].customFields[fieldName] = ""
+        }
+        mutateInspectorTaskDraft { task in
+            if task.customFields[fieldName] == nil {
+                task.customFields[fieldName] = ""
+            }
+        }
+        notePlanMutation(needsGrid: false, needsAnalysis: true)
+        newCustomFieldName = ""
+    }
+
+    private func updateTaskCustomField(taskID: Int, fieldName: String, value: String) {
+        guard let index = taskIndex(for: taskID), plan.tasks.indices.contains(index) else { return }
+        guard (plan.tasks[index].customFields[fieldName] ?? "") != value else { return }
+        plan.tasks[index].customFields[fieldName] = value
+        if inspectorTaskDraft?.id == taskID {
+            mutateInspectorTaskDraft { task in
+                task.customFields[fieldName] = value
+            }
+        }
+        notePlanMutation(needsGrid: true, needsAnalysis: false, changedTaskIDs: [taskID])
+    }
+
+    private func extraGridColumnValue(_ columnName: String, task: NativePlanTask?) -> String {
+        guard let task else { return "" }
+        switch columnName {
+        case "Notes":
+            return task.notes
+        case "Priority":
+            return String(task.priority)
+        case "Fixed Cost":
+            return task.fixedCost == 0 ? "" : decimalText(task.fixedCost)
+        default:
+            return ""
+        }
+    }
+
+    private func updateTaskExtraColumn(taskID: Int, columnName: String, value: String) {
+        guard let index = taskIndex(for: taskID), plan.tasks.indices.contains(index) else { return }
+        guard extraGridColumnValue(columnName, task: plan.tasks[index]) != value else { return }
+
+        var needsAnalysis = false
+        switch columnName {
+        case "Notes":
+            plan.tasks[index].notes = value
+        case "Priority":
+            guard let priority = Int(value.trimmingCharacters(in: .whitespaces)) else { return }
+            plan.tasks[index].priority = min(1000, max(0, priority))
+        case "Fixed Cost":
+            let trimmed = value.trimmingCharacters(in: .whitespaces)
+            let cost = trimmed.isEmpty ? 0 : parseDecimalInput(trimmed)
+            guard let cost else { return }
+            plan.tasks[index].fixedCost = max(0, cost)
+            needsAnalysis = true
+        default:
+            return
+        }
+
+        if inspectorTaskDraft?.id == taskID {
+            let updatedTask = plan.tasks[index]
+            mutateInspectorTaskDraft { task in
+                task.notes = updatedTask.notes
+                task.priority = updatedTask.priority
+                task.fixedCost = updatedTask.fixedCost
+            }
+        }
+        notePlanMutation(needsGrid: true, needsAnalysis: needsAnalysis, changedTaskIDs: [taskID])
+    }
+
+    private func removeCustomFieldFromAllTasks(_ fieldName: String) {
+        for index in plan.tasks.indices {
+            plan.tasks[index].customFields.removeValue(forKey: fieldName)
+        }
+        mutateInspectorTaskDraft { task in
+            task.customFields.removeValue(forKey: fieldName)
+        }
+        notePlanMutation(needsGrid: false, needsAnalysis: true)
     }
 
     private func mutateInspectorTaskDraft(reschedule: Bool = false, _ update: (inout NativePlanTask) -> Void) {
@@ -3155,16 +3407,89 @@ struct PlanEditorView: View {
         return max(0, Int((hours * 3600).rounded()))
     }
 
+    private static let hideableGridColumns: [(key: String, title: String)] = [
+        ("Start", "Start"),
+        ("Finish", "Finish"),
+        ("Duration", "Duration"),
+        ("Percent", "% Complete"),
+        ("Milestone", "Milestone"),
+        ("Predecessors", "Predecessors"),
+        ("Resource", "Resource"),
+        ("Units", "Units")
+    ]
+
+    private let customGridColumnWidth: CGFloat = 110
+
+    private static let optionalGridColumns: [(key: String, width: CGFloat)] = [
+        ("Notes", 170),
+        ("Priority", 62),
+        ("Fixed Cost", 84)
+    ]
+
+    private var visibleExtraGridColumns: [String] {
+        let visible = Set(plannerGridExtraColumnsRaw.split(separator: "|").map(String.init))
+        return Self.optionalGridColumns.map(\.key).filter { visible.contains($0) }
+    }
+
+    private func setGridExtraColumn(_ name: String, visible: Bool) {
+        var visibleColumns = Set(plannerGridExtraColumnsRaw.split(separator: "|").map(String.init))
+        if visible {
+            visibleColumns.insert(name)
+        } else {
+            visibleColumns.remove(name)
+        }
+        plannerGridExtraColumnsRaw = visibleColumns.sorted().joined(separator: "|")
+    }
+
+    private func extraGridColumnWidth(_ name: String) -> CGFloat {
+        Self.optionalGridColumns.first(where: { $0.key == name })?.width ?? 110
+    }
+
+    private var hiddenGridColumns: Set<String> {
+        Set(plannerGridHiddenColumnsRaw.split(separator: "|").map(String.init))
+    }
+
+    private func setGridColumn(_ key: String, hidden: Bool) {
+        var columns = hiddenGridColumns
+        if hidden {
+            columns.insert(key)
+        } else {
+            columns.remove(key)
+        }
+        plannerGridHiddenColumnsRaw = columns.sorted().joined(separator: "|")
+    }
+
+    private var visibleGridCustomColumns: [String] {
+        let visible = Set(plannerGridCustomColumnsRaw.split(separator: "|").map(String.init))
+        return planCustomFieldNames.filter { visible.contains($0) }
+    }
+
+    private func setGridCustomColumn(_ name: String, visible: Bool) {
+        var visibleColumns = Set(plannerGridCustomColumnsRaw.split(separator: "|").map(String.init))
+        if visible {
+            visibleColumns.insert(name)
+        } else {
+            visibleColumns.remove(name)
+        }
+        plannerGridCustomColumnsRaw = visibleColumns.sorted().joined(separator: "|")
+    }
+
+    private func gridBaseWidth(_ key: String, _ width: CGFloat) -> CGFloat {
+        hiddenGridColumns.contains(key) ? 0 : width
+    }
+
     private var fixedGridColumnsWidth: CGFloat {
         idColumnWidth +
-        startColumnWidth +
-        finishColumnWidth +
-        durationColumnWidth +
-        percentColumnWidth +
-        milestoneColumnWidth +
-        predecessorsColumnWidth +
-        resourceColumnWidth +
-        assignmentUnitsColumnWidth
+        gridBaseWidth("Start", startColumnWidth) +
+        gridBaseWidth("Finish", finishColumnWidth) +
+        gridBaseWidth("Duration", durationColumnWidth) +
+        gridBaseWidth("Percent", percentColumnWidth) +
+        gridBaseWidth("Milestone", milestoneColumnWidth) +
+        gridBaseWidth("Predecessors", predecessorsColumnWidth) +
+        gridBaseWidth("Resource", resourceColumnWidth) +
+        gridBaseWidth("Units", assignmentUnitsColumnWidth) +
+        CGFloat(visibleGridCustomColumns.count) * customGridColumnWidth +
+        visibleExtraGridColumns.reduce(0) { $0 + extraGridColumnWidth($1) }
     }
 
     private func gridLayout(for totalWidth: CGFloat) -> PlannerGridLayout {
@@ -3178,14 +3503,18 @@ struct PlanEditorView: View {
         return PlannerGridLayout(
             id: idColumnWidth * scale,
             name: remainingNameWidth,
-            start: startColumnWidth * scale,
-            finish: finishColumnWidth * scale,
-            duration: durationColumnWidth * scale,
-            percent: percentColumnWidth * scale,
-            milestone: milestoneColumnWidth * scale,
-            predecessors: predecessorsColumnWidth * scale,
-            resource: resourceColumnWidth * scale,
-            assignmentUnits: assignmentUnitsColumnWidth * scale
+            start: gridBaseWidth("Start", startColumnWidth) * scale,
+            finish: gridBaseWidth("Finish", finishColumnWidth) * scale,
+            duration: gridBaseWidth("Duration", durationColumnWidth) * scale,
+            percent: gridBaseWidth("Percent", percentColumnWidth) * scale,
+            milestone: gridBaseWidth("Milestone", milestoneColumnWidth) * scale,
+            predecessors: gridBaseWidth("Predecessors", predecessorsColumnWidth) * scale,
+            resource: gridBaseWidth("Resource", resourceColumnWidth) * scale,
+            assignmentUnits: gridBaseWidth("Units", assignmentUnitsColumnWidth) * scale,
+            customColumns: visibleGridCustomColumns,
+            custom: customGridColumnWidth * scale,
+            extraColumns: visibleExtraGridColumns,
+            extraWidths: visibleExtraGridColumns.map { extraGridColumnWidth($0) * scale }
         )
     }
 
@@ -3726,6 +4055,10 @@ private struct PlannerGridLayout: Equatable {
     let predecessors: CGFloat
     let resource: CGFloat
     let assignmentUnits: CGFloat
+    let customColumns: [String]
+    let custom: CGFloat
+    let extraColumns: [String]
+    let extraWidths: [CGFloat]
 }
 
 private struct PlannerGridResourceOption: Identifiable, Equatable {
@@ -3774,6 +4107,10 @@ private struct PlannerGridRowView: View, Equatable {
     @Binding var predecessorsText: String
     @Binding var primaryAssignmentResourceID: Int?
     @Binding var primaryAssignmentUnitsText: String
+    let customValues: [String]
+    let onCommitCustomField: (String, String) -> Void
+    let extraValues: [String]
+    let onCommitExtraColumn: (String, String) -> Void
     let shouldFocusName: Bool
     let shouldFocusDuration: Bool
     let shouldFocusPercent: Bool
@@ -3815,6 +4152,8 @@ private struct PlannerGridRowView: View, Equatable {
         lhs.predecessorsValue == rhs.predecessorsValue &&
         lhs.primaryAssignmentResourceIDValue == rhs.primaryAssignmentResourceIDValue &&
         lhs.primaryAssignmentUnitsValue == rhs.primaryAssignmentUnitsValue &&
+        lhs.customValues == rhs.customValues &&
+        lhs.extraValues == rhs.extraValues &&
         lhs.shouldFocusName == rhs.shouldFocusName &&
         lhs.shouldFocusDuration == rhs.shouldFocusDuration &&
         lhs.shouldFocusPercent == rhs.shouldFocusPercent &&
@@ -3862,22 +4201,27 @@ private struct PlannerGridRowView: View, Equatable {
                 }
             }
 
-            cell(width: layout.start, alignment: .leading) {
-                if isSelected {
-                    PlannerDateField(date: $startDate)
-                } else {
-                    dateText(startDateValue)
+            if layout.start > 0 {
+                cell(width: layout.start, alignment: .leading) {
+                    if isSelected {
+                        PlannerDateField(date: $startDate)
+                    } else {
+                        dateText(startDateValue)
+                    }
                 }
             }
 
-            cell(width: layout.finish, alignment: .leading) {
-                if isSelected {
-                    PlannerDateField(date: $finishDate)
-                } else {
-                    dateText(finishDateValue)
+            if layout.finish > 0 {
+                cell(width: layout.finish, alignment: .leading) {
+                    if isSelected {
+                        PlannerDateField(date: $finishDate)
+                    } else {
+                        dateText(finishDateValue)
+                    }
                 }
             }
 
+            if layout.duration > 0 {
             cell(width: layout.duration, alignment: .center) {
                 PlannerGridTextField(
                     text: $durationText,
@@ -3889,7 +4233,9 @@ private struct PlannerGridRowView: View, Equatable {
                     onFocused: onFocusDuration
                 )
             }
+            }
 
+            if layout.percent > 0 {
             cell(width: layout.percent, alignment: .center) {
                 PlannerGridTextField(
                     text: $percentText,
@@ -3901,14 +4247,18 @@ private struct PlannerGridRowView: View, Equatable {
                     onFocused: onFocusPercent
                 )
             }
-
-            cell(width: layout.milestone, alignment: .center) {
-                Toggle("", isOn: $milestone)
-                    .labelsHidden()
-                    .toggleStyle(.checkbox)
-                    .controlSize(.small)
             }
 
+            if layout.milestone > 0 {
+                cell(width: layout.milestone, alignment: .center) {
+                    Toggle("", isOn: $milestone)
+                        .labelsHidden()
+                        .toggleStyle(.checkbox)
+                        .controlSize(.small)
+                }
+            }
+
+            if layout.predecessors > 0 {
             cell(width: layout.predecessors, alignment: .leading) {
                 PlannerGridTextField(
                     text: $predecessorsText,
@@ -3919,7 +4269,9 @@ private struct PlannerGridRowView: View, Equatable {
                     onFocused: onFocusPredecessors
                 )
             }
+            }
 
+            if layout.resource > 0 {
             cell(width: layout.resource, alignment: .leading) {
                 if isSelected {
                     Picker("", selection: $primaryAssignmentResourceID) {
@@ -3936,7 +4288,9 @@ private struct PlannerGridRowView: View, Equatable {
                         .foregroundStyle(row.primaryAssignmentResourceName.isEmpty ? .secondary : .primary)
                 }
             }
+            }
 
+            if layout.assignmentUnits > 0 {
             cell(width: layout.assignmentUnits, alignment: .center) {
                 PlannerGridTextField(
                     text: $primaryAssignmentUnitsText,
@@ -3948,6 +4302,27 @@ private struct PlannerGridRowView: View, Equatable {
                     onReturn: onReturnFromAssignmentUnits,
                     onFocused: onFocusAssignmentUnits
                 )
+            }
+            }
+
+            ForEach(Array(layout.extraColumns.enumerated()), id: \.offset) { index, columnName in
+                cell(width: layout.extraWidths[index], alignment: .leading) {
+                    PlannerGridCustomFieldCell(
+                        value: index < extraValues.count ? extraValues[index] : ""
+                    ) { newValue in
+                        onCommitExtraColumn(columnName, newValue)
+                    }
+                }
+            }
+
+            ForEach(Array(layout.customColumns.enumerated()), id: \.offset) { index, fieldName in
+                cell(width: layout.custom, alignment: .leading) {
+                    PlannerGridCustomFieldCell(
+                        value: index < customValues.count ? customValues[index] : ""
+                    ) { newValue in
+                        onCommitCustomField(fieldName, newValue)
+                    }
+                }
             }
         }
         .frame(height: 32)
@@ -3971,6 +4346,33 @@ private struct PlannerGridRowView: View, Equatable {
             .frame(maxHeight: .infinity, alignment: alignment)
             .overlay(alignment: .trailing) {
                 Divider()
+            }
+    }
+}
+
+private struct PlannerGridCustomFieldCell: View {
+    let value: String
+    let onCommit: (String) -> Void
+
+    @State private var text = ""
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        TextField("", text: $text)
+            .textFieldStyle(.plain)
+            .font(.caption)
+            .focused($isFocused)
+            .onAppear { text = value }
+            .onChange(of: value) { _, newValue in
+                if !isFocused {
+                    text = newValue
+                }
+            }
+            .onSubmit { onCommit(text) }
+            .onChange(of: isFocused) { _, focused in
+                if !focused, text != value {
+                    onCommit(text)
+                }
             }
     }
 }
