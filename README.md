@@ -270,7 +270,7 @@ Go to **System Settings → Privacy & Security**, scroll down, and click **Open 
 
 | Requirement | Version |
 |-------------|---------|
-| macOS | 14.0 (Sonoma) or later |
+| macOS | 14.4 (Sonoma) or later |
 | Xcode | 15.0+ |
 | Java | OpenJDK 21 |
 | Maven | 3.8+ |
@@ -329,7 +329,7 @@ The Xcode project is configured for App Store/Xcode Cloud builds with:
 - Product name: `MPPViewer`
 - Bundle identifier: `com.mppviewer.MPPViewer`
 - Team ID: `7JM77223V5`
-- Version: `2.3.1`
+- Version: `2.4.0`
 - Build: `226`
 - App Store sandbox entitlements: `MPPViewer/MPPViewer/MPPViewer.entitlements`
 
@@ -401,7 +401,7 @@ MPPViewerMacOS/
 - **Project Parsing:** [MPXJ 13.4.0](https://www.mpxj.org/) — the industry-standard library for reading Microsoft Project files
 - **Build Tools:** Xcode (Swift), Maven (Java)
 - **CI/CD:** GitHub Actions — automated build, release, and Homebrew cask update on tag push
-- **Minimum Target:** macOS 14.0 Sonoma
+- **Minimum Target:** macOS 14.4 Sonoma
 
 ---
 

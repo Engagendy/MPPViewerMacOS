@@ -3957,7 +3957,7 @@ private struct PlannerGridRowView: View, Equatable {
     }
 
     private func dateText(_ date: Date) -> some View {
-        Text(DateFormatting.simpleDate(date))
+        Text(DateFormatting.shortDate(date))
             .font(.caption)
             .monospacedDigit()
             .lineLimit(1)
@@ -4033,9 +4033,7 @@ private struct PlannerDateField: View {
     @Binding var date: Date
 
     var body: some View {
-        DatePicker("", selection: $date, displayedComponents: .date)
-            .labelsHidden()
-            .datePickerStyle(.field)
+        CalendarDatePicker(date: $date, isCompact: true)
             .controlSize(.small)
             .frame(maxWidth: .infinity, alignment: .leading)
     }

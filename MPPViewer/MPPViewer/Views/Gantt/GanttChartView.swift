@@ -979,17 +979,13 @@ struct GanttChartView: View {
 
                     VStack(alignment: .leading, spacing: 4) {
                         compactInspectorLabel("Start")
-                        DatePicker("Start", selection: selectedTaskStartBinding(), displayedComponents: .date)
-                            .datePickerStyle(.field)
-                            .labelsHidden()
+                        CalendarDatePicker(date: selectedTaskStartBinding(), isCompact: true)
                     }
                     .frame(width: 118)
 
                     VStack(alignment: .leading, spacing: 4) {
                         compactInspectorLabel("Finish")
-                        DatePicker("Finish", selection: selectedTaskFinishBinding(), displayedComponents: .date)
-                            .datePickerStyle(.field)
-                            .labelsHidden()
+                        CalendarDatePicker(date: selectedTaskFinishBinding(), isCompact: true)
                     }
                     .frame(width: 118)
 
@@ -1024,9 +1020,7 @@ struct GanttChartView: View {
                             .frame(width: 132)
 
                             if hasConstraint {
-                                DatePicker("Constraint Date", selection: selectedTaskConstraintDateBinding(), displayedComponents: .date)
-                                    .datePickerStyle(.field)
-                                    .labelsHidden()
+                                CalendarDatePicker(date: selectedTaskConstraintDateBinding(), isCompact: true)
                                     .frame(width: 118)
                             } else {
                                 Text("No date")
@@ -1217,9 +1211,7 @@ struct GanttChartView: View {
                         compactInspectorLabel("Actual Dates")
                         VStack(alignment: .leading, spacing: 8) {
                             HStack(spacing: 8) {
-                                DatePicker("Actual Start", selection: selectedTaskActualStartBinding(), displayedComponents: .date)
-                                    .datePickerStyle(.field)
-                                    .labelsHidden()
+                                CalendarDatePicker(date: selectedTaskActualStartBinding(), isCompact: true)
                                     .frame(width: 118)
                                 Button("Clear", role: .destructive) {
                                     clearSelectedTaskActualStart()
@@ -1228,9 +1220,7 @@ struct GanttChartView: View {
                             }
 
                             HStack(spacing: 8) {
-                                DatePicker("Actual Finish", selection: selectedTaskActualFinishBinding(), displayedComponents: .date)
-                                    .datePickerStyle(.field)
-                                    .labelsHidden()
+                                CalendarDatePicker(date: selectedTaskActualFinishBinding(), isCompact: true)
                                     .frame(width: 118)
                                 Button("Clear", role: .destructive) {
                                     clearSelectedTaskActualFinish()
@@ -1490,6 +1480,7 @@ struct GanttChartView: View {
                 showBaseline: showBaseline,
                 showDependencyLinks: showDependencyLinks,
                 editableTaskIDs: editableTaskIDs,
+                isEditModeActive: isEditingEnabled,
                 selectedTaskID: selectedTaskID,
                 selectedDependency: selectedDependency,
                 pendingLinkSourceTaskID: pendingDependencySourceTaskID,
@@ -3077,6 +3068,7 @@ struct GanttCanvasView: View {
     var showBaseline: Bool = false
     var showDependencyLinks: Bool = true
     var editableTaskIDs: Set<Int> = []
+    var isEditModeActive: Bool = false
     var selectedTaskID: Int? = nil
     var selectedDependency: GanttDependencySelection? = nil
     var pendingLinkSourceTaskID: Int? = nil
@@ -3106,6 +3098,7 @@ struct GanttCanvasView: View {
         showBaseline: Bool = false,
         showDependencyLinks: Bool = true,
         editableTaskIDs: Set<Int> = [],
+        isEditModeActive: Bool = false,
         selectedTaskID: Int? = nil,
         selectedDependency: GanttDependencySelection? = nil,
         pendingLinkSourceTaskID: Int? = nil,
@@ -3129,6 +3122,7 @@ struct GanttCanvasView: View {
         self.showBaseline = showBaseline
         self.showDependencyLinks = showDependencyLinks
         self.editableTaskIDs = editableTaskIDs
+        self.isEditModeActive = isEditModeActive
         self.selectedTaskID = selectedTaskID
         self.selectedDependency = selectedDependency
         self.pendingLinkSourceTaskID = pendingLinkSourceTaskID
@@ -3299,7 +3293,12 @@ struct GanttCanvasView: View {
                             y: geometry.rowRect.midY
                         )
                         onSelectTask?(row.task.uniqueID)
-                        onShowTaskDetails?(row.task.uniqueID, detailAnchor(for: anchor), visibleBounds)
+                        // In edit mode a row click only selects; the details
+                        // card would sit on top of the bars and get in the
+                        // way of dragging and resizing.
+                        if !isEditModeActive {
+                            onShowTaskDetails?(row.task.uniqueID, detailAnchor(for: anchor), visibleBounds)
+                        }
                     } label: {
                         Rectangle()
                             .fill(Color.white.opacity(0.001))

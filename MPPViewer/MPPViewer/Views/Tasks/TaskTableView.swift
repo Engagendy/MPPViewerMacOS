@@ -15,6 +15,8 @@ struct TaskTableView: View {
     @State private var grouping: TaskGrouping = .none
     @State private var visibleCustomColumns: Set<String> = []
     @State private var showColumnPicker = false
+    @AppStorage("taskTableOptionalColumns") private var optionalColumnsRaw = ""
+    @SceneStorage("taskTableColumnCustomization") private var columnCustomization: TableColumnCustomization<ProjectTask>
     @State private var dependencyBreadcrumbs: [Int] = []
     @AppStorage("selectedTaskViewPreset") private var selectedTaskViewPresetRaw = TaskViewPreset.none.rawValue
     @AppStorage("taskInspectorWidth") private var storedInspectorWidth = 360.0
@@ -108,6 +110,48 @@ struct TaskTableView: View {
         return keys.sorted()
     }
 
+    private static let optionalBuiltInColumns = [
+        "Actual Start",
+        "Actual Finish",
+        "Cost",
+        "Baseline Cost",
+        "Actual Cost",
+        "Priority",
+        "Resources",
+        "Notes"
+    ]
+
+    private var visibleOptionalColumns: Set<String> {
+        Set(optionalColumnsRaw.split(separator: "|").map(String.init))
+    }
+
+    private func setOptionalColumn(_ name: String, visible: Bool) {
+        var columns = visibleOptionalColumns
+        if visible {
+            columns.insert(name)
+        } else {
+            columns.remove(name)
+        }
+        optionalColumnsRaw = columns.sorted().joined(separator: "|")
+    }
+
+    private var visibleCustomColumnKeys: [String] {
+        availableCustomFieldKeys.filter { visibleCustomColumns.contains($0) }
+    }
+
+    private func resourceNamesText(for task: ProjectTask) -> String {
+        assignments
+            .filter { $0.taskUniqueID == task.uniqueID }
+            .compactMap { assignment in
+                resources.first(where: { $0.uniqueID == assignment.resourceUniqueID })?.name
+            }
+            .joined(separator: ", ")
+    }
+
+    private func customFieldText(for task: ProjectTask, key: String) -> String {
+        task.customFields?[key]?.displayString ?? ""
+    }
+
     var body: some View {
         GeometryReader { geometry in
             let inspectorWidth = clampedInspectorWidth(for: geometry.size.width)
@@ -171,18 +215,31 @@ struct TaskTableView: View {
 
                         Divider().frame(height: 16)
 
-                        if !availableCustomFieldKeys.isEmpty {
-                            Button {
-                                showColumnPicker.toggle()
-                            } label: {
-                                toolbarLabel("Columns", systemImage: "slider.horizontal.3", compact: compactToolbar)
-                            }
-                            .buttonStyle(.accessoryBar)
-                            .popover(isPresented: $showColumnPicker) {
-                                VStack(alignment: .leading, spacing: 4) {
+                        Button {
+                            showColumnPicker.toggle()
+                        } label: {
+                            toolbarLabel("Columns", systemImage: "slider.horizontal.3", compact: compactToolbar)
+                        }
+                        .buttonStyle(.accessoryBar)
+                        .popover(isPresented: $showColumnPicker) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Optional Columns")
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                                    .padding(.bottom, 4)
+                                ForEach(Self.optionalBuiltInColumns, id: \.self) { name in
+                                    Toggle(name, isOn: Binding(
+                                        get: { visibleOptionalColumns.contains(name) },
+                                        set: { setOptionalColumn(name, visible: $0) }
+                                    ))
+                                    .font(.caption)
+                                }
+
+                                if !availableCustomFieldKeys.isEmpty {
                                     Text("Custom Columns")
                                         .font(.caption)
                                         .fontWeight(.semibold)
+                                        .padding(.top, 8)
                                         .padding(.bottom, 4)
                                     ForEach(availableCustomFieldKeys, id: \.self) { key in
                                         Toggle(key, isOn: Binding(
@@ -198,12 +255,12 @@ struct TaskTableView: View {
                                         .font(.caption)
                                     }
                                 }
-                                .padding()
-                                .frame(minWidth: 180)
                             }
-
-                            Divider().frame(height: 16)
+                            .padding()
+                            .frame(minWidth: 180)
                         }
+
+                        Divider().frame(height: 16)
 
                         Button {
                             PDFExporter.exportTaskListToPDF(
@@ -276,9 +333,10 @@ struct TaskTableView: View {
                         )
                         .topAlignedEmptyState()
                     } else {
-                        Table(of: ProjectTask.self) {
+                        Table(of: ProjectTask.self, columnCustomization: $columnCustomization) {
+                        Group {
                         // Flag column
-                        TableColumn("") { task in
+                        TableColumn("") { (task: ProjectTask) in
                             Button {
                                 if flaggedTaskIDs.contains(task.uniqueID) {
                                     flaggedTaskIDs.remove(task.uniqueID)
@@ -294,19 +352,21 @@ struct TaskTableView: View {
                         }
                         .width(24)
 
-                        TableColumn("ID") { task in
+                        TableColumn("ID") { (task: ProjectTask) in
                             Text(task.id.map(String.init) ?? "")
                                 .monospacedDigit()
                         }
                         .width(min: 30, ideal: 50, max: 60)
+                        .customizationID("id")
 
-                        TableColumn("WBS") { task in
+                        TableColumn("WBS") { (task: ProjectTask) in
                             Text(task.wbs ?? "")
                                 .monospacedDigit()
                         }
                         .width(min: 40, ideal: 60, max: 80)
+                        .customizationID("wbs")
 
-                        TableColumn("Name") { task in
+                        TableColumn("Name") { (task: ProjectTask) in
                             let isSummaryWithChildren = task.summary == true && !task.children.isEmpty
                             let isCollapsed = collapsedIDs.contains(task.uniqueID)
                             let isSelected = selectedTaskID == task.uniqueID
@@ -364,22 +424,27 @@ struct TaskTableView: View {
                         }
                         .width(min: 200, ideal: 350)
 
-                        TableColumn("Duration") { task in
+                        TableColumn("Duration") { (task: ProjectTask) in
                             Text(task.durationDisplay)
                         }
                         .width(min: 60, ideal: 90, max: 120)
+                        .customizationID("duration")
 
-                        TableColumn("Start") { task in
+                        TableColumn("Start") { (task: ProjectTask) in
                             Text(DateFormatting.shortDate(task.start))
                         }
                         .width(min: 70, ideal: 90, max: 110)
+                        .customizationID("start")
 
-                        TableColumn("Finish") { task in
+
+                        TableColumn("Finish") { (task: ProjectTask) in
                             Text(DateFormatting.shortDate(task.finish))
                         }
                         .width(min: 70, ideal: 90, max: 110)
+                        .customizationID("finish")
 
-                        TableColumn("% Complete") { task in
+
+                        TableColumn("% Complete") { (task: ProjectTask) in
                             HStack(spacing: 6) {
                                 let pct = task.percentComplete ?? 0
                                 ProgressView(value: pct, total: 100)
@@ -392,8 +457,9 @@ struct TaskTableView: View {
                             }
                         }
                         .width(min: 80, ideal: 110, max: 140)
+                        .customizationID("percentComplete")
 
-                        TableColumn("Predecessors") { task in
+                        TableColumn("Predecessors") { (task: ProjectTask) in
                             if let preds = task.predecessors, !preds.isEmpty {
                                 let predText = preds.compactMap { rel -> String? in
                                     guard let predTask = allTasks[rel.targetTaskUniqueID] else { return nil }
@@ -406,6 +472,96 @@ struct TaskTableView: View {
                             }
                         }
                         .width(min: 60, ideal: 100, max: 150)
+                        .customizationID("predecessors")
+                        }
+
+                        // Optional built-in columns live in their own Group so
+                        // the conditionals don't exhaust the 10-entry limit of
+                        // the outer TableColumnBuilder block.
+                        Group {
+                            if visibleOptionalColumns.contains("Actual Start") {
+                                TableColumn("Actual Start") { (task: ProjectTask) in
+                                    Text(DateFormatting.shortDate(task.actualStart))
+                                }
+                                .width(min: 70, ideal: 90, max: 110)
+                                .customizationID("actualStart")
+                            }
+
+                            if visibleOptionalColumns.contains("Actual Finish") {
+                                TableColumn("Actual Finish") { (task: ProjectTask) in
+                                    Text(DateFormatting.shortDate(task.actualFinish))
+                                }
+                                .width(min: 70, ideal: 90, max: 110)
+                                .customizationID("actualFinish")
+                            }
+
+                            if visibleOptionalColumns.contains("Cost") {
+                                TableColumn("Cost") { (task: ProjectTask) in
+                                    Text(task.cost.map { String(format: "%.2f", $0) } ?? "")
+                                        .monospacedDigit()
+                                }
+                                .width(min: 70, ideal: 90, max: 130)
+                                .customizationID("cost")
+                            }
+
+                            if visibleOptionalColumns.contains("Baseline Cost") {
+                                TableColumn("Baseline Cost") { (task: ProjectTask) in
+                                    Text(task.baselineCost.map { String(format: "%.2f", $0) } ?? "")
+                                        .monospacedDigit()
+                                }
+                                .width(min: 70, ideal: 90, max: 130)
+                                .customizationID("baselineCost")
+                            }
+
+                            if visibleOptionalColumns.contains("Actual Cost") {
+                                TableColumn("Actual Cost") { (task: ProjectTask) in
+                                    Text(task.actualCost.map { String(format: "%.2f", $0) } ?? "")
+                                        .monospacedDigit()
+                                }
+                                .width(min: 70, ideal: 90, max: 130)
+                                .customizationID("actualCost")
+                            }
+
+                            if visibleOptionalColumns.contains("Priority") {
+                                TableColumn("Priority") { (task: ProjectTask) in
+                                    Text(task.priority.map(String.init) ?? "")
+                                        .monospacedDigit()
+                                }
+                                .width(min: 50, ideal: 70, max: 90)
+                                .customizationID("priority")
+                            }
+
+                            if visibleOptionalColumns.contains("Resources") {
+                                TableColumn("Resources") { (task: ProjectTask) in
+                                    Text(resourceNamesText(for: task))
+                                        .font(.caption)
+                                        .lineLimit(1)
+                                }
+                                .width(min: 90, ideal: 140, max: 240)
+                                .customizationID("resources")
+                            }
+
+                            if visibleOptionalColumns.contains("Notes") {
+                                TableColumn("Notes") { (task: ProjectTask) in
+                                    Text(task.notes ?? "")
+                                        .font(.caption)
+                                        .lineLimit(2)
+                                        .help(task.notes ?? "")
+                                }
+                                .width(min: 100, ideal: 180, max: 320)
+                                .customizationID("notes")
+                            }
+                        }
+
+                        TableColumnForEach(visibleCustomColumnKeys, id: \.self) { key in
+                            TableColumn(key) { (task: ProjectTask) in
+                                Text(customFieldText(for: task, key: key))
+                                    .font(.caption)
+                                    .lineLimit(1)
+                            }
+                            .width(min: 80, ideal: 120, max: 220)
+                            .customizationID("custom-\(key)")
+                        }
                     } rows: {
                         if grouping != .none {
                             ForEach(groupedTasks, id: \.key) { group in

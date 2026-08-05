@@ -5442,8 +5442,7 @@ struct StatusCenterView: View {
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 180)
 
-                DatePicker("Status Date", selection: statusDateBinding, displayedComponents: .date)
-                    .labelsHidden()
+                CalendarDatePicker(date: statusDateBinding, isCompact: true)
                     .fixedSize()
                     .help("Sets the control date used by earned value and variance calculations.")
 
@@ -5593,8 +5592,7 @@ struct StatusCenterView: View {
                             Text("Actual Start")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
-                            DatePicker("", selection: actualStartBinding(for: task.uniqueID), displayedComponents: .date)
-                                .labelsHidden()
+                            CalendarDatePicker(date: actualStartBinding(for: task.uniqueID), isCompact: true)
                             HStack(spacing: 8) {
                                 Button("Use Scheduled") {
                                     setActualStart(for: task.uniqueID, to: task.startDate ?? currentStatusDate)
@@ -5611,8 +5609,7 @@ struct StatusCenterView: View {
                             Text("Actual Finish")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
-                            DatePicker("", selection: actualFinishBinding(for: task.uniqueID), displayedComponents: .date)
-                                .labelsHidden()
+                            CalendarDatePicker(date: actualFinishBinding(for: task.uniqueID), isCompact: true)
                             HStack(spacing: 8) {
                                 Button("Use Scheduled") {
                                     setActualFinish(for: task.uniqueID, to: task.finishDate ?? currentStatusDate)
@@ -7465,8 +7462,8 @@ struct AgileBoardView: View {
                                     .textFieldStyle(.roundedBorder)
 
                                 HStack(spacing: 12) {
-                                    DatePicker("Start", selection: sprintDateBinding(sprintID: selectedSprintID, keyPath: \.startDate), displayedComponents: .date)
-                                    DatePicker("Finish", selection: sprintDateBinding(sprintID: selectedSprintID, keyPath: \.endDate), displayedComponents: .date)
+                                    CalendarDatePicker(title: "Start", date: sprintDateBinding(sprintID: selectedSprintID, keyPath: \.startDate))
+                                    CalendarDatePicker(title: "Finish", date: sprintDateBinding(sprintID: selectedSprintID, keyPath: \.endDate))
                                 }
 
                                 HStack(spacing: 12) {
@@ -10012,7 +10009,7 @@ struct PortfolioDashboardView: View {
                             }
 
                             HStack(spacing: 12) {
-                                DatePicker("Review Date", selection: metadataDateBinding(\.portfolioReviewDate), displayedComponents: .date)
+                                CalendarDatePicker(title: "Review Date", date: metadataDateBinding(\.portfolioReviewDate))
                                 Button("Clear Review Date") {
                                     updateMetadataDate(\.portfolioReviewDate, value: nil)
                                 }

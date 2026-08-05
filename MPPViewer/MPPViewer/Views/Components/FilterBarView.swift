@@ -107,25 +107,29 @@ struct FilterBarView: View {
 
             if showMore {
                 HStack(spacing: 12) {
-                    DatePicker(
-                        "From",
-                        selection: Binding(
-                            get: { criteria.dateRangeStart ?? Date.distantPast },
+                    // A nil bound means the date filter is inactive; seed the
+                    // pickers with today so they never render the sentinel
+                    // years of Date.distantPast/.distantFuture (1 and 4001).
+                    let today = Calendar.current.startOfDay(for: Date())
+                    CalendarDatePicker(
+                        title: "From",
+                        date: Binding(
+                            get: { criteria.dateRangeStart ?? today },
                             set: { criteria.dateRangeStart = $0 }
                         ),
-                        displayedComponents: .date
+                        isCompact: true
                     )
-                    .frame(width: 200)
+                    .opacity(criteria.dateRangeStart == nil ? 0.55 : 1)
 
-                    DatePicker(
-                        "To",
-                        selection: Binding(
-                            get: { criteria.dateRangeEnd ?? Date.distantFuture },
+                    CalendarDatePicker(
+                        title: "To",
+                        date: Binding(
+                            get: { criteria.dateRangeEnd ?? criteria.dateRangeStart ?? today },
                             set: { criteria.dateRangeEnd = $0 }
                         ),
-                        displayedComponents: .date
+                        isCompact: true
                     )
-                    .frame(width: 200)
+                    .opacity(criteria.dateRangeEnd == nil ? 0.55 : 1)
 
                     if criteria.dateRangeStart != nil || criteria.dateRangeEnd != nil {
                         Button("Clear Dates") {

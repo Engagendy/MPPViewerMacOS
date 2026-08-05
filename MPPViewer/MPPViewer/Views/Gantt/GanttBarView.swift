@@ -58,14 +58,36 @@ struct GanttBarView: View {
         roundedDayDelta(for: trailingResizeTranslation)
     }
 
+    // While a drag is in flight the bar tracks the cursor continuously;
+    // snapping to whole days happens only when the gesture ends. Quantizing
+    // the live preview made dragging feel jerky.
     private var previewOffsetX: CGFloat {
-        let totalDays = movePreviewDays + leadingPreviewDays
-        return taskStartOffset + CGFloat(totalDays) * pixelsPerDay
+        taskStartOffset + moveTranslation + leadingResizeTranslation
     }
 
     private var previewWidth: CGFloat {
-        let width = taskWidth + CGFloat(trailingPreviewDays - leadingPreviewDays) * pixelsPerDay
+        let width = taskWidth + trailingResizeTranslation - leadingResizeTranslation
         return max(minBarWidth, width)
+    }
+
+    private var isDragging: Bool {
+        moveTranslation != 0 || leadingResizeTranslation != 0 || trailingResizeTranslation != 0
+    }
+
+    private var dragBadgeText: String? {
+        func signed(_ days: Int) -> String {
+            days > 0 ? "+\(days)d" : "\(days)d"
+        }
+        if moveTranslation != 0 {
+            return signed(movePreviewDays)
+        }
+        if leadingResizeTranslation != 0 {
+            return "Start \(signed(leadingPreviewDays))"
+        }
+        if trailingResizeTranslation != 0 {
+            return "Finish \(signed(trailingPreviewDays))"
+        }
+        return nil
     }
 
     private var barHeight: CGFloat {
@@ -103,7 +125,7 @@ struct GanttBarView: View {
             }
             .shadow(color: isLinkSource ? Color.orange.opacity(0.28) : .clear, radius: 6, x: 0, y: 0)
             .offset(
-                x: taskStartOffset + CGFloat(movePreviewDays) * pixelsPerDay - size / 2,
+                x: taskStartOffset + moveTranslation - size / 2,
                 y: yPosition + (rowHeight - size) / 2
             )
             .gesture(
@@ -119,12 +141,28 @@ struct GanttBarView: View {
                 } : nil
             )
             .simultaneousGesture(
+                SpatialTapGesture(count: 2)
+                    .onEnded { value in
+                        guard isEditable else { return }
+                        onShowTaskDetails?(
+                            CGPoint(
+                                x: taskStartOffset - size / 2 + value.location.x,
+                                y: yPosition + (rowHeight - size) / 2 + value.location.y
+                            )
+                        )
+                    }
+            )
+            .simultaneousGesture(
                 SpatialTapGesture()
                     .onEnded { value in
                         onSelectTask?()
+                        // In edit mode a plain click only selects so the
+                        // details card never blocks dragging; use double-click
+                        // for details instead.
+                        guard !isEditable else { return }
                         onShowTaskDetails?(
                             CGPoint(
-                                x: taskStartOffset + CGFloat(movePreviewDays) * pixelsPerDay - size / 2 + value.location.x,
+                                x: taskStartOffset - size / 2 + value.location.x,
                                 y: yPosition + (rowHeight - size) / 2 + value.location.y
                             )
                         )
@@ -241,9 +279,25 @@ struct GanttBarView: View {
                 } : nil
         )
         .simultaneousGesture(
+            SpatialTapGesture(count: 2)
+                .onEnded { value in
+                    guard isEditable else { return }
+                    onShowTaskDetails?(
+                        CGPoint(
+                            x: previewOffsetX + value.location.x,
+                            y: yPosition + barInset + value.location.y
+                        )
+                    )
+                }
+        )
+        .simultaneousGesture(
             SpatialTapGesture()
                 .onEnded { value in
                     onSelectTask?()
+                    // In edit mode a plain click only selects so the details
+                    // card never blocks dragging or the resize handles; use
+                    // double-click for details instead.
+                    guard !isEditable else { return }
                     onShowTaskDetails?(
                         CGPoint(
                             x: previewOffsetX + value.location.x,
@@ -271,6 +325,20 @@ struct GanttBarView: View {
                     .clipShape(Capsule())
                     .foregroundStyle(.primary)
                     .offset(x: 52)
+            }
+        }
+        .overlay(alignment: .topLeading) {
+            if isDragging, let dragBadgeText {
+                Text(dragBadgeText)
+                    .font(.system(size: 9, weight: .semibold))
+                    .monospacedDigit()
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .background(Color.accentColor.opacity(0.9))
+                    .foregroundStyle(.white)
+                    .clipShape(Capsule())
+                    .offset(y: -(rowHeight - barInset))
+                    .fixedSize()
             }
         }
         .shadow(color: isLinkSource ? Color.orange.opacity(0.26) : .clear, radius: 7, x: 0, y: 0)
@@ -328,7 +396,7 @@ struct GanttBarView: View {
 
     private var editTooltipText: String {
         guard isEditable else { return tooltipText }
-        return tooltipText + "\n\nDrag the bar to move. Grab the larger edge handles to change start or finish. Control-click a task bar to start dependency linking instantly."
+        return tooltipText + "\n\nDrag the bar to move. Grab the larger edge handles to change start or finish. Double-click for task details. Control-click a task bar to start dependency linking instantly."
     }
 
     private var tooltipText: String {

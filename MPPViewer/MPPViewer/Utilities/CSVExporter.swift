@@ -1431,9 +1431,11 @@ enum CSVExporter {
                 cost,
                 baselineCost,
                 actualCost,
+                task.critical == true ? "Yes" : "No",
                 predText,
                 resourceNames,
-                assignmentSummary
+                assignmentSummary,
+                task.notes ?? ""
             ]
                 .map { escapeCSV($0) }
                 .joined(separator: ",")
@@ -1496,7 +1498,8 @@ enum CSVExporter {
                 task.critical == true ? "Yes" : "No",
                 predecessors,
                 resourceNames,
-                resourceUnits
+                resourceUnits,
+                task.notes ?? ""
             ])
 
             if !task.children.isEmpty {
@@ -1699,12 +1702,16 @@ enum CSVExporter {
         return (url, rows)
     }
 
-    private static func parseCSVRows(_ text: String) -> [[String]] {
+    static func parseCSVRows(_ text: String) -> [[String]] {
+        // Swift treats CRLF as a single Character, so it would match neither
+        // the "\n" nor the "\r" case below and leak into field values —
+        // collapsing a Windows-exported CSV into one giant row.
+        let normalizedText = text.replacingOccurrences(of: "\r\n", with: "\n")
         var rows: [[String]] = []
         var currentRow: [String] = []
         var currentField = ""
         var inQuotes = false
-        var iterator = text.makeIterator()
+        var iterator = normalizedText.makeIterator()
 
         while let character = iterator.next() {
             switch character {
@@ -1786,7 +1793,7 @@ enum CSVExporter {
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private static func defaultTaskMapping(for headers: [String]) -> [CSVTaskImportField: Int?] {
+    static func defaultTaskMapping(for headers: [String]) -> [CSVTaskImportField: Int?] {
         let normalizedHeaders = headers.map(normalizeHeader)
         var mapping: [CSVTaskImportField: Int?] = [:]
         for field in CSVTaskImportField.allCases {
@@ -2246,7 +2253,8 @@ private let taskExportHeaders = [
     "Critical",
     "Predecessors",
     "Resource Names",
-    "Assignments"
+    "Assignments",
+    "Notes"
 ]
 
 private let taskImportTemplateHeaders = [

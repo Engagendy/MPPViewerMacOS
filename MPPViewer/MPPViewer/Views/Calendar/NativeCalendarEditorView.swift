@@ -497,18 +497,14 @@ struct NativeCalendarEditorView: View {
                     Text("From")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    DatePicker("", selection: exception.fromDate, displayedComponents: .date)
-                        .labelsHidden()
-                        .datePickerStyle(.field)
+                    CalendarDatePicker(date: exception.fromDate, isCompact: true)
                 }
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text("To")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    DatePicker("", selection: exception.toDate, displayedComponents: .date)
-                        .labelsHidden()
-                        .datePickerStyle(.field)
+                    CalendarDatePicker(date: exception.toDate, isCompact: true)
                 }
 
                 Picker("Type", selection: exception.type) {

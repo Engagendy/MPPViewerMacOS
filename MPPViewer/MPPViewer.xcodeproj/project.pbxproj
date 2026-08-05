@@ -38,6 +38,7 @@
 		A10000010000000000000081 /* EVMCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000081 /* EVMCalculator.swift */; };
 		A10000010000000000000082 /* WorkloadCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000082 /* WorkloadCalculator.swift */; };
 			A10000010000000000000083 /* FilterBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000083 /* FilterBarView.swift */; };
+		A100000F00000000000000CD /* CalendarDatePicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000F00000000000000CE /* CalendarDatePicker.swift */; };
 			A10000010000000000000084 /* EarnedValueView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000084 /* EarnedValueView.swift */; };
 			A10000010000000000000085 /* WorkloadView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000085 /* WorkloadView.swift */; };
 			A10000010000000000000090 /* CSVExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000090 /* CSVExporter.swift */; };
@@ -64,6 +65,7 @@
 		A10000010000000000000135 /* PortfolioModelContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000135 /* PortfolioModelContainer.swift */; };
 		B10000010000000000000001 /* PerformanceHelpersTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000010000000000000001 /* PerformanceHelpersTests.swift */; };
 		B100000100000000000000AA /* CoreCalculationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000100000000000000AA /* CoreCalculationTests.swift */; };
+		B100000300000000000000AA /* CSVTaskImportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000300000000000000AA /* CSVTaskImportTests.swift */; };
 		B10000010000000000000002 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B20000010000000000000003 /* XCTest.framework */; };
 /* End PBXBuildFile section */
 
@@ -132,6 +134,7 @@
 		A20000010000000000000081 /* EVMCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EVMCalculator.swift; sourceTree = "<group>"; };
 		A20000010000000000000082 /* WorkloadCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkloadCalculator.swift; sourceTree = "<group>"; };
 			A20000010000000000000083 /* FilterBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilterBarView.swift; sourceTree = "<group>"; };
+		A200000F00000000000000CE /* CalendarDatePicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarDatePicker.swift; sourceTree = "<group>"; };
 			A20000010000000000000084 /* EarnedValueView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EarnedValueView.swift; sourceTree = "<group>"; };
 			A20000010000000000000085 /* WorkloadView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkloadView.swift; sourceTree = "<group>"; };
 			A20000010000000000000090 /* CSVExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CSVExporter.swift; sourceTree = "<group>"; };
@@ -158,6 +161,7 @@
 		A20000010000000000140 /* FlowLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowLayout.swift; sourceTree = "<group>"; };
 		B20000010000000000000001 /* PerformanceHelpersTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerformanceHelpersTests.swift; sourceTree = "<group>"; };
 		B200000100000000000000AA /* CoreCalculationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreCalculationTests.swift; sourceTree = "<group>"; };
+		B200000300000000000000AA /* CSVTaskImportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CSVTaskImportTests.swift; sourceTree = "<group>"; };
 		B20000010000000000000002 /* MPPViewerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MPPViewerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		B20000010000000000000003 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = System/Library/Frameworks/XCTest.framework; sourceTree = SDKROOT; };
 		A30000010000000000000001 /* MPPViewer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MPPViewer.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -391,6 +395,7 @@
 				isa = PBXGroup;
 				children = (
 					A20000010000000000000083 /* FilterBarView.swift */,
+					A200000F00000000000000CE /* CalendarDatePicker.swift */,
 					A20000010000000000000134 /* CSVImportMappingViews.swift */,
 				);
 				path = Components;
@@ -451,6 +456,7 @@
 			children = (
 				B20000010000000000000001 /* PerformanceHelpersTests.swift */,
 				B200000100000000000000AA /* CoreCalculationTests.swift */,
+				B200000300000000000000AA /* CSVTaskImportTests.swift */,
 				B20000010000000000000003 /* XCTest.framework */,
 			);
 			path = MPPViewerTests;
@@ -651,6 +657,7 @@
 				A10000010000000000000081 /* EVMCalculator.swift in Sources */,
 				A10000010000000000000082 /* WorkloadCalculator.swift in Sources */,
 				A10000010000000000000083 /* FilterBarView.swift in Sources */,
+				A100000F00000000000000CD /* CalendarDatePicker.swift in Sources */,
 				A10000010000000000000134 /* CSVImportMappingViews.swift in Sources */,
 				A10000010000000000000084 /* EarnedValueView.swift in Sources */,
 				A10000010000000000000085 /* WorkloadView.swift in Sources */,
@@ -683,6 +690,7 @@
 			files = (
 				B10000010000000000000001 /* PerformanceHelpersTests.swift in Sources */,
 				B100000100000000000000AA /* CoreCalculationTests.swift in Sources */,
+				B100000300000000000000AA /* CSVTaskImportTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -716,8 +724,8 @@
 				INFOPLIST_KEY_CFBundleDisplayName = MPPConverterXPC;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 2.3.1;
+				MACOSX_DEPLOYMENT_TARGET = 14.4;
+				MARKETING_VERSION = 2.4.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mppviewer.MPPConverterXPC;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -744,8 +752,8 @@
 				INFOPLIST_KEY_CFBundleDisplayName = MPPConverterXPC;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 2.3.1;
+				MACOSX_DEPLOYMENT_TARGET = 14.4;
+				MARKETING_VERSION = 2.4.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mppviewer.MPPConverterXPC;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -810,7 +818,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MACOSX_DEPLOYMENT_TARGET = 14.4;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -866,7 +874,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MACOSX_DEPLOYMENT_TARGET = 14.4;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = macosx;
@@ -896,7 +904,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2.3.1;
+				MARKETING_VERSION = 2.4.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mppviewer.MPPViewer;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -926,7 +934,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2.3.1;
+				MARKETING_VERSION = 2.4.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mppviewer.MPPViewer;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -948,7 +956,7 @@
 					"@loader_path/../Frameworks",
 					"@executable_path/../Frameworks",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MACOSX_DEPLOYMENT_TARGET = 14.4;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mppviewer.MPPViewerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -973,7 +981,7 @@
 					"@loader_path/../Frameworks",
 					"@executable_path/../Frameworks",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MACOSX_DEPLOYMENT_TARGET = 14.4;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mppviewer.MPPViewerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
