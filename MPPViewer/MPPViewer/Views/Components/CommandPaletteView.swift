@@ -66,9 +66,6 @@ struct CommandPaletteView: View {
                         .font(.title3)
                         .focused($searchFocused)
                         .onSubmit(activateHighlighted)
-                        .onKeyPress(.downArrow) { move(1); return .handled }
-                        .onKeyPress(.upArrow) { move(-1); return .handled }
-                        .onKeyPress(.escape) { onDismiss(); return .handled }
                     Text("esc")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
@@ -103,9 +100,24 @@ struct CommandPaletteView: View {
             .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.secondary.opacity(0.2), lineWidth: 0.5))
             .shadow(color: .black.opacity(0.25), radius: 24, y: 12)
             .padding(.top, 90)
+            // Handle navigation keys on the container so they don't interfere
+            // with the search field's text editing.
+            .onKeyPress(.downArrow) { move(1); return .handled }
+            .onKeyPress(.upArrow) { move(-1); return .handled }
+            .onKeyPress(.escape) { onDismiss(); return .handled }
         }
         .onChange(of: query) { _, _ in highlighted = 0 }
-        .onAppear { searchFocused = true }
+        .onAppear {
+            // Focusing in onAppear of a freshly-inserted overlay is unreliable;
+            // defer to the next runloop (with a short retry) so the field
+            // reliably becomes first responder and keystrokes filter the list.
+            DispatchQueue.main.async {
+                searchFocused = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    if !searchFocused { searchFocused = true }
+                }
+            }
+        }
     }
 
     @ViewBuilder
