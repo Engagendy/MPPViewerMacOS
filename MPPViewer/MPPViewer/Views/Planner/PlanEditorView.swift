@@ -588,7 +588,14 @@ struct PlanEditorView: View {
                     inspectorDragStartWidth = nil
                 }
         )
-        .help("Drag to resize the task details pane")
+        // Double-click the divider to reset the details pane to a sensible
+        // default, matching native HSplitView behavior.
+        .onTapGesture(count: 2) {
+            withAnimation(.easeOut(duration: 0.15)) {
+                inspectorWidth = clampedInspectorWidth(380, totalWidth: totalWidth)
+            }
+        }
+        .help("Drag to resize · double-click to reset the details pane")
     }
 
     private func taskGridHeader(layout: PlannerGridLayout) -> some View {

@@ -735,6 +735,14 @@ struct TaskTableView: View {
                         storedInspectorWidth = Double(min(max(proposedWidth, 320), maxWidth))
                     }
             )
+            // Double-click the divider to reset the inspector to its default
+            // width, matching native HSplitView behavior.
+            .onTapGesture(count: 2) {
+                withAnimation(.easeOut(duration: 0.15)) {
+                    storedInspectorWidth = 360
+                }
+            }
+            .help("Drag to resize · double-click to reset")
     }
 
     private var emptyStateDescription: String {
