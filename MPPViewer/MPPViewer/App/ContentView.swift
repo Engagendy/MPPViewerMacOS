@@ -2948,6 +2948,7 @@ struct ContentView: View {
     @State private var selectedNav: NavigationItem?
     @State private var splitViewVisibility: NavigationSplitViewVisibility = .all
     @State private var isFocusMode = false
+    @State private var isPresentationMode = false
     @State private var searchText = ""
     @State private var searchSuggestionTasks: [ProjectTask] = []
     @State private var searchSuggestionWorkItem: DispatchWorkItem?
@@ -3546,6 +3547,17 @@ struct ContentView: View {
             }
             ToolbarItem(placement: .primaryAction) {
                 Button {
+                    togglePresentationMode()
+                } label: {
+                    Image(systemName: "play.rectangle.on.rectangle")
+                }
+                .labelStyle(.iconOnly)
+                .buttonStyle(.bordered)
+                .hoverHighlight()
+                .help("Presentation mode: fullscreen, distraction-free executive view (⇧⌘F).")
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Button {
                     toggleFocusMode()
                 } label: {
                     Image(systemName: isFocusMode ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
@@ -3699,6 +3711,23 @@ struct ContentView: View {
             .frame(minWidth: 1100, minHeight: 720)
             .background(WindowCloseConfigurator())
             .background(commandPaletteShortcut)
+            .background(presentationShortcut)
+            .overlay(alignment: .topTrailing) {
+                if isPresentationMode {
+                    Button {
+                        togglePresentationMode()
+                    } label: {
+                        Label("Exit Presentation", systemImage: "xmark.circle.fill")
+                            .font(.callout)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.orange)
+                    .padding()
+                    .help("Exit presentation mode (⇧⌘F)")
+                    .transition(.opacity)
+                    .zIndex(400)
+                }
+            }
             .overlay {
                 if showCommandPalette {
                     CommandPaletteView(
@@ -3715,6 +3744,14 @@ struct ContentView: View {
                     .zIndex(500)
                 }
             }
+    }
+
+    // Hidden button carries the ⇧⌘F shortcut for Presentation Mode.
+    private var presentationShortcut: some View {
+        Button("") { togglePresentationMode() }
+            .keyboardShortcut("f", modifiers: [.command, .shift])
+            .opacity(0)
+            .accessibilityHidden(true)
     }
 
     // Hidden button carries the ⌘K shortcut so the palette opens from anywhere
@@ -4127,6 +4164,20 @@ struct ContentView: View {
         let nextValue = !isFocusMode
         isFocusMode = nextValue
         splitViewVisibility = nextValue ? .detailOnly : .all
+    }
+
+    // Presentation Mode: a distraction-free executive view — hides the sidebar
+    // and goes fullscreen. Toggle with ⇧⌘F.
+    private func togglePresentationMode() {
+        let next = !isPresentationMode
+        isPresentationMode = next
+        splitViewVisibility = next ? .detailOnly : .all
+        if let window = NSApp.keyWindow ?? NSApp.mainWindow {
+            let isFullscreen = window.styleMask.contains(.fullScreen)
+            if next != isFullscreen {
+                window.toggleFullScreen(nil)
+            }
+        }
     }
 }
 
