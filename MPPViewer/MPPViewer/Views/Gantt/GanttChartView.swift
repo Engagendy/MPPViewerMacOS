@@ -783,13 +783,24 @@ struct GanttChartView: View {
                     .help("Switch between review mode and direct editing mode for native plans.")
                 }
 
-                Button {
-                    exportToPDF()
+                Menu {
+                    Button {
+                        exportToPDF()
+                    } label: {
+                        Label("Export PDF…", systemImage: "doc.richtext")
+                    }
+                    Button {
+                        exportToSVG()
+                    } label: {
+                        Label("Export SVG (Vector)…", systemImage: "square.on.square.dashed")
+                    }
                 } label: {
-                    Label("Export PDF", systemImage: "square.and.arrow.up")
+                    Label("Export", systemImage: "square.and.arrow.up")
                         .font(.caption)
                 }
-                .buttonStyle(.accessoryBar)
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .help("Export the Gantt chart as a PDF or a scalable SVG for decks and design tools.")
 
                 Button {
                     printGantt()
@@ -1420,6 +1431,32 @@ struct GanttChartView: View {
             view: contentView,
             contentSize: contentSize,
             fileName: "\(title) - Gantt \(PDFExporter.fileNameTimestamp).pdf"
+        )
+    }
+
+    private func exportToSVG() {
+        let rows: [SVGExporter.GanttRow] = flatTasks.map { task in
+            SVGExporter.GanttRow(
+                name: task.displayName,
+                outlineLevel: task.outlineLevel ?? 1,
+                start: task.startDate,
+                finish: task.finishDate,
+                isMilestone: task.milestone == true,
+                isSummary: task.summary == true,
+                isCritical: task.critical == true,
+                percentComplete: task.percentComplete ?? 0,
+                colorHex: task.barColorHex
+            )
+        }
+        let title = project.properties.projectTitle ?? "Gantt Chart"
+        SVGExporter.exportGantt(
+            rows: rows,
+            rangeStart: dateRange.start,
+            rangeEnd: dateRange.end,
+            pixelsPerDay: max(2, pixelsPerDay),
+            rowHeight: max(22, rowHeight),
+            title: title,
+            fileName: "\(title) - Gantt \(PDFExporter.fileNameTimestamp).svg"
         )
     }
 

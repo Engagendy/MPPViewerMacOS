@@ -161,6 +161,28 @@ final class CSVTaskImportTests: XCTestCase {
         window.contentView = nil
     }
 
+    func testGanttSVGExportProducesValidVectorMarkup() {
+        let cal = Calendar.current
+        let start = cal.date(from: DateComponents(year: 2027, month: 1, day: 1))!
+        let finish = cal.date(from: DateComponents(year: 2027, month: 3, day: 25))!
+        let rows: [SVGExporter.GanttRow] = [
+            .init(name: "MD", outlineLevel: 1, start: start, finish: finish, isMilestone: false, isSummary: true, isCritical: false, percentComplete: 0, colorHex: nil),
+            .init(name: "Wage Protection System", outlineLevel: 2, start: start, finish: finish, isMilestone: false, isSummary: false, isCritical: true, percentComplete: 40, colorHex: "#2FA84F"),
+            .init(name: "Kickoff", outlineLevel: 2, start: start, finish: start, isMilestone: true, isSummary: false, isCritical: false, percentComplete: 100, colorHex: nil)
+        ]
+
+        let svg = SVGExporter.svgForTesting(rows: rows, rangeStart: start, rangeEnd: finish, pixelsPerDay: 6, rowHeight: 24, title: "MD Phases <Plan>")
+
+        XCTAssertTrue(svg.hasPrefix("<?xml"))
+        XCTAssertTrue(svg.contains("<svg"))
+        XCTAssertTrue(svg.contains("</svg>"))
+        XCTAssertTrue(svg.contains("<rect"))
+        XCTAssertTrue(svg.contains("<polygon"), "milestone should render as a diamond polygon")
+        XCTAssertTrue(svg.contains("#2FA84F"), "custom bar color should be present")
+        XCTAssertTrue(svg.contains("MD Phases &lt;Plan&gt;"), "title should be XML-escaped")
+        XCTAssertFalse(svg.contains("<Plan>"), "raw angle brackets must be escaped")
+    }
+
     func testXLSXWriteReadRoundTrip() throws {
         let headers = ["Task ID", "Task Name", "Notes"]
         let rows = [

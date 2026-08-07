@@ -26,6 +26,7 @@
 		A10000010000000000000015 /* ResourceSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000015 /* ResourceSheetView.swift */; };
 		A10000010000000000000016 /* CalendarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000016 /* CalendarView.swift */; };
 		A10000010000000000000017 /* DateFormatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000017 /* DateFormatting.swift */; };
+		A100000D00000000000000C4 /* SVGExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000D00000000000000C4 /* SVGExporter.swift */; };
 		A100000B00000000000000C2 /* XLSX.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000B00000000000000C2 /* XLSX.swift */; };
 		A100000A00000000000000C1 /* ColorHex.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000A00000000000000C1 /* ColorHex.swift */; };
 		A10000010000000000000018 /* DurationFormatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000018 /* DurationFormatting.swift */; };
@@ -123,6 +124,7 @@
 		A20000010000000000000015 /* ResourceSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResourceSheetView.swift; sourceTree = "<group>"; };
 		A20000010000000000000016 /* CalendarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarView.swift; sourceTree = "<group>"; };
 		A20000010000000000000017 /* DateFormatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DateFormatting.swift; sourceTree = "<group>"; };
+		A200000D00000000000000C4 /* SVGExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SVGExporter.swift; sourceTree = "<group>"; };
 		A200000B00000000000000C2 /* XLSX.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XLSX.swift; sourceTree = "<group>"; };
 		A200000A00000000000000C1 /* ColorHex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColorHex.swift; sourceTree = "<group>"; };
 		A20000010000000000000018 /* DurationFormatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DurationFormatting.swift; sourceTree = "<group>"; };
@@ -328,6 +330,7 @@
 			isa = PBXGroup;
 			children = (
 				A20000010000000000000017 /* DateFormatting.swift */,
+				A200000D00000000000000C4 /* SVGExporter.swift */,
 				A200000B00000000000000C2 /* XLSX.swift */,
 				A200000A00000000000000C1 /* ColorHex.swift */,
 				A20000010000000000000018 /* DurationFormatting.swift */,
@@ -655,6 +658,7 @@
 				A10000010000000000000015 /* ResourceSheetView.swift in Sources */,
 				A10000010000000000000016 /* CalendarView.swift in Sources */,
 				A10000010000000000000017 /* DateFormatting.swift in Sources */,
+				A100000D00000000000000C4 /* SVGExporter.swift in Sources */,
 				A100000B00000000000000C2 /* XLSX.swift in Sources */,
 				A100000A00000000000000C1 /* ColorHex.swift in Sources */,
 				A10000010000000000000018 /* DurationFormatting.swift in Sources */,
