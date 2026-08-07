@@ -114,6 +114,9 @@ final class ProjectTask: Codable, Identifiable {
     // Custom fields (decoded from extra keys like text1, number1, cost1, flag1, date1, etc.)
     var customFields: [String: AnyCodable]? = nil
 
+    // Optional per-bar color for the Gantt view, stored as a hex string.
+    var barColorHex: String? = nil
+
     // Derived (not decoded)
     var children: [ProjectTask] = []
     private let parsedStartDate: Date?
@@ -208,6 +211,7 @@ final class ProjectTask: Codable, Identifiable {
     }
 
     enum CodingKeys: String, CodingKey, CaseIterable {
+        case barColorHex = "bar_color_hex"
         case uniqueID = "unique_id"
         case id
         case name
@@ -302,7 +306,8 @@ final class ProjectTask: Codable, Identifiable {
         acwp: Double? = nil,
         cv: Double? = nil,
         sv: Double? = nil,
-        customFields: [String: AnyCodable]? = nil
+        customFields: [String: AnyCodable]? = nil,
+        barColorHex: String? = nil
     ) {
         self.uniqueID = uniqueID
         self.id = id
@@ -348,6 +353,7 @@ final class ProjectTask: Codable, Identifiable {
         self.cv = cv
         self.sv = sv
         self.customFields = customFields
+        self.barColorHex = barColorHex
         self.children = []
         self.parsedStartDate = start.flatMap(DateFormatting.parseMPXJDate)
         self.parsedFinishDate = finish.flatMap(DateFormatting.parseMPXJDate)
@@ -418,6 +424,7 @@ final class ProjectTask: Codable, Identifiable {
         }
 
         customFields = customs.isEmpty ? nil : customs
+        barColorHex = try container.decodeIfPresent(String.self, forKey: .barColorHex)
         children = []
         parsedStartDate = start.flatMap(DateFormatting.parseMPXJDate)
         parsedFinishDate = finish.flatMap(DateFormatting.parseMPXJDate)

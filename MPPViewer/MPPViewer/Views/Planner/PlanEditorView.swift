@@ -1546,6 +1546,35 @@ struct PlanEditorView: View {
                                 .font(.body)
                         }
 
+                        GroupBox("Gantt Bar Color") {
+                            HStack(spacing: 10) {
+                                ColorPicker(
+                                    "Bar Color",
+                                    selection: inspectorTaskDraftBinding(
+                                        defaultValue: Color(hex: taskDraft.barColorHex ?? "") ?? .accentColor,
+                                        get: { Color(hex: $0.barColorHex ?? "") ?? .accentColor },
+                                        set: { $0.barColorHex = $1.hexString }
+                                    ),
+                                    supportsOpacity: false
+                                )
+                                .labelsHidden()
+
+                                Text((inspectorTaskDraft?.barColorHex ?? taskDraft.barColorHex) == nil ? "Default (accent / critical)" : "Custom color")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+
+                                Spacer()
+
+                                Button("Reset") {
+                                    mutateInspectorTaskDraft { $0.barColorHex = nil }
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                                .disabled((inspectorTaskDraft?.barColorHex ?? taskDraft.barColorHex) == nil)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+
                         GroupBox("Custom Fields") {
                             VStack(alignment: .leading, spacing: 8) {
                                 let fieldNames = planCustomFieldNames
@@ -2275,42 +2304,87 @@ struct PlanEditorView: View {
         reschedulePlan()
     }
 
+    private func parentRowIndex(for index: Int) -> Int? {
+        let level = plan.tasks[index].outlineLevel
+        var candidate = index - 1
+        while candidate >= 0 {
+            if plan.tasks[candidate].outlineLevel < level {
+                return candidate
+            }
+            candidate -= 1
+        }
+        return nil
+    }
+
     private func canMoveSelectedTaskUp() -> Bool {
-        previousSiblingRootIndex(for: selectedTaskIndex)
-            .map { _ in true } ?? false
+        guard let selectedTaskIndex else { return false }
+        if previousSiblingRootIndex(for: selectedTaskIndex) != nil { return true }
+        // First child: can still leave the parent when the parent has a
+        // previous sibling to join.
+        guard let parentIndex = parentRowIndex(for: selectedTaskIndex) else { return false }
+        return previousSiblingRootIndex(for: parentIndex) != nil
     }
 
     private func moveSelectedTaskUp() {
         commitInspectorEdits()
-        guard let selectedTaskIndex,
-              let previousSiblingIndex = previousSiblingRootIndex(for: selectedTaskIndex) else { return }
+        guard let selectedTaskIndex else { return }
 
-        let selectedRange = subtreeRange(for: selectedTaskIndex)
-        let movingTasks = Array(plan.tasks[selectedRange])
-        plan.tasks.removeSubrange(selectedRange)
-        plan.tasks.insert(contentsOf: movingTasks, at: previousSiblingIndex)
-        reschedulePlan()
-        selectedTaskID = movingTasks.first?.id
+        if let previousSiblingIndex = previousSiblingRootIndex(for: selectedTaskIndex) {
+            let selectedRange = subtreeRange(for: selectedTaskIndex)
+            let movingTasks = Array(plan.tasks[selectedRange])
+            plan.tasks.removeSubrange(selectedRange)
+            plan.tasks.insert(contentsOf: movingTasks, at: previousSiblingIndex)
+            reschedulePlan()
+            selectedTaskID = movingTasks.first?.id
+            return
+        }
+
+        // At the top of this parent: hop into the previous sibling of the
+        // parent (e.g. from the start of Phase 3 to the end of Phase 2).
+        guard let parentIndex = parentRowIndex(for: selectedTaskIndex),
+              let auntIndex = previousSiblingRootIndex(for: parentIndex) else { return }
+        let auntRange = subtreeRange(for: auntIndex)
+        let anchorTaskID = plan.tasks[auntRange.upperBound - 1].id
+        let taskID = plan.tasks[selectedTaskIndex].id
+        if plan.relocateTaskSubtree(taskID: taskID, anchorTaskID: anchorTaskID, placeAfterAnchor: true) {
+            reschedulePlan()
+            selectedTaskID = taskID
+        }
     }
 
     private func canMoveSelectedTaskDown() -> Bool {
-        nextSiblingRootIndex(for: selectedTaskIndex)
-            .map { _ in true } ?? false
+        guard let selectedTaskIndex else { return false }
+        if nextSiblingRootIndex(for: selectedTaskIndex) != nil { return true }
+        guard let parentIndex = parentRowIndex(for: selectedTaskIndex) else { return false }
+        return nextSiblingRootIndex(for: parentIndex) != nil
     }
 
     private func moveSelectedTaskDown() {
         commitInspectorEdits()
-        guard let selectedTaskIndex,
-              let nextSiblingIndex = nextSiblingRootIndex(for: selectedTaskIndex) else { return }
+        guard let selectedTaskIndex else { return }
 
-        let selectedRange = subtreeRange(for: selectedTaskIndex)
-        let movingTasks = Array(plan.tasks[selectedRange])
-        let nextSiblingRange = subtreeRange(for: nextSiblingIndex)
-        plan.tasks.removeSubrange(selectedRange)
-        let insertionIndex = nextSiblingRange.upperBound - selectedRange.count
-        plan.tasks.insert(contentsOf: movingTasks, at: insertionIndex)
-        reschedulePlan()
-        selectedTaskID = movingTasks.first?.id
+        if let nextSiblingIndex = nextSiblingRootIndex(for: selectedTaskIndex) {
+            let selectedRange = subtreeRange(for: selectedTaskIndex)
+            let movingTasks = Array(plan.tasks[selectedRange])
+            let nextSiblingRange = subtreeRange(for: nextSiblingIndex)
+            plan.tasks.removeSubrange(selectedRange)
+            let insertionIndex = nextSiblingRange.upperBound - selectedRange.count
+            plan.tasks.insert(contentsOf: movingTasks, at: insertionIndex)
+            reschedulePlan()
+            selectedTaskID = movingTasks.first?.id
+            return
+        }
+
+        // At the bottom of this parent: hop into the next sibling of the
+        // parent (e.g. from the end of Phase 2 to the start of Phase 3).
+        guard let parentIndex = parentRowIndex(for: selectedTaskIndex),
+              let auntIndex = nextSiblingRootIndex(for: parentIndex) else { return }
+        let anchorTaskID = plan.tasks[auntIndex].id
+        let taskID = plan.tasks[selectedTaskIndex].id
+        if plan.relocateTaskSubtree(taskID: taskID, anchorTaskID: anchorTaskID, placeAfterAnchor: true) {
+            reschedulePlan()
+            selectedTaskID = taskID
+        }
     }
 
     private func toggleGridTaskCollapse(_ taskID: Int) {

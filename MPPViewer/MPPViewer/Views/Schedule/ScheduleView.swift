@@ -1,19 +1,119 @@
 import SwiftUI
 import AppKit
 
-private struct ScheduleVerticalOffsetPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
+/// Keeps the task-list pane and the timeline pane scrolling in lockstep.
+/// Both panes are AppKit `NSScrollView`s; when either scrolls vertically we
+/// mirror the offset onto the other — accounting for the date header that sits
+/// inside the timeline's scroll area but not the list's — and publish the
+/// timeline's visible rect so the Gantt canvas can cull off-screen rows/days.
+final class ScheduleScrollCoordinator: ObservableObject {
+    /// Timeline's visible rectangle in document coordinates (drives culling).
+    @Published var timelineVisibleRect: CGRect = .zero
+    /// Task list's vertical scroll offset (drives its own row culling).
+    @Published var listOffsetY: CGFloat = 0
 
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
+    /// Height of the date header above the rows inside the timeline scroll
+    /// area. The list has no equivalent, so row N aligns when the list offset
+    /// equals the timeline offset minus this header height.
+    var headerHeight: CGFloat = 44
+
+    private weak var timeline: NSScrollView?
+    private weak var list: NSScrollView?
+    private var suppress = false
+    private var tokens: [NSObjectProtocol] = []
+
+    func attachTimeline(_ scrollView: NSScrollView) {
+        if timeline !== scrollView {
+            timeline = scrollView
+            observe(scrollView, isTimeline: true)
+            observeFrame(scrollView)
+        }
+        // Re-read on every attach. updateNSView calls this whenever the content
+        // resizes (auto-fit, zoom), and the first synchronous read happens
+        // before layout settles, so refresh async to capture the real rect.
+        refreshTimelineRect()
     }
-}
 
-private struct ScheduleHorizontalOffsetPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
+    func attachList(_ scrollView: NSScrollView) {
+        guard list !== scrollView else { return }
+        list = scrollView
+        observe(scrollView, isTimeline: false)
+    }
 
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
+    /// Reads the timeline's current visible rect after the layout pass and
+    /// publishes it so the Gantt canvas culls against the correct viewport.
+    /// Without this, the initial (pre-layout) rect would stick and most bars
+    /// would stay culled until a zoom change forced a relayout.
+    func refreshTimelineRect() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let timeline = self.timeline else { return }
+            let rect = timeline.documentVisibleRect
+            if rect != self.timelineVisibleRect {
+                self.timelineVisibleRect = rect
+            }
+        }
+    }
+
+    private func observeFrame(_ scrollView: NSScrollView) {
+        scrollView.postsFrameChangedNotifications = true
+        let token = NotificationCenter.default.addObserver(
+            forName: NSView.frameDidChangeNotification,
+            object: scrollView,
+            queue: .main
+        ) { [weak self] _ in
+            self?.refreshTimelineRect()
+        }
+        tokens.append(token)
+    }
+
+    private func observe(_ scrollView: NSScrollView, isTimeline: Bool) {
+        let clip = scrollView.contentView
+        clip.postsBoundsChangedNotifications = true
+        let token = NotificationCenter.default.addObserver(
+            forName: NSView.boundsDidChangeNotification,
+            object: clip,
+            queue: .main
+        ) { [weak self, weak scrollView] _ in
+            guard let self, let scrollView else { return }
+            self.handleScroll(scrollView, isTimeline: isTimeline)
+        }
+        tokens.append(token)
+    }
+
+    private func handleScroll(_ scrollView: NSScrollView, isTimeline: Bool) {
+        let originY = scrollView.contentView.bounds.origin.y
+        // Keep the visible rect fresh even during a mirrored scroll so culling
+        // tracks continuously.
+        if isTimeline {
+            timelineVisibleRect = scrollView.documentVisibleRect
+        }
+        guard !suppress else { return }
+        suppress = true
+        defer { suppress = false }
+        if isTimeline {
+            let target = max(0, originY - headerHeight)
+            listOffsetY = target
+            if let list { setOriginY(list, target) }
+        } else {
+            listOffsetY = originY
+            if let timeline {
+                setOriginY(timeline, originY + headerHeight)
+                timelineVisibleRect = timeline.documentVisibleRect
+            }
+        }
+    }
+
+    private func setOriginY(_ scrollView: NSScrollView, _ y: CGFloat) {
+        let clip = scrollView.contentView
+        let maxY = max(0, (scrollView.documentView?.frame.height ?? 0) - clip.bounds.height)
+        let clamped = min(max(0, y), maxY)
+        guard abs(clamped - clip.bounds.origin.y) > 0.01 else { return }
+        clip.scroll(to: CGPoint(x: clip.bounds.origin.x, y: clamped))
+        scrollView.reflectScrolledClipView(clip)
+    }
+
+    deinit {
+        for token in tokens { NotificationCenter.default.removeObserver(token) }
     }
 }
 
@@ -75,8 +175,9 @@ struct ScheduleView: View {
     @State private var timelineViewportWidth: CGFloat = 0
     @State private var shouldAutoFitTimeline = true
     @State private var collapsedIDs: Set<Int> = []
-    @State private var verticalScrollOffset: CGFloat = 0
-    @State private var horizontalScrollOffset: CGFloat = 0
+    @StateObject private var scrollCoordinator = ScheduleScrollCoordinator()
+    @AppStorage("scheduleTaskListWidth") private var taskListWidth: Double = 470
+    @State private var dividerDragStartWidth: CGFloat?
     @State private var criticalPathOnly: Bool = false
     @State private var showDependencyLinks: Bool = true
     @State private var showBaseline: Bool = false
@@ -110,14 +211,6 @@ struct ScheduleView: View {
 
     private var taskRowsContentHeight: CGFloat {
         CGFloat(visibleTasks.count) * rowHeight
-    }
-
-    private func clampedVerticalOffset(_ value: CGFloat, viewportHeight: CGFloat) -> CGFloat {
-        min(max(0, value), max(0, taskRowsContentHeight - viewportHeight))
-    }
-
-    private func scrollScheduleRows(by deltaY: CGFloat, viewportHeight: CGFloat) {
-        verticalScrollOffset = clampedVerticalOffset(verticalScrollOffset - deltaY, viewportHeight: viewportHeight)
     }
 
     init(project: ProjectModel, searchText: String) {
@@ -243,8 +336,6 @@ struct ScheduleView: View {
 
     // MARK: - Combined Schedule Content
 
-    private var taskListWidth: CGFloat { 470 }
-
     /// Matches GanttChartView: trailing area past the last activity so bar
     /// labels of the final tasks stay readable and the chart always has
     /// horizontal room to scroll into.
@@ -259,17 +350,20 @@ struct ScheduleView: View {
     /// axes on its own. Pure SwiftUI, so it stays inside the safe area.
     private var scheduleContent: some View {
         GeometryReader { geometry in
-            let viewportWidth = max(geometry.size.width - taskListWidth - 1, 1)
+            let width = CGFloat(taskListWidth)
+            let viewportWidth = max(geometry.size.width - width - 1, 1)
+            let maxListWidth = max(300, geometry.size.width - 360)
 
             HStack(spacing: 0) {
-                taskListPane
+                taskListPane(availableHeight: geometry.size.height)
 
-                Divider()
+                resizableDivider(maxWidth: maxListWidth)
 
                 timelinePane
             }
             .onAppear {
                 timelineViewportWidth = viewportWidth
+                scrollCoordinator.headerHeight = ganttHeaderHeight
                 applyAutoFitIfNeeded()
             }
             .onChange(of: viewportWidth) { _, newWidth in
@@ -279,10 +373,40 @@ struct ScheduleView: View {
             .onChange(of: totalDays) { _, _ in
                 applyAutoFitIfNeeded()
             }
+            .onChange(of: ganttHeaderHeight) { _, newHeight in
+                scrollCoordinator.headerHeight = newHeight
+            }
+            .onChange(of: pixelsPerDay) { _, _ in
+                // Zoom changes the day span of the same viewport; refresh so the
+                // canvas culls against the new layout.
+                scrollCoordinator.refreshTimelineRect()
+            }
         }
     }
 
-    private var taskListPane: some View {
+    /// A draggable handle over the pane divider. Drag to resize the task list,
+    /// double-click to reset to the default width.
+    private func resizableDivider(maxWidth: CGFloat) -> some View {
+        Divider()
+            .overlay {
+                Color.clear
+                    .frame(width: 10)
+                    .contentShape(Rectangle())
+                    .cursor(.resizeLeftRight)
+                    .gesture(
+                        DragGesture()
+                            .onChanged { value in
+                                let start = dividerDragStartWidth ?? CGFloat(taskListWidth)
+                                if dividerDragStartWidth == nil { dividerDragStartWidth = start }
+                                taskListWidth = Double(min(max(300, start + value.translation.width), maxWidth))
+                            }
+                            .onEnded { _ in dividerDragStartWidth = nil }
+                    )
+                    .onTapGesture(count: 2) { taskListWidth = 470 }
+            }
+    }
+
+    private func taskListPane(availableHeight: CGFloat) -> some View {
         VStack(spacing: 0) {
             // Column headers stay pinned while the rows scroll below them.
             HStack(spacing: 0) {
@@ -308,15 +432,52 @@ struct ScheduleView: View {
 
             Divider()
 
-            ScrollView(.vertical, showsIndicators: true) {
-                LazyVStack(spacing: 0) {
-                    ForEach(Array(visibleTasks.enumerated()), id: \.element.uniqueID) { index, task in
-                        scheduleTaskRow(task: task, index: index)
-                    }
-                }
+            // Hosted in an AppKit scroll view synced to the timeline so rows
+            // and bars stay aligned when either side scrolls.
+            ListScrollView(
+                contentSize: CGSize(width: CGFloat(taskListWidth), height: taskRowsContentHeight),
+                coordinator: scrollCoordinator
+            ) {
+                taskListRows(availableHeight: availableHeight)
             }
         }
-        .frame(width: taskListWidth, alignment: .topLeading)
+        .frame(width: CGFloat(taskListWidth), alignment: .topLeading)
+    }
+
+    /// Only materializes the rows within the scrolled viewport (plus overscan),
+    /// positioned absolutely inside a full-height container.
+    private func taskListRows(availableHeight: CGFloat) -> some View {
+        let width = CGFloat(taskListWidth)
+        let offsetY = scrollCoordinator.listOffsetY
+        let viewportH = max(scrollCoordinator.timelineVisibleRect.height, availableHeight)
+        let overscan = 4
+        let count = visibleTasks.count
+        let first = max(0, Int(offsetY / rowHeight) - overscan)
+        let last = min(count, Int((offsetY + viewportH) / rowHeight) + overscan)
+
+        return ZStack(alignment: .topLeading) {
+            Color.clear.frame(width: width, height: taskRowsContentHeight)
+            ForEach(first..<max(first, last), id: \.self) { index in
+                scheduleTaskRow(task: visibleTasks[index], index: index)
+                    .frame(width: width)
+                    .offset(y: CGFloat(index) * rowHeight)
+            }
+        }
+        .frame(width: width, height: taskRowsContentHeight, alignment: .topLeading)
+    }
+
+    private var timelineCanvasVisibleRect: CGRect {
+        let rect = scrollCoordinator.timelineVisibleRect
+        guard rect.height > 0 else {
+            // Before the scroll view reports, render everything (no culling).
+            return CGRect(x: 0, y: 0, width: timelineScrollableWidth, height: taskRowsContentHeight)
+        }
+        return CGRect(
+            x: rect.minX,
+            y: max(0, rect.minY - ganttHeaderHeight),
+            width: rect.width,
+            height: rect.height
+        )
     }
 
     private var timelinePane: some View {
@@ -324,7 +485,8 @@ struct ScheduleView: View {
             contentSize: CGSize(
                 width: timelineScrollableWidth,
                 height: ganttHeaderHeight + taskRowsContentHeight
-            )
+            ),
+            onAttach: { scrollCoordinator.attachTimeline($0) }
         ) {
             VStack(alignment: .leading, spacing: 0) {
                 GanttHeaderView(
@@ -342,12 +504,7 @@ struct ScheduleView: View {
                     totalDays: totalDays,
                     pixelsPerDay: pixelsPerDay,
                     rowHeight: rowHeight,
-                    visibleRect: CGRect(
-                        x: 0,
-                        y: 0,
-                        width: timelineScrollableWidth,
-                        height: taskRowsContentHeight
-                    ),
+                    visibleRect: timelineCanvasVisibleRect,
                     criticalPathOnly: criticalPathOnly,
                     showBaseline: showBaseline,
                     showDependencyLinks: showDependencyLinks,
@@ -390,6 +547,13 @@ struct ScheduleView: View {
                     Image(systemName: "diamond.fill")
                         .font(.system(size: 8))
                         .foregroundStyle(.orange)
+                }
+
+                if task.critical == true {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 7))
+                        .foregroundStyle(.red)
+                        .help("On the critical path")
                 }
 
                 Text(task.displayName)
@@ -474,7 +638,6 @@ struct ScheduleView: View {
     private func refreshDerivedContent() {
         withAnimation(nil) {
             derivedContent = ScheduleDerivedContent.build(project: project, searchText: searchText, collapsedIDs: collapsedIDs)
-            verticalScrollOffset = clampedVerticalOffset(verticalScrollOffset, viewportHeight: 1)
         }
     }
 
@@ -516,16 +679,88 @@ private struct ScheduleScrollWheelCapture: NSViewRepresentable {
     }
 }
 
+/// Vertical-only AppKit scroll view for the task list. Hosts fixed-size
+/// SwiftUI content and registers with the shared coordinator so it mirrors the
+/// timeline pane's vertical scrolling.
+private struct ListScrollView<Content: View>: NSViewRepresentable {
+    private let contentSize: CGSize
+    private let coordinator: ScheduleScrollCoordinator
+    private let content: Content
+
+    init(contentSize: CGSize, coordinator: ScheduleScrollCoordinator, @ViewBuilder content: () -> Content) {
+        self.contentSize = contentSize
+        self.coordinator = coordinator
+        self.content = content()
+    }
+
+    final class Box {
+        var hosting: NSHostingView<AnyView>?
+        var document: FlippedDocumentView?
+    }
+
+    func makeCoordinator() -> Box { Box() }
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scrollView = NSScrollView()
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
+        scrollView.autohidesScrollers = true
+        scrollView.drawsBackground = false
+
+        let document = FlippedDocumentView()
+        let hosting = NSHostingView(rootView: anchoredContent)
+        hosting.translatesAutoresizingMaskIntoConstraints = false
+        document.addSubview(hosting)
+        NSLayoutConstraint.activate([
+            hosting.topAnchor.constraint(equalTo: document.topAnchor),
+            hosting.leadingAnchor.constraint(equalTo: document.leadingAnchor),
+            hosting.trailingAnchor.constraint(equalTo: document.trailingAnchor),
+            hosting.bottomAnchor.constraint(equalTo: document.bottomAnchor)
+        ])
+        document.setFrameSize(contentSize)
+        scrollView.documentView = document
+
+        context.coordinator.hosting = hosting
+        context.coordinator.document = document
+        coordinator.attachList(scrollView)
+        return scrollView
+    }
+
+    func updateNSView(_ nsView: NSScrollView, context: Context) {
+        guard let hosting = context.coordinator.hosting,
+              let document = context.coordinator.document else { return }
+        hosting.rootView = anchoredContent
+        document.setFrameSize(contentSize)
+        coordinator.attachList(nsView)
+    }
+
+    private var anchoredContent: AnyView {
+        AnyView(
+            content.frame(
+                width: contentSize.width,
+                height: contentSize.height,
+                alignment: .topLeading
+            )
+        )
+    }
+
+    final class FlippedDocumentView: NSView {
+        override var isFlipped: Bool { true }
+    }
+}
+
 /// AppKit-backed scroll view with genuine two-axis native scrolling.
 /// SwiftUI's ScrollView([.horizontal, .vertical]) fails to provide a working
 /// horizontal scroller in this layout on macOS 26, so the timeline pane hosts
 /// its SwiftUI content inside an NSScrollView instead.
 private struct BothAxesScrollView<Content: View>: NSViewRepresentable {
     private let contentSize: CGSize
+    private let onAttach: ((NSScrollView) -> Void)?
     private let content: Content
 
-    init(contentSize: CGSize, @ViewBuilder content: () -> Content) {
+    init(contentSize: CGSize, onAttach: ((NSScrollView) -> Void)? = nil, @ViewBuilder content: () -> Content) {
         self.contentSize = contentSize
+        self.onAttach = onAttach
         self.content = content()
     }
 
@@ -560,6 +795,7 @@ private struct BothAxesScrollView<Content: View>: NSViewRepresentable {
 
         context.coordinator.hosting = hosting
         context.coordinator.document = document
+        onAttach?(scrollView)
         return scrollView
     }
 
@@ -568,6 +804,7 @@ private struct BothAxesScrollView<Content: View>: NSViewRepresentable {
               let document = context.coordinator.document else { return }
         hosting.rootView = anchoredContent
         document.setFrameSize(contentSize)
+        onAttach?(nsView)
     }
 
     /// The hosting view centers its root view when its bounds exceed the

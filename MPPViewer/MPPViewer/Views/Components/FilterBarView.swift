@@ -42,6 +42,8 @@ struct FilterBarView: View {
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                     .tint(criteria.criticalOnly ? .red : nil)
+                    .help("Show only tasks on the critical path")
+                    .accessibilityHint("Filters the list to critical-path tasks only")
 
                 Toggle("Milestones", isOn: $criteria.milestoneOnly)
                     .toggleStyle(.button)
@@ -49,6 +51,8 @@ struct FilterBarView: View {
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                     .tint(criteria.milestoneOnly ? .orange : nil)
+                    .help("Show only milestones")
+                    .accessibilityHint("Filters the list to milestones only")
 
                 Toggle("Flagged", isOn: $criteria.flaggedOnly)
                     .toggleStyle(.button)
@@ -56,6 +60,8 @@ struct FilterBarView: View {
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                     .tint(criteria.flaggedOnly ? .orange : nil)
+                    .help("Show only tasks you've flagged for follow-up")
+                    .accessibilityHint("Filters the list to flagged tasks only")
 
                 Toggle("Baseline Slip", isOn: $criteria.baselineSlippedOnly)
                     .toggleStyle(.button)
@@ -63,6 +69,8 @@ struct FilterBarView: View {
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                     .tint(criteria.baselineSlippedOnly ? .red : nil)
+                    .help("Show only tasks that finish later than their baseline")
+                    .accessibilityHint("Filters the list to tasks that slipped past baseline")
 
                 Toggle("Linked", isOn: $criteria.hasDependenciesOnly)
                     .toggleStyle(.button)
@@ -70,6 +78,8 @@ struct FilterBarView: View {
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                     .tint(criteria.hasDependenciesOnly ? .blue : nil)
+                    .help("Show only tasks that have predecessors or successors")
+                    .accessibilityHint("Filters the list to tasks with dependencies")
 
                 Divider().frame(height: 16)
 
@@ -148,6 +158,8 @@ struct FilterBarView: View {
                         .buttonStyle(.bordered)
                         .controlSize(.small)
                         .tint(criteria.annotatedOnly ? .blue : nil)
+                        .help("Show only tasks that have review notes")
+                        .accessibilityHint("Filters the list to tasks with review annotations")
 
                     Toggle("Open Issues", isOn: $criteria.unresolvedOnly)
                         .toggleStyle(.button)
@@ -155,6 +167,8 @@ struct FilterBarView: View {
                         .buttonStyle(.bordered)
                         .controlSize(.small)
                         .tint(criteria.unresolvedOnly ? .orange : nil)
+                        .help("Show only tasks with unresolved review issues")
+                        .accessibilityHint("Filters the list to tasks with open issues")
 
                     Toggle("Follow-Up", isOn: $criteria.followUpOnly)
                         .toggleStyle(.button)
@@ -162,6 +176,8 @@ struct FilterBarView: View {
                         .buttonStyle(.bordered)
                         .controlSize(.small)
                         .tint(criteria.followUpOnly ? .red : nil)
+                        .help("Show only tasks marked for follow-up")
+                        .accessibilityHint("Filters the list to follow-up tasks")
 
                     Spacer()
                 }

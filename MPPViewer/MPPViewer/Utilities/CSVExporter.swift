@@ -1090,7 +1090,7 @@ enum CSVExporter {
         fileName: String
     ) {
         let panel = NSSavePanel()
-        panel.allowedContentTypes = [UTType(filenameExtension: "xls") ?? .data]
+        panel.allowedContentTypes = [UTType(filenameExtension: "xlsx") ?? .data]
         panel.nameFieldStringValue = fileName
         panel.canCreateDirectories = true
 
@@ -1105,13 +1105,13 @@ enum CSVExporter {
             to: &rows
         )
 
-        let workbook = excelWorkbookXML(
+        let workbook = XLSX.workbook(
             headers: taskExportHeaders,
             rows: rows,
             sheetName: "Task List"
         )
 
-        try? workbook.write(to: url, atomically: true, encoding: .utf8)
+        try? workbook.write(to: url, options: .atomic)
     }
 
     @MainActor
@@ -1129,7 +1129,7 @@ enum CSVExporter {
             headers: taskImportTemplateHeaders,
             sampleRows: taskImportTemplateSampleRows,
             sheetName: "Task Import",
-            fileName: "Task Import Example.xls"
+            fileName: "Task Import Example.xlsx"
         )
     }
 
@@ -1148,7 +1148,7 @@ enum CSVExporter {
             headers: resourceImportTemplateHeaders,
             sampleRows: resourceImportTemplateSampleRows,
             sheetName: "Resource Import",
-            fileName: "Resource Import Example.xls"
+            fileName: "Resource Import Example.xlsx"
         )
     }
 
@@ -1167,7 +1167,7 @@ enum CSVExporter {
             headers: calendarImportTemplateHeaders,
             sampleRows: calendarImportTemplateSampleRows,
             sheetName: "Calendar Import",
-            fileName: "Calendar Import Example.xls"
+            fileName: "Calendar Import Example.xlsx"
         )
     }
 
@@ -1186,7 +1186,7 @@ enum CSVExporter {
             headers: assignmentImportTemplateHeaders,
             sampleRows: assignmentImportTemplateSampleRows,
             sheetName: "Assignment Import",
-            fileName: "Assignment Import Example.xls"
+            fileName: "Assignment Import Example.xlsx"
         )
     }
 
@@ -1205,7 +1205,7 @@ enum CSVExporter {
             headers: dependencyImportTemplateHeaders,
             sampleRows: dependencyImportTemplateSampleRows,
             sheetName: "Dependency Import",
-            fileName: "Dependency Import Example.xls"
+            fileName: "Dependency Import Example.xlsx"
         )
     }
 
@@ -1224,7 +1224,7 @@ enum CSVExporter {
             headers: constraintImportTemplateHeaders,
             sampleRows: constraintImportTemplateSampleRows,
             sheetName: "Constraint Import",
-            fileName: "Constraint Import Example.xls"
+            fileName: "Constraint Import Example.xlsx"
         )
     }
 
@@ -1243,7 +1243,7 @@ enum CSVExporter {
             headers: baselineImportTemplateHeaders,
             sampleRows: baselineImportTemplateSampleRows,
             sheetName: "Baseline Import",
-            fileName: "Baseline Import Example.xls"
+            fileName: "Baseline Import Example.xlsx"
         )
     }
 
@@ -1514,35 +1514,6 @@ enum CSVExporter {
         }
     }
 
-    private static func excelWorkbookXML(headers: [String], rows: [[String]], sheetName: String) -> String {
-        let xmlRows = ([headers] + rows).map { row in
-            let cells = row.map { value in
-                """
-                <Cell><Data ss:Type="String">\(escapeXML(value))</Data></Cell>
-                """
-            }
-            .joined()
-            return "<Row>\(cells)</Row>"
-        }
-        .joined(separator: "\n")
-
-        return """
-        <?xml version="1.0" encoding="UTF-8"?>
-        <?mso-application progid="Excel.Sheet"?>
-        <Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
-         xmlns:o="urn:schemas-microsoft-com:office:office"
-         xmlns:x="urn:schemas-microsoft-com:office:excel"
-         xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
-         xmlns:html="http://www.w3.org/TR/REC-html40">
-        <Worksheet ss:Name="\(escapeXML(sheetName))">
-        <Table>
-        \(xmlRows)
-        </Table>
-        </Worksheet>
-        </Workbook>
-        """
-    }
-
     @MainActor
     private static func exportCSVTemplate(headers: [String], sampleRows: [[String]], fileName: String) {
         let panel = NSSavePanel()
@@ -1567,14 +1538,14 @@ enum CSVExporter {
         fileName: String
     ) {
         let panel = NSSavePanel()
-        panel.allowedContentTypes = [UTType(filenameExtension: "xls") ?? .data]
+        panel.allowedContentTypes = [UTType(filenameExtension: "xlsx") ?? .data]
         panel.nameFieldStringValue = fileName
         panel.canCreateDirectories = true
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
 
-        let workbook = excelWorkbookXML(headers: headers, rows: sampleRows, sheetName: sheetName)
-        try? workbook.write(to: url, atomically: true, encoding: .utf8)
+        let workbook = XLSX.workbook(headers: headers, rows: sampleRows, sheetName: sheetName)
+        try? workbook.write(to: url, options: .atomic)
     }
 
     private static func escapeCSV(_ value: String) -> String {
@@ -1582,15 +1553,6 @@ enum CSVExporter {
             return "\"" + value.replacingOccurrences(of: "\"", with: "\"\"") + "\""
         }
         return value
-    }
-
-    private static func escapeXML(_ value: String) -> String {
-        value
-            .replacingOccurrences(of: "&", with: "&amp;")
-            .replacingOccurrences(of: "<", with: "&lt;")
-            .replacingOccurrences(of: ">", with: "&gt;")
-            .replacingOccurrences(of: "\"", with: "&quot;")
-            .replacingOccurrences(of: "'", with: "&apos;")
     }
 
     private static func suggestedImportReportFileName(for report: CSVImportReport) -> String {
@@ -1675,10 +1637,12 @@ enum CSVExporter {
         switch url.pathExtension.lowercased() {
         case "csv":
             return loadCSVRows(from: url)
+        case "xlsx":
+            return XLSX.readRows(from: url) ?? loadCSVRows(from: url)
         case "xls", "xml":
             return loadSpreadsheetMLRows(from: url) ?? loadCSVRows(from: url)
         default:
-            return loadCSVRows(from: url) ?? loadSpreadsheetMLRows(from: url)
+            return XLSX.readRows(from: url) ?? loadCSVRows(from: url) ?? loadSpreadsheetMLRows(from: url)
         }
     }
 
@@ -1687,6 +1651,7 @@ enum CSVExporter {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [
             UTType.commaSeparatedText,
+            UTType(filenameExtension: "xlsx") ?? .data,
             UTType(filenameExtension: "xls") ?? .data,
             UTType.xml
         ]

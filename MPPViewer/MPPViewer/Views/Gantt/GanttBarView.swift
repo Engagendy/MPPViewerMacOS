@@ -1,8 +1,18 @@
 import SwiftUI
+import AppKit
 
 enum GanttResizeEdge {
     case leading
     case trailing
+}
+
+/// Subtle trackpad tick when a Gantt drag crosses a whole-day (or row) snap
+/// boundary, giving alignment a tactile feel on Force Touch trackpads.
+@MainActor
+enum GanttHaptics {
+    static func snap() {
+        NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+    }
 }
 
 struct GanttBarView: View {
@@ -13,17 +23,36 @@ struct GanttBarView: View {
     let rowHeight: CGFloat
     var coordinateSpaceName: String = "GanttCanvasViewSpace"
     var isEditable: Bool = false
+    // Summary bars can be dragged vertically to reorder (moving the whole
+    // subtree) but not moved in time or resized.
+    var reorderOnly: Bool = false
     var isSelected: Bool = false
     var isLinkSource: Bool = false
     var onMoveTask: ((Int) -> Void)? = nil
+    var onReorderTask: ((Int) -> Void)? = nil
     var onResizeTask: ((GanttResizeEdge, Int) -> Void)? = nil
     var onSelectTask: (() -> Void)? = nil
     var onShowTaskDetails: ((CGPoint) -> Void)? = nil
     var onStartLinkingFromTask: (() -> Void)? = nil
 
+    private enum MoveDragAxis {
+        case undecided
+        case horizontal
+        case vertical
+    }
+
     @State private var moveTranslation: CGFloat = 0
+    @State private var rowTranslation: CGFloat = 0
+    @State private var moveDragAxis: MoveDragAxis = .undecided
     @State private var leadingResizeTranslation: CGFloat = 0
     @State private var trailingResizeTranslation: CGFloat = 0
+    @State private var lastHapticStep = 0
+
+    private func hapticIfStepChanged(_ step: Int) {
+        guard step != lastHapticStep else { return }
+        lastHapticStep = step
+        GanttHaptics.snap()
+    }
 
     private let barInset: CGFloat = 4
     private let minBarWidth: CGFloat = 4
@@ -71,12 +100,21 @@ struct GanttBarView: View {
     }
 
     private var isDragging: Bool {
-        moveTranslation != 0 || leadingResizeTranslation != 0 || trailingResizeTranslation != 0
+        moveTranslation != 0 || rowTranslation != 0 || leadingResizeTranslation != 0 || trailingResizeTranslation != 0
+    }
+
+    private var rowPreviewDelta: Int {
+        guard rowHeight > 0 else { return 0 }
+        return Int((rowTranslation / rowHeight).rounded())
     }
 
     private var dragBadgeText: String? {
         func signed(_ days: Int) -> String {
             days > 0 ? "+\(days)d" : "\(days)d"
+        }
+        if rowTranslation != 0 {
+            let rows = rowPreviewDelta
+            return "Row " + (rows > 0 ? "+\(rows)" : "\(rows)")
         }
         if moveTranslation != 0 {
             return signed(movePreviewDays)
@@ -94,20 +132,53 @@ struct GanttBarView: View {
         rowHeight - barInset * 2
     }
 
+    // A custom per-task color wins over the default critical/accent scheme.
+    private var customColor: Color? {
+        task.barColorHex.flatMap { Color(hex: $0) }
+    }
+
+    private var barBaseColor: Color {
+        customColor ?? (task.critical == true ? .red : .accentColor)
+    }
+
+    private var isCritical: Bool { task.critical == true }
+
     var body: some View {
-        if task.milestone == true {
-            milestoneBar
-        } else if task.summary == true {
-            summaryBar
-        } else {
-            regularBar
+        Group {
+            if task.milestone == true {
+                milestoneBar
+            } else if task.summary == true {
+                summaryBar
+            } else {
+                regularBar
+            }
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityLabelText)
+        .accessibilityHint(isEditable ? "Drag to move or reorder; use the edge handles to change start or finish" : "")
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+    }
+
+    private var accessibilityLabelText: String {
+        let kind = task.milestone == true ? "Milestone" : (task.summary == true ? "Summary task" : "Task")
+        var parts = ["\(kind): \(task.displayName)"]
+        if let start = task.start {
+            parts.append("starts \(DateFormatting.shortDate(start))")
+        }
+        if let finish = task.finish {
+            parts.append("finishes \(DateFormatting.shortDate(finish))")
+        }
+        parts.append("\(task.percentCompleteDisplay) complete")
+        if task.critical == true {
+            parts.append("on the critical path")
+        }
+        return parts.joined(separator: ", ")
     }
 
     private var milestoneBar: some View {
         let size: CGFloat = barHeight * 0.7
         return DiamondShape()
-            .fill(Color.orange)
+            .fill(customColor ?? Color.orange)
             .frame(width: size, height: size)
             .overlay {
                 if isEditable {
@@ -126,19 +197,12 @@ struct GanttBarView: View {
             .shadow(color: isLinkSource ? Color.orange.opacity(0.28) : .clear, radius: 6, x: 0, y: 0)
             .offset(
                 x: taskStartOffset + moveTranslation - size / 2,
-                y: yPosition + (rowHeight - size) / 2
+                y: yPosition + (rowHeight - size) / 2 + rowTranslation
             )
             .gesture(
                 isEditable ? DragGesture()
-                    .onChanged { value in
-                        moveTranslation = value.translation.width
-                    }
-                    .onEnded { value in
-                    let delta = roundedDayDelta(for: value.translation.width)
-                    moveTranslation = 0
-                    guard delta != 0 else { return }
-                    onMoveTask?(delta)
-                } : nil
+                    .onChanged(handleMoveDragChanged)
+                    .onEnded(handleMoveDragEnded) : nil
             )
             .simultaneousGesture(
                 SpatialTapGesture(count: 2)
@@ -178,7 +242,7 @@ struct GanttBarView: View {
 
     private var summaryBar: some View {
         SummaryBarShape()
-            .fill(Color.primary.opacity(0.7))
+            .fill(customColor ?? Color.primary.opacity(0.7))
             .frame(width: taskWidth, height: barHeight * 0.4)
             .overlay {
                 if isSelected {
@@ -190,20 +254,56 @@ struct GanttBarView: View {
                         .stroke(Color.orange, style: StrokeStyle(lineWidth: 2.5, dash: [5, 3]))
                 }
             }
+            // Taller transparent hit area so the thin bracket is easy to grab
+            // for the reorder drag.
+            .frame(height: rowHeight, alignment: .center)
+            .contentShape(Rectangle())
+            .overlay(alignment: .topLeading) {
+                if isDragging, let dragBadgeText {
+                    Text(dragBadgeText)
+                        .font(.system(size: 9, weight: .semibold))
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(Color.accentColor.opacity(0.9))
+                        .foregroundStyle(.white)
+                        .clipShape(Capsule())
+                        .offset(x: taskStartOffset, y: -6)
+                        .fixedSize()
+                }
+            }
             .shadow(color: isLinkSource ? Color.orange.opacity(0.28) : .clear, radius: 6, x: 0, y: 0)
             .offset(
                 x: taskStartOffset,
-                y: yPosition + barInset + barHeight * 0.3
+                y: yPosition + rowTranslation
             )
-            .contentShape(Rectangle())
+            .gesture(
+                (isEditable && reorderOnly) ? DragGesture(minimumDistance: 3)
+                    .onChanged(handleMoveDragChanged)
+                    .onEnded(handleMoveDragEnded) : nil
+            )
+            .simultaneousGesture(
+                SpatialTapGesture(count: 2)
+                    .onEnded { value in
+                        guard isEditable else { return }
+                        onShowTaskDetails?(
+                            CGPoint(
+                                x: taskStartOffset + value.location.x,
+                                y: yPosition + value.location.y
+                            )
+                        )
+                    }
+            )
             .simultaneousGesture(
                 SpatialTapGesture()
                     .onEnded { value in
                         onSelectTask?()
+                        // In edit mode a plain click only selects so it never
+                        // pops the details card while you're reordering.
+                        guard !isEditable else { return }
                         onShowTaskDetails?(
                             CGPoint(
                                 x: taskStartOffset + value.location.x,
-                                y: yPosition + barInset + barHeight * 0.3 + value.location.y
+                                y: yPosition + value.location.y
                             )
                         )
                     }
@@ -213,19 +313,19 @@ struct GanttBarView: View {
                     .modifiers(.control)
                     .onEnded { onStartLinkingFromTask?() }
             )
-            .help(tooltipText)
+            .help(isEditable ? tooltipText + "\n\nDrag up or down to reorder this phase and everything under it." : tooltipText)
     }
 
     private var regularBar: some View {
         ZStack(alignment: .leading) {
             RoundedRectangle(cornerRadius: 3)
-                .fill(task.critical == true ? Color.red.opacity(0.3) : Color.accentColor.opacity(0.3))
+                .fill(barBaseColor.opacity(0.3))
 
             let pct = (task.percentComplete ?? 0) / 100.0
             let fillWidth = previewWidth * CGFloat(pct)
             if fillWidth > 0 {
                 RoundedRectangle(cornerRadius: 3)
-                    .fill(task.critical == true ? Color.red : Color.accentColor)
+                    .fill(barBaseColor)
                     .frame(width: fillWidth, height: barHeight)
             }
 
@@ -238,6 +338,22 @@ struct GanttBarView: View {
             }
         }
         .frame(width: previewWidth, height: barHeight)
+        .overlay {
+            // Hue-independent cue for critical tasks: a diagonal hatch plus a
+            // high-contrast dashed border so the critical path stays legible
+            // under red–green color blindness and high-contrast mode, not by
+            // red fill alone.
+            if isCritical {
+                DiagonalHatch()
+                    .stroke(Color.primary.opacity(0.30), lineWidth: 0.7)
+                    .clipShape(RoundedRectangle(cornerRadius: 3))
+                    .allowsHitTesting(false)
+                if !isEditable && !isSelected {
+                    RoundedRectangle(cornerRadius: 3)
+                        .stroke(Color.primary.opacity(0.55), style: StrokeStyle(lineWidth: 1.1, dash: [2, 2]))
+                }
+            }
+        }
         .overlay {
             if isEditable {
                 RoundedRectangle(cornerRadius: 3)
@@ -264,19 +380,12 @@ struct GanttBarView: View {
         }
         .offset(
             x: previewOffsetX,
-            y: yPosition + barInset
+            y: yPosition + barInset + rowTranslation
         )
         .gesture(
             isEditable ? DragGesture(minimumDistance: 2)
-                .onChanged { value in
-                    moveTranslation = value.translation.width
-                }
-                .onEnded { value in
-                    let delta = roundedDayDelta(for: value.translation.width)
-                    moveTranslation = 0
-                    guard delta != 0 else { return }
-                    onMoveTask?(delta)
-                } : nil
+                .onChanged(handleMoveDragChanged)
+                .onEnded(handleMoveDragEnded) : nil
         )
         .simultaneousGesture(
             SpatialTapGesture(count: 2)
@@ -376,17 +485,61 @@ struct GanttBarView: View {
                 switch edge {
                 case .leading:
                     leadingResizeTranslation = value.translation.width
+                    hapticIfStepChanged(leadingPreviewDays)
                 case .trailing:
                     trailingResizeTranslation = value.translation.width
+                    hapticIfStepChanged(trailingPreviewDays)
                 }
             }
             .onEnded { value in
                 let delta = roundedDayDelta(for: value.translation.width)
                 leadingResizeTranslation = 0
                 trailingResizeTranslation = 0
+                lastHapticStep = 0
                 guard delta != 0 else { return }
                 onResizeTask?(edge, delta)
             }
+    }
+
+    private func handleMoveDragChanged(_ value: DragGesture.Value) {
+        if moveDragAxis == .undecided {
+            let dx = abs(value.translation.width)
+            let dy = abs(value.translation.height)
+            guard dx > 3 || dy > 3 else { return }
+            // Summaries only reorder; regular bars pick the dominant axis.
+            moveDragAxis = reorderOnly ? .vertical : ((dy > dx && onReorderTask != nil) ? .vertical : .horizontal)
+        }
+        switch moveDragAxis {
+        case .horizontal:
+            moveTranslation = value.translation.width
+            hapticIfStepChanged(movePreviewDays)
+        case .vertical:
+            rowTranslation = value.translation.height
+            hapticIfStepChanged(rowPreviewDelta)
+        case .undecided:
+            break
+        }
+    }
+
+    private func handleMoveDragEnded(_ value: DragGesture.Value) {
+        let axis = moveDragAxis
+        moveDragAxis = .undecided
+        lastHapticStep = 0
+        switch axis {
+        case .horizontal:
+            let delta = roundedDayDelta(for: value.translation.width)
+            moveTranslation = 0
+            guard delta != 0 else { return }
+            onMoveTask?(delta)
+        case .vertical:
+            let rows = Int((value.translation.height / max(1, rowHeight)).rounded())
+            rowTranslation = 0
+            guard rows != 0 else { return }
+            onReorderTask?(rows)
+        case .undecided:
+            moveTranslation = 0
+            rowTranslation = 0
+        }
     }
 
     private func roundedDayDelta(for translation: CGFloat) -> Int {
@@ -396,7 +549,7 @@ struct GanttBarView: View {
 
     private var editTooltipText: String {
         guard isEditable else { return tooltipText }
-        return tooltipText + "\n\nDrag the bar to move. Grab the larger edge handles to change start or finish. Double-click for task details. Command-click to select several bars, then move them together with the arrow keys (Shift for a week) or by dragging any selected bar. Control-click a task bar to start dependency linking instantly."
+        return tooltipText + "\n\nDrag the bar sideways to move it in time, or up and down to reorder it in the task list. Grab the larger edge handles to change start or finish. Double-click for task details. Command-click to select several bars, then move them together with the arrow keys (Shift for a week) or by dragging any selected bar. Control-click a task bar to start dependency linking instantly."
     }
 
     private var tooltipText: String {
@@ -410,6 +563,23 @@ struct GanttBarView: View {
         parts.append("Duration: \(task.durationDisplay)")
         parts.append("Complete: \(task.percentCompleteDisplay)")
         return parts.joined(separator: "\n")
+    }
+}
+
+/// Evenly spaced diagonal lines used as a hue-independent texture cue for
+/// critical-path bars.
+struct DiagonalHatch: Shape {
+    var spacing: CGFloat = 5
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        var x = rect.minX - rect.height
+        while x < rect.maxX {
+            path.move(to: CGPoint(x: x, y: rect.maxY))
+            path.addLine(to: CGPoint(x: x + rect.height, y: rect.minY))
+            x += spacing
+        }
+        return path
     }
 }
 

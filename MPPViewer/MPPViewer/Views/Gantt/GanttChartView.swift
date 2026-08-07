@@ -238,14 +238,32 @@ private struct GanttDerivedContent {
     let dateRange: (start: Date, end: Date)
     let totalDays: Int
 
-    static func build(project: ProjectModel, searchText: String) -> GanttDerivedContent {
-        let root = if searchText.isEmpty {
+    static func build(
+        project: ProjectModel,
+        searchText: String,
+        focusedTaskID: Int? = nil,
+        maxVisibleLevel: Int? = nil
+    ) -> GanttDerivedContent {
+        var root = if searchText.isEmpty {
             project.rootTasks
         } else {
             project.tasks.filter { $0.name?.localizedCaseInsensitiveContains(searchText) == true }
         }
 
-        let flatTasks = flattenVisible(root)
+        // Focus mode isolates a single subtree (e.g. one phase) so you can
+        // work on it without the rest of the plan in the way.
+        if let focusedTaskID, let focusRoot = project.tasksByID[focusedTaskID] {
+            root = [focusRoot]
+        }
+
+        var flatTasks = flattenVisible(root)
+
+        // Level filter hides rows deeper than the chosen outline level, giving
+        // an executive (phases-only) or working (down to tasks) altitude.
+        if let maxVisibleLevel {
+            flatTasks = flatTasks.filter { ($0.outlineLevel ?? 1) <= maxVisibleLevel }
+        }
+
         let taskIDs = flatTasks.map(\.uniqueID)
         let rowIndexByTaskID = Dictionary(nonThrowingUniquePairs: flatTasks.enumerated().map { ($1.uniqueID, $0) })
         let dateRange = GanttDateHelpers.dateRange(for: project.tasks)
@@ -276,22 +294,34 @@ private struct GanttTaskSnapshot: Equatable {
     let name: String
     let start: String
     let finish: String
+    // Visual attributes that must also invalidate the cached bars when they
+    // change, even if the schedule stayed the same.
+    let barColorHex: String?
+    let percentComplete: Double
+    let critical: Bool
 }
 
 private struct GanttDerivedInput: Equatable {
     let searchText: String
     let statusDate: String
+    let focusedTaskID: Int?
+    let maxVisibleLevel: Int?
     let tasks: [GanttTaskSnapshot]
 
-    init(project: ProjectModel, searchText: String) {
+    init(project: ProjectModel, searchText: String, focusedTaskID: Int?, maxVisibleLevel: Int?) {
         self.searchText = searchText
+        self.focusedTaskID = focusedTaskID
+        self.maxVisibleLevel = maxVisibleLevel
         self.statusDate = project.properties.statusDate ?? ""
         self.tasks = project.tasks.map {
             GanttTaskSnapshot(
                 id: $0.uniqueID,
                 name: $0.name ?? "",
                 start: $0.start ?? "",
-                finish: $0.finish ?? ""
+                finish: $0.finish ?? "",
+                barColorHex: $0.barColorHex,
+                percentComplete: $0.percentComplete ?? 0,
+                critical: $0.critical ?? false
             )
         }
     }
@@ -321,6 +351,11 @@ struct GanttChartView: View {
     @State private var timelineViewportHeight: CGFloat = 0
     @State private var shouldAutoFitTimeline = true
     @State private var rowHeight: CGFloat = 24
+    // Breathing room below the final row so the last bar isn't flush against
+    // the bottom edge and can still be dragged/dropped past the last task.
+    private let ganttTrailingSpace: CGFloat = 40
+    @State private var focusedTaskID: Int? = nil
+    @State private var maxVisibleLevel: Int? = nil
     @State private var criticalPathOnly: Bool = false
     @State private var showBaseline: Bool = false
     @State private var showDependencyLinks: Bool = true
@@ -350,7 +385,20 @@ struct GanttChartView: View {
     }
 
     private var derivedInput: GanttDerivedInput {
-        GanttDerivedInput(project: project, searchText: searchText)
+        GanttDerivedInput(project: project, searchText: searchText, focusedTaskID: focusedTaskID, maxVisibleLevel: maxVisibleLevel)
+    }
+
+    private var availableOutlineLevels: [Int] {
+        let levels = Set(project.tasks.map { $0.outlineLevel ?? 1 })
+        guard let maxLevel = levels.max(), maxLevel > 1 else { return [] }
+        return Array(1...maxLevel)
+    }
+
+    private func levelMenuTitle(_ level: Int) -> String {
+        switch level {
+        case 1: return "Level 1 (phases)"
+        default: return "Down to level \(level)"
+        }
     }
 
     private var dateRange: (start: Date, end: Date) {
@@ -391,6 +439,17 @@ struct GanttChartView: View {
         return Set(derivedContent.taskIDs.filter { nativeTaskIDs.contains($0) && project.tasksByID[$0]?.summary != true })
     }
 
+    // Summary/phase rows that can be dragged vertically to reorder their whole
+    // subtree, in edit mode only.
+    private var reorderableSummaryIDs: Set<Int> {
+        guard isEditingEnabled else { return [] }
+        let nativeTaskIDs = Set(nativeTasks.map(\.id))
+        return Set(derivedContent.taskIDs.filter { id in
+            guard nativeTaskIDs.contains(id), let task = project.tasksByID[id] else { return false }
+            return task.summary == true && !task.children.isEmpty
+        })
+    }
+
     private var timelineWidth: CGFloat {
         CGFloat(totalDays) * pixelsPerDay
     }
@@ -426,7 +485,7 @@ struct GanttChartView: View {
         self.project = project
         self.searchText = searchText
         self.planModel = planModel
-        self._derivedContent = State(initialValue: GanttDerivedContent.build(project: project, searchText: searchText))
+        self._derivedContent = State(initialValue: GanttDerivedContent.build(project: project, searchText: searchText, focusedTaskID: nil, maxVisibleLevel: nil))
         self._nativeTaskSnapshot = State(initialValue: planModel?.nativeTasksForUI ?? [])
         self._nativeAssignmentSnapshot = State(initialValue: planModel?.nativeAssignmentsForUI ?? [])
         self._nativeResourceSnapshot = State(initialValue: planModel?.nativeResourcesForUI ?? [])
@@ -518,7 +577,11 @@ struct GanttChartView: View {
             }
         }
         .onChange(of: derivedInput) { oldValue, newValue in
-            if oldValue.tasks == newValue.tasks && oldValue.statusDate == newValue.statusDate {
+            let onlySearchChanged = oldValue.tasks == newValue.tasks
+                && oldValue.statusDate == newValue.statusDate
+                && oldValue.focusedTaskID == newValue.focusedTaskID
+                && oldValue.maxVisibleLevel == newValue.maxVisibleLevel
+            if onlySearchChanged {
                 // Search-only change: debounce so typing doesn't rebuild per keystroke.
                 scheduleSearchDebouncedRefresh()
             } else {
@@ -773,6 +836,40 @@ struct GanttChartView: View {
                 .buttonStyle(.bordered)
                 .tint(showBaseline ? .gray : nil)
                 .help("Shows the saved baseline schedule as gray bars below the current bars, with start/finish variance badges.")
+
+                Menu {
+                    Button {
+                        maxVisibleLevel = nil
+                    } label: {
+                        Label("All Levels", systemImage: maxVisibleLevel == nil ? "checkmark" : "")
+                    }
+                    ForEach(availableOutlineLevels, id: \.self) { level in
+                        Button {
+                            maxVisibleLevel = level
+                        } label: {
+                            Label(levelMenuTitle(level), systemImage: maxVisibleLevel == level ? "checkmark" : "")
+                        }
+                    }
+                } label: {
+                    Label(maxVisibleLevel == nil ? "Levels" : "Levels \u{2264} \(maxVisibleLevel!)", systemImage: "list.bullet.indent")
+                        .font(.caption)
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .help("Show only tasks down to a chosen outline level (e.g. phases only, or down to tasks).")
+
+                if let focusedTaskID, let focusName = project.tasksByID[focusedTaskID]?.displayName {
+                    Button {
+                        self.focusedTaskID = nil
+                    } label: {
+                        Label("Focusing: \(focusName)", systemImage: "xmark.circle.fill")
+                            .font(.caption)
+                            .lineLimit(1)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.blue)
+                    .help("Exit focus and show the whole plan again.")
+                }
 
                 Divider().frame(height: 16)
 
@@ -1501,6 +1598,7 @@ struct GanttChartView: View {
                 selectedDependency: selectedDependency,
                 pendingLinkSourceTaskID: pendingDependencySourceTaskID,
                 onMoveTask: planModel == nil ? nil : moveNativeTask,
+                onReorderTask: planModel == nil ? nil : reorderNativeTask,
                 onResizeTask: planModel == nil ? nil : resizeNativeTask,
                 onSelectTask: handleTaskSelection,
                 onShowTaskDetails: { taskID, anchor, visibleRect in
@@ -1512,6 +1610,12 @@ struct GanttChartView: View {
                     detailPopoverVisibleRect = visibleRect
                 },
                 onStartLinkingFromTask: startLinkingFromTask,
+                onSetTaskColor: planModel == nil ? nil : { taskID, hex in setTaskBarColor(taskID: taskID, hex: hex) },
+                focusedTaskID: focusedTaskID,
+                onToggleFocus: { taskID in
+                    focusedTaskID = (focusedTaskID == taskID) ? nil : taskID
+                },
+                reorderableSummaryIDs: reorderableSummaryIDs,
                 onSelectDependency: { predecessorID, successorID in
                     selectedDependency = GanttDependencySelection(
                         predecessorID: predecessorID,
@@ -1523,7 +1627,7 @@ struct GanttChartView: View {
                     removeDependency(predecessorID: predecessorID, successorID: successorID)
                 }
             )
-            .frame(width: chartContentWidth, height: CGFloat(flatTasks.count) * rowHeight)
+            .frame(width: chartContentWidth, height: CGFloat(flatTasks.count) * rowHeight + ganttTrailingSpace, alignment: .top)
             .background(
                 GeometryReader { proxy in
                     let horizontalFrame = proxy.frame(in: .named("GanttHorizontalScrollViewport"))
@@ -1566,6 +1670,10 @@ struct GanttChartView: View {
             ForEach(flatTasks, id: \.uniqueID) { task in
                 taskListRow(task, width: width)
             }
+
+            // Keep the task list the same height as the timeline canvas so the
+            // two panes scroll in lockstep, including the trailing space.
+            Color.clear.frame(height: ganttTrailingSpace)
         }
         .frame(width: width, alignment: .topLeading)
         .background(taskListBackgroundColor)
@@ -1587,6 +1695,9 @@ struct GanttChartView: View {
                 .font(.caption)
                 .lineLimit(1)
                 .truncationMode(.tail)
+                // Scope the row tooltip to the label so it doesn't cover the
+                // trailing action buttons, which have their own tooltips.
+                .help(taskRowTooltip(for: task))
 
             Spacer(minLength: 0)
 
@@ -1647,11 +1758,51 @@ struct GanttChartView: View {
                 Color.clear
             }
         }
-        .contentShape(Rectangle())
-        .onTapGesture {
-            handleTaskSelection(task.uniqueID)
-        }
+        // Put the row's tap target BEHIND the content so the inline action
+        // buttons stay independent hover targets — otherwise a row-wide
+        // contentShape swallows each button's own tooltip.
+        .background(
+            Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture { handleTaskSelection(task.uniqueID) }
+        )
         .contextMenu {
+            // Batch actions when several tasks are multi-selected.
+            let selection = effectiveSelectedTaskIDs
+            if selection.count > 1, selection.contains(task.uniqueID) {
+                Section("\(selection.count) Selected Tasks") {
+                    Button {
+                        setPercentCompleteForSelection(100)
+                    } label: {
+                        Label("Mark Complete", systemImage: "checkmark.circle")
+                    }
+                    Button {
+                        setPercentCompleteForSelection(0)
+                    } label: {
+                        Label("Mark Not Started", systemImage: "circle")
+                    }
+                }
+                Divider()
+            }
+
+            if task.summary == true && !task.children.isEmpty {
+                if focusedTaskID == task.uniqueID {
+                    Button {
+                        focusedTaskID = nil
+                    } label: {
+                        Label("Exit Focus", systemImage: "arrow.up.left.and.arrow.down.right")
+                    }
+                } else {
+                    Button {
+                        selectedTaskID = task.uniqueID
+                        focusedTaskID = task.uniqueID
+                    } label: {
+                        Label("Focus on This Phase", systemImage: "scope")
+                    }
+                }
+                Divider()
+            }
+
             Button {
                 selectedTaskID = task.uniqueID
                 addTask(after: task.uniqueID)
@@ -1704,6 +1855,28 @@ struct GanttChartView: View {
 
             Divider()
 
+            Menu {
+                ForEach(Self.barColorPresets, id: \.hex) { preset in
+                    Button {
+                        setTaskBarColor(taskID: task.uniqueID, hex: preset.hex)
+                    } label: {
+                        Label(preset.name, systemImage: task.barColorHex == preset.hex ? "checkmark.circle.fill" : "circle.fill")
+                    }
+                }
+                Divider()
+                Button {
+                    setTaskBarColor(taskID: task.uniqueID, hex: nil)
+                } label: {
+                    Label("Default Color", systemImage: "arrow.uturn.backward")
+                }
+                .disabled(task.barColorHex == nil)
+            } label: {
+                Label("Bar Color", systemImage: "paintpalette")
+            }
+            .disabled(!isEditingEnabled)
+
+            Divider()
+
             Button(role: .destructive) {
                 deleteTask(taskID: task.uniqueID)
             } label: {
@@ -1711,7 +1884,45 @@ struct GanttChartView: View {
             }
             .disabled(!isEditingEnabled)
         }
-        .help(taskRowTooltip(for: task))
+    }
+
+    // A small, high-contrast palette so bars can be grouped by phase, team,
+    // or status at a glance.
+    static let barColorPresets: [(name: String, hex: String)] = [
+        ("Blue", "#2F6FEB"),
+        ("Green", "#2FA84F"),
+        ("Orange", "#F5871F"),
+        ("Red", "#E5484D"),
+        ("Purple", "#8E4EC6"),
+        ("Teal", "#12A5A5"),
+        ("Pink", "#E93D82"),
+        ("Gray", "#8A8F98")
+    ]
+
+    private func setTaskBarColor(taskID: Int, hex: String?) {
+        guard planModel != nil else { return }
+        // If the task is part of a multi-selection, recolor the whole set in
+        // one mutation (a single undo step).
+        let selection = effectiveSelectedTaskIDs
+        let targets: Set<Int> = (selection.count > 1 && selection.contains(taskID)) ? selection : [taskID]
+        fullSyncGanttPlan { workingPlan in
+            for index in workingPlan.tasks.indices where targets.contains(workingPlan.tasks[index].id) {
+                workingPlan.tasks[index].barColorHex = hex
+            }
+        }
+        selectedTaskID = taskID
+    }
+
+    private func setPercentCompleteForSelection(_ percent: Double) {
+        guard planModel != nil else { return }
+        let targets = effectiveSelectedTaskIDs.intersection(editableTaskIDs)
+        guard !targets.isEmpty else { return }
+        fullSyncGanttPlan { workingPlan in
+            for index in workingPlan.tasks.indices where targets.contains(workingPlan.tasks[index].id) {
+                workingPlan.tasks[index].percentComplete = percent
+            }
+            workingPlan.reschedule()
+        }
     }
 
     private var taskListBackgroundColor: Color {
@@ -1962,7 +2173,7 @@ struct GanttChartView: View {
 
     private func refreshDerivedContent() {
         PerformanceMonitor.measure("Gantt.RefreshDerived") {
-            derivedContent = GanttDerivedContent.build(project: project, searchText: searchText)
+            derivedContent = GanttDerivedContent.build(project: project, searchText: searchText, focusedTaskID: focusedTaskID, maxVisibleLevel: maxVisibleLevel)
         }
     }
 
@@ -2682,6 +2893,28 @@ struct GanttChartView: View {
         selectedTaskID = taskID
     }
 
+    private func reorderNativeTask(_ taskID: Int, rowDelta: Int) {
+        guard rowDelta != 0, planModel != nil else { return }
+        guard let currentIndex = flatTasks.firstIndex(where: { $0.uniqueID == taskID }) else { return }
+        let targetIndex = max(0, min(flatTasks.count - 1, currentIndex + rowDelta))
+        guard targetIndex != currentIndex else { return }
+        let anchorTaskID = flatTasks[targetIndex].uniqueID
+        guard anchorTaskID != taskID else { return }
+
+        PerformanceMonitor.measure("Gantt.ReorderTask") {
+            fullSyncGanttPlan { workingPlan in
+                let moved = workingPlan.relocateTaskSubtree(
+                    taskID: taskID,
+                    anchorTaskID: anchorTaskID,
+                    placeAfterAnchor: rowDelta > 0
+                )
+                guard moved else { return }
+                workingPlan.reschedule()
+            }
+        }
+        selectedTaskID = taskID
+    }
+
     private func moveNativeTasks(_ taskIDs: Set<Int>, dayDelta: Int) {
         guard dayDelta != 0, !taskIDs.isEmpty, planModel != nil else { return }
 
@@ -3136,10 +3369,15 @@ struct GanttCanvasView: View {
     var selectedDependency: GanttDependencySelection? = nil
     var pendingLinkSourceTaskID: Int? = nil
     var onMoveTask: ((Int, Int) -> Void)? = nil
+    var onReorderTask: ((Int, Int) -> Void)? = nil
     var onResizeTask: ((Int, GanttResizeEdge, Int) -> Void)? = nil
     var onSelectTask: ((Int) -> Void)? = nil
     var onShowTaskDetails: ((Int, CGPoint, CGRect) -> Void)? = nil
     var onStartLinkingFromTask: ((Int) -> Void)? = nil
+    var onSetTaskColor: ((Int, String?) -> Void)? = nil
+    var focusedTaskID: Int? = nil
+    var onToggleFocus: ((Int) -> Void)? = nil
+    var reorderableSummaryIDs: Set<Int> = []
     var onSelectDependency: ((Int, Int) -> Void)? = nil
     var onRemoveDependency: ((Int, Int) -> Void)? = nil
 
@@ -3167,10 +3405,15 @@ struct GanttCanvasView: View {
         selectedDependency: GanttDependencySelection? = nil,
         pendingLinkSourceTaskID: Int? = nil,
         onMoveTask: ((Int, Int) -> Void)? = nil,
+        onReorderTask: ((Int, Int) -> Void)? = nil,
         onResizeTask: ((Int, GanttResizeEdge, Int) -> Void)? = nil,
         onSelectTask: ((Int) -> Void)? = nil,
         onShowTaskDetails: ((Int, CGPoint, CGRect) -> Void)? = nil,
         onStartLinkingFromTask: ((Int) -> Void)? = nil,
+        onSetTaskColor: ((Int, String?) -> Void)? = nil,
+        focusedTaskID: Int? = nil,
+        onToggleFocus: ((Int) -> Void)? = nil,
+        reorderableSummaryIDs: Set<Int> = [],
         onSelectDependency: ((Int, Int) -> Void)? = nil,
         onRemoveDependency: ((Int, Int) -> Void)? = nil
     ) {
@@ -3192,10 +3435,15 @@ struct GanttCanvasView: View {
         self.selectedDependency = selectedDependency
         self.pendingLinkSourceTaskID = pendingLinkSourceTaskID
         self.onMoveTask = onMoveTask
+        self.onReorderTask = onReorderTask
         self.onResizeTask = onResizeTask
         self.onSelectTask = onSelectTask
         self.onShowTaskDetails = onShowTaskDetails
         self.onStartLinkingFromTask = onStartLinkingFromTask
+        self.onSetTaskColor = onSetTaskColor
+        self.focusedTaskID = focusedTaskID
+        self.onToggleFocus = onToggleFocus
+        self.reorderableSummaryIDs = reorderableSummaryIDs
         self.onSelectDependency = onSelectDependency
         self.onRemoveDependency = onRemoveDependency
         self._layoutState = State(
@@ -3306,11 +3554,61 @@ struct GanttCanvasView: View {
                 dependencySelectionOverlay
             }
             taskRowHitOverlay
+            summaryReorderOverlay
             editableBarsOverlay
         }
         .coordinateSpace(name: canvasCoordinateSpaceName)
         .onChange(of: layoutInput) { _, _ in
             refreshLayoutState()
+        }
+    }
+
+    private var summaryReorderRows: [(index: Int, task: ProjectTask)] {
+        visibleTaskRows.filter { reorderableSummaryIDs.contains($0.task.uniqueID) }
+    }
+
+    private var summaryReorderOverlay: some View {
+        ZStack(alignment: .topLeading) {
+            ForEach(summaryReorderRows, id: \.task.uniqueID) { row in
+                GanttBarView(
+                    task: row.task,
+                    startDate: startDate,
+                    pixelsPerDay: pixelsPerDay,
+                    rowIndex: row.index,
+                    rowHeight: rowHeight,
+                    coordinateSpaceName: canvasCoordinateSpaceName,
+                    isEditable: true,
+                    reorderOnly: true,
+                    isSelected: selectedTaskID == row.task.uniqueID || selectedTaskIDs.contains(row.task.uniqueID),
+                    onReorderTask: { rowDelta in
+                        onReorderTask?(row.task.uniqueID, rowDelta)
+                    },
+                    onSelectTask: {
+                        onSelectTask?(row.task.uniqueID)
+                    },
+                    onShowTaskDetails: { anchor in
+                        onShowTaskDetails?(row.task.uniqueID, detailAnchor(for: anchor), visibleBounds)
+                    },
+                    onStartLinkingFromTask: {
+                        onStartLinkingFromTask?(row.task.uniqueID)
+                    }
+                )
+                .contextMenu {
+                    if let onToggleFocus {
+                        Button {
+                            onToggleFocus(row.task.uniqueID)
+                        } label: {
+                            Label(
+                                focusedTaskID == row.task.uniqueID ? "Exit Focus" : "Focus on This Phase",
+                                systemImage: focusedTaskID == row.task.uniqueID ? "arrow.up.left.and.arrow.down.right" : "scope"
+                            )
+                        }
+                    }
+                    if onSetTaskColor != nil {
+                        barColorMenu(for: row.task)
+                    }
+                }
+            }
         }
     }
 
@@ -3330,6 +3628,9 @@ struct GanttCanvasView: View {
                     onMoveTask: { dayDelta in
                         onMoveTask?(row.task.uniqueID, dayDelta)
                     },
+                    onReorderTask: { rowDelta in
+                        onReorderTask?(row.task.uniqueID, rowDelta)
+                    },
                     onResizeTask: { edge, dayDelta in
                         onResizeTask?(row.task.uniqueID, edge, dayDelta)
                     },
@@ -3344,7 +3645,32 @@ struct GanttCanvasView: View {
                         onStartLinkingFromTask?(row.task.uniqueID)
                     }
                 )
+                .contextMenu {
+                    barColorMenu(for: row.task)
+                }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func barColorMenu(for task: ProjectTask) -> some View {
+        Menu {
+            ForEach(GanttChartView.barColorPresets, id: \.hex) { preset in
+                Button {
+                    onSetTaskColor?(task.uniqueID, preset.hex)
+                } label: {
+                    Label(preset.name, systemImage: task.barColorHex == preset.hex ? "checkmark.circle.fill" : "circle.fill")
+                }
+            }
+            Divider()
+            Button {
+                onSetTaskColor?(task.uniqueID, nil)
+            } label: {
+                Label("Default Color", systemImage: "arrow.uturn.backward")
+            }
+            .disabled(task.barColorHex == nil)
+        } label: {
+            Label("Bar Color", systemImage: "paintpalette")
         }
     }
 
@@ -3372,6 +3698,21 @@ struct GanttCanvasView: View {
                     .buttonStyle(.plain)
                     .position(x: interactiveContentWidth / 2, y: geometry.rowRect.midY)
                     .help(tooltipFor(row.task))
+                    .contextMenu {
+                        if row.task.summary == true, !row.task.children.isEmpty, let onToggleFocus {
+                            Button {
+                                onToggleFocus(row.task.uniqueID)
+                            } label: {
+                                Label(
+                                    focusedTaskID == row.task.uniqueID ? "Exit Focus" : "Focus on This Phase",
+                                    systemImage: focusedTaskID == row.task.uniqueID ? "arrow.up.left.and.arrow.down.right" : "scope"
+                                )
+                            }
+                        }
+                        if onSetTaskColor != nil {
+                            barColorMenu(for: row.task)
+                        }
+                    }
                 }
             }
         }
@@ -3760,7 +4101,7 @@ struct GanttCanvasView: View {
 
                 guard let xStart = geometry.startX else { continue }
 
-                if editableTaskIDs.contains(task.uniqueID) {
+                if editableTaskIDs.contains(task.uniqueID) || reorderableSummaryIDs.contains(task.uniqueID) {
                     continue
                 }
 
@@ -3775,7 +4116,8 @@ struct GanttCanvasView: View {
                     diamond.addLine(to: CGPoint(x: cx, y: cy + dSize / 2))
                     diamond.addLine(to: CGPoint(x: cx - dSize / 2, y: cy))
                     diamond.closeSubpath()
-                    context.fill(diamond, with: .color(.orange.opacity(taskOpacity)))
+                    let milestoneColor = task.barColorHex.flatMap { Color(hex: $0) } ?? .orange
+                    context.fill(diamond, with: .color(milestoneColor.opacity(taskOpacity)))
 
                     // Right-side label for milestones
                     let varianceDescriptor = showBaseline ? task.baselineVarianceDescriptor.flatMap { $0.days == 0 ? nil : $0 } : nil
@@ -3804,23 +4146,24 @@ struct GanttCanvasView: View {
                 guard let width = geometry.width else { continue }
 
                 if task.summary == true {
-                    // Summary bracket
+                    // Summary bracket. A custom color highlights the whole phase.
+                    let bracketColor = (task.barColorHex.flatMap { Color(hex: $0) } ?? .primary).opacity(0.6 * taskOpacity)
                     let bracketH: CGFloat = barHeight * 0.3
                     let bracketY = y + barInset + barHeight * 0.35
                     let rect = CGRect(x: xStart, y: bracketY, width: width, height: bracketH)
-                    context.fill(Path(rect), with: .color(.primary.opacity(0.6 * taskOpacity)))
+                    context.fill(Path(rect), with: .color(bracketColor))
 
                     // Left/right ticks
                     let tick: CGFloat = 3
                     var leftTick = Path()
                     leftTick.move(to: CGPoint(x: xStart, y: bracketY))
                     leftTick.addLine(to: CGPoint(x: xStart, y: bracketY + bracketH + tick))
-                    context.stroke(leftTick, with: .color(.primary.opacity(0.6 * taskOpacity)), lineWidth: 1.5)
+                    context.stroke(leftTick, with: .color(bracketColor), lineWidth: 1.5)
 
                     var rightTick = Path()
                     rightTick.move(to: CGPoint(x: xStart + width, y: bracketY))
                     rightTick.addLine(to: CGPoint(x: xStart + width, y: bracketY + bracketH + tick))
-                    context.stroke(rightTick, with: .color(.primary.opacity(0.6 * taskOpacity)), lineWidth: 1.5)
+                    context.stroke(rightTick, with: .color(bracketColor), lineWidth: 1.5)
 
                     let varianceDescriptor = showBaseline ? task.baselineVarianceDescriptor.flatMap { $0.days == 0 ? nil : $0 } : nil
                     let badgeWidth = varianceDescriptor.map { baselineBadgeWidth(for: $0) } ?? 0
@@ -3844,9 +4187,11 @@ struct GanttCanvasView: View {
                         opacity: taskOpacity
                     )
                 } else {
-                // Regular bar
-                let bgColor: Color = isCritical ? .red.opacity(barBgOpacity * taskOpacity) : .blue.opacity(barBgOpacity * taskOpacity)
-                let fgColor: Color = isCritical ? .red : .blue
+                // Regular bar. A custom per-task color overrides the default
+                // critical (red) / normal (blue) scheme.
+                let customColor = task.barColorHex.flatMap { Color(hex: $0) }
+                let fgColor: Color = customColor ?? (isCritical ? .red : .blue)
+                let bgColor: Color = fgColor.opacity(barBgOpacity * taskOpacity)
 
                 let barRect = CGRect(x: xStart, y: y + barInset, width: width, height: barHeight)
                 let rr = RoundedRectangle(cornerRadius: 3).path(in: barRect)

@@ -192,19 +192,69 @@ enum PDFExporter {
         let boldBodyFont = NSFont.boldSystemFont(ofSize: 8)
         let titleFont = NSFont.boldSystemFont(ofSize: 14)
 
-        // Calculate rows per page
+        // Word-wrap the Name column instead of truncating; rows grow to fit.
+        let nameParagraph = NSMutableParagraphStyle()
+        nameParagraph.lineBreakMode = .byWordWrapping
+
         let contentStartY = pageHeight - margin - titleHeight
-        let rowsPerPage = Int((contentStartY - margin - headerHeight) / rowHeight)
-        let totalPages = max(1, Int(ceil(Double(rows.count) / Double(rowsPerPage))))
+        let bottomLimit = margin + 12
+        let nameColWidth = usableWidth * columns[2].widthFraction - 8
+
+        func nameAttributed(_ row: RowData) -> NSAttributedString {
+            var text = row.values[2]
+            if row.indent > 0 {
+                let prefix = String(repeating: "    ", count: row.indent)
+                let marker = row.isMilestone ? "\u{25C6} " : ""
+                text = prefix + marker + text
+            } else if row.isMilestone {
+                text = "\u{25C6} " + text
+            }
+            let font = row.isSummary ? boldBodyFont : bodyFont
+            let color: NSColor = row.isCritical ? .systemRed : .labelColor
+            return NSAttributedString(string: text, attributes: [
+                .font: font,
+                .foregroundColor: color,
+                .paragraphStyle: nameParagraph
+            ])
+        }
+
+        func heightForRow(_ row: RowData) -> CGFloat {
+            let framesetter = CTFramesetterCreateWithAttributedString(nameAttributed(row))
+            let size = CTFramesetterSuggestFrameSizeWithConstraints(
+                framesetter,
+                CFRange(location: 0, length: 0),
+                nil,
+                CGSize(width: nameColWidth, height: .greatestFiniteMagnitude),
+                nil
+            )
+            return max(rowHeight, ceil(size.height) + 6)
+        }
+
+        let rowHeights = rows.map(heightForRow)
+
+        // Paginate by accumulating variable row heights.
+        var pages: [[Int]] = []
+        var current: [Int] = []
+        let pageBodyHeight = contentStartY - headerHeight - bottomLimit
+        var available = pageBodyHeight
+        for (idx, h) in rowHeights.enumerated() {
+            if h > available, !current.isEmpty {
+                pages.append(current)
+                current = []
+                available = pageBodyHeight
+            }
+            current.append(idx)
+            available -= h
+        }
+        if !current.isEmpty { pages.append(current) }
+        if pages.isEmpty { pages = [[]] }
+        let totalPages = pages.count
 
         var mediaBox = CGRect(origin: .zero, size: CGSize(width: pageWidth, height: pageHeight))
         guard let ctx = CGContext(url as CFURL, mediaBox: &mediaBox, nil) else { return }
 
-        for page in 0..<totalPages {
+        for (page, pageRows) in pages.enumerated() {
             ctx.beginPDFPage(nil)
-
-            let startRow = page * rowsPerPage
-            let endRow = min(startRow + rowsPerPage, rows.count)
 
             // Title
             let titleText = fileName.replacingOccurrences(of: ".pdf", with: "")
@@ -244,19 +294,12 @@ enum PDFExporter {
                     attributes: [.font: headerFont, .foregroundColor: NSColor.labelColor])
                 let line = CTLineCreateWithAttributedString(attrStr)
                 let lineWidth = CTLineGetTypographicBounds(line, nil, nil, nil)
-
-                let textX: CGFloat
-                if col.alignment == .right {
-                    textX = xOffset + colWidth - CGFloat(lineWidth) - 4
-                } else {
-                    textX = xOffset + 4
-                }
+                let textX = col.alignment == .right ? xOffset + colWidth - CGFloat(lineWidth) - 4 : xOffset + 4
                 ctx.textPosition = CGPoint(x: textX, y: y - headerHeight + 7)
                 CTLineDraw(line, ctx)
                 xOffset += colWidth
             }
 
-            // Header bottom line
             ctx.setStrokeColor(NSColor.separatorColor.cgColor)
             ctx.setLineWidth(0.5)
             ctx.move(to: CGPoint(x: margin, y: y - headerHeight))
@@ -266,68 +309,54 @@ enum PDFExporter {
             y -= headerHeight
 
             // Data rows
-            for rowIdx in startRow..<endRow {
+            for (localIdx, rowIdx) in pageRows.enumerated() {
                 let row = rows[rowIdx]
-                let rowY = y - rowHeight
+                let h = rowHeights[rowIdx]
+                let rowY = y - h
 
-                // Alternate row shading
-                if (rowIdx - startRow) % 2 == 1 {
+                if localIdx % 2 == 1 {
                     ctx.setFillColor(NSColor.black.withAlphaComponent(0.03).cgColor)
-                    ctx.fill(CGRect(x: margin, y: rowY, width: usableWidth, height: rowHeight))
+                    ctx.fill(CGRect(x: margin, y: rowY, width: usableWidth, height: h))
                 }
-
-                // Summary row bold background
                 if row.isSummary {
                     ctx.setFillColor(NSColor.systemGray.withAlphaComponent(0.08).cgColor)
-                    ctx.fill(CGRect(x: margin, y: rowY, width: usableWidth, height: rowHeight))
+                    ctx.fill(CGRect(x: margin, y: rowY, width: usableWidth, height: h))
                 }
 
                 xOffset = margin
                 for (colIdx, col) in columns.enumerated() {
                     let colWidth = usableWidth * col.widthFraction
-                    var text = row.values[colIdx]
-                    let font = row.isSummary ? boldBodyFont : bodyFont
-                    let textColor: NSColor = row.isCritical ? .systemRed : .labelColor
 
-                    // Add indent to name column
-                    if colIdx == 2 && row.indent > 0 {
-                        let prefix = String(repeating: "  ", count: row.indent)
-                        let marker = row.isMilestone ? "\u{25C6} " : ""
-                        text = prefix + marker + text
-                    } else if colIdx == 2 && row.isMilestone {
-                        text = "\u{25C6} " + text
-                    }
-
-                    // Truncate to fit
-                    let maxChars = Int(colWidth / 5)
-                    if text.count > maxChars && maxChars > 3 {
-                        text = String(text.prefix(maxChars - 1)) + "\u{2026}"
-                    }
-
-                    let attrStr = NSAttributedString(string: text,
-                        attributes: [.font: font, .foregroundColor: textColor])
-                    let line = CTLineCreateWithAttributedString(attrStr)
-                    let lineWidth = CTLineGetTypographicBounds(line, nil, nil, nil)
-
-                    let textX: CGFloat
-                    if col.alignment == .right {
-                        textX = xOffset + colWidth - CGFloat(lineWidth) - 4
+                    if colIdx == 2 {
+                        // Wrapped, top-aligned name cell.
+                        let framesetter = CTFramesetterCreateWithAttributedString(nameAttributed(row))
+                        let cellRect = CGRect(x: xOffset + 4, y: rowY + 2, width: colWidth - 8, height: h - 4)
+                        let framePath = CGPath(rect: cellRect, transform: nil)
+                        let frame = CTFramesetterCreateFrame(framesetter, CFRange(location: 0, length: 0), framePath, nil)
+                        CTFrameDraw(frame, ctx)
                     } else {
-                        textX = xOffset + 4
+                        let text = row.values[colIdx]
+                        let font = row.isSummary ? boldBodyFont : bodyFont
+                        let textColor: NSColor = row.isCritical ? .systemRed : .labelColor
+                        let attrStr = NSAttributedString(string: text,
+                            attributes: [.font: font, .foregroundColor: textColor])
+                        let line = CTLineCreateWithAttributedString(attrStr)
+                        let lineWidth = CTLineGetTypographicBounds(line, nil, nil, nil)
+                        let textX = col.alignment == .right ? xOffset + colWidth - CGFloat(lineWidth) - 4 : xOffset + 4
+                        // Align single-line cells with the name's first line (top of the row).
+                        ctx.textPosition = CGPoint(x: textX, y: rowY + h - rowHeight + 5)
+                        CTLineDraw(line, ctx)
                     }
-                    ctx.textPosition = CGPoint(x: textX, y: rowY + 5)
-                    CTLineDraw(line, ctx)
                     xOffset += colWidth
                 }
 
-                // Light row separator
                 ctx.setStrokeColor(NSColor.separatorColor.withAlphaComponent(0.3).cgColor)
                 ctx.setLineWidth(0.25)
                 ctx.move(to: CGPoint(x: margin, y: rowY))
                 ctx.addLine(to: CGPoint(x: margin + usableWidth, y: rowY))
                 ctx.strokePath()
 
-                y -= rowHeight
+                y -= h
             }
 
             ctx.endPDFPage()

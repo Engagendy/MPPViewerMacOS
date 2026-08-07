@@ -194,6 +194,17 @@ struct TaskTableView: View {
         GeometryReader { geometry in
             let inspectorWidth = clampedInspectorWidth(for: geometry.size.width)
             let compactToolbar = geometry.size.width < 1350
+            // When the inspector is open, pin the table to its share so its
+            // wide column set can't push the inspector off the right edge.
+            let inspectorTrailingMargin: CGFloat = 16
+            let tableWidth: CGFloat? = selectedTask != nil
+                ? max(320, geometry.size.width - inspectorWidth - 10 - inspectorTrailingMargin)
+                : nil
+            // Build the resource lookups once per body pass. The Resources column
+            // closure runs for every visible row, and calling resourceNamesText(for:)
+            // there used to rebuild both dictionaries per row — O(rows × assignments).
+            let assignmentLookup = assignmentsByTaskID
+            let resourceNameLookup = resourceNamesByID
 
             HStack(spacing: 0) {
                 // Main table
@@ -332,7 +343,7 @@ struct TaskTableView: View {
                                 allTasks: allTasks,
                                 resources: resources,
                                 assignments: assignments,
-                                fileName: "Task List \(PDFExporter.fileNameTimestamp).xls"
+                                fileName: "Task List \(PDFExporter.fileNameTimestamp).xlsx"
                             )
                         } label: {
                             toolbarLabel("Export Excel", systemImage: "tablecells.badge.ellipsis", compact: compactToolbar)
@@ -436,6 +447,7 @@ struct TaskTableView: View {
                                         .fontWeight(task.summary == true ? .semibold : .regular)
                                         .foregroundStyle(task.critical == true ? .red : .primary)
                                         .lineLimit(1)
+                                        .truncationMode(.tail)
                                 }
                                 HStack(spacing: 6) {
                                     baselineDeltaBadge(for: task)
@@ -447,6 +459,8 @@ struct TaskTableView: View {
                             .background(isSelected ? Color.accentColor.opacity(0.1) : Color.clear)
                             .cornerRadius(3)
                             .contentShape(Rectangle())
+                            // Full name on hover, since the column may still clip very long names.
+                            .help(task.displayName)
                             .onTapGesture {
                                 if isSummaryWithChildren {
                                     if isCollapsed {
@@ -460,7 +474,7 @@ struct TaskTableView: View {
                             }
                             .cursor(isSummaryWithChildren ? .pointingHand : .arrow)
                         }
-                        .width(min: 200, ideal: 350)
+                        .width(min: 220, ideal: 460)
 
                         TableColumn("Duration") { (task: ProjectTask) in
                             Text(task.durationDisplay)
@@ -571,7 +585,7 @@ struct TaskTableView: View {
 
                             if visibleOptionalColumns.contains("Resources") {
                                 TableColumn("Resources") { (task: ProjectTask) in
-                                    Text(resourceNamesText(for: task))
+                                    Text(resourceNamesText(for: task, assignmentsByTaskID: assignmentLookup, resourceNamesByID: resourceNameLookup))
                                         .font(.caption)
                                         .lineLimit(1)
                                 }
@@ -617,7 +631,7 @@ struct TaskTableView: View {
                     }
                 }
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(maxWidth: tableWidth ?? .infinity, maxHeight: .infinity)
                 .onKeyPress(.escape) {
                     selectedTaskID = nil
                     return .handled
@@ -644,6 +658,9 @@ struct TaskTableView: View {
                         }
                     )
                     .frame(width: inspectorWidth)
+                    // Keep the detail content clear of the pane's right edge so
+                    // long values and section boxes don't run off-screen.
+                    .padding(.trailing, 16)
                 }
             }
         }
@@ -692,7 +709,10 @@ struct TaskTableView: View {
 
     private func clampedInspectorWidth(for totalWidth: CGFloat) -> CGFloat {
         let minWidth: CGFloat = 320
-        let maxWidth = max(minWidth, totalWidth - 420)
+        // Keep the detail pane from dominating: hard-cap its width and always
+        // leave enough room for the table's toolbar so its menus don't collapse.
+        let hardCap: CGFloat = 560
+        let maxWidth = max(minWidth, min(hardCap, totalWidth - 640))
         return min(max(CGFloat(storedInspectorWidth), minWidth), maxWidth)
     }
 
@@ -711,7 +731,8 @@ struct TaskTableView: View {
                 DragGesture(minimumDistance: 0)
                     .onChanged { value in
                         let proposedWidth = storedInspectorWidth - value.translation.width
-                        storedInspectorWidth = Double(min(max(proposedWidth, 320), totalWidth - 420))
+                        let maxWidth = max(320, min(560, totalWidth - 640))
+                        storedInspectorWidth = Double(min(max(proposedWidth, 320), maxWidth))
                     }
             )
     }

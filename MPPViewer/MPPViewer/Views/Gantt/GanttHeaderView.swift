@@ -65,6 +65,25 @@ struct GanttHeaderView: View {
 
     // MARK: - Zoomed in: horizontal day labels
 
+    /// Draws a month label only when its visible span is wide enough to hold
+    /// the text, so a narrow first/last partial month doesn't collide with the
+    /// next month's label.
+    private func drawMonthLabelIfFits(
+        context: GraphicsContext,
+        label: String,
+        startX: CGFloat,
+        endX: CGFloat,
+        topRowHeight: CGFloat,
+        valid: Bool
+    ) {
+        guard valid, !label.isEmpty else { return }
+        let text = Text(label).font(.caption2).foregroundColor(.secondary)
+        let resolved = context.resolve(text)
+        let width = resolved.measure(in: CGSize(width: .greatestFiniteMagnitude, height: topRowHeight)).width
+        guard (endX - startX) >= width + 8 else { return }
+        context.draw(resolved, at: CGPoint(x: startX + 4, y: topRowHeight / 2), anchor: .leading)
+    }
+
     private func drawMonthsAndDays(context: GraphicsContext, size: CGSize, calendar: Calendar, totalDays: Int) {
         let topRowHeight = size.height * 0.5
         let bottomRowHeight = size.height * 0.5
@@ -74,6 +93,9 @@ struct GanttHeaderView: View {
         monthFormatter.dateFormat = "MMM yyyy"
 
         var currentMonth: Int = -1
+        var pendingLabel = ""
+        var pendingStartX: CGFloat = 0
+        var hasPending = false
 
         for day in 0..<totalDays {
             let x = CGFloat(day) * pixelsPerDay
@@ -83,13 +105,11 @@ struct GanttHeaderView: View {
 
             if month != currentMonth {
                 currentMonth = month
-                let label = monthFormatter.string(from: date)
-                let text = Text(label).font(.caption2).foregroundColor(.secondary)
-                context.draw(
-                    context.resolve(text),
-                    at: CGPoint(x: x + 4, y: topRowHeight / 2),
-                    anchor: .leading
-                )
+                // Finalize the previous month now that we know where it ends.
+                drawMonthLabelIfFits(context: context, label: pendingLabel, startX: pendingStartX, endX: x, topRowHeight: topRowHeight, valid: hasPending)
+                pendingLabel = monthFormatter.string(from: date)
+                pendingStartX = x
+                hasPending = true
 
                 var monthLine = Path()
                 monthLine.move(to: CGPoint(x: x, y: 0))
@@ -106,6 +126,7 @@ struct GanttHeaderView: View {
                 )
             }
         }
+        drawMonthLabelIfFits(context: context, label: pendingLabel, startX: pendingStartX, endX: CGFloat(totalDays) * pixelsPerDay, topRowHeight: topRowHeight, valid: hasPending)
     }
 
     // MARK: - Zoomed out: vertical week/day labels
@@ -118,6 +139,9 @@ struct GanttHeaderView: View {
         weekFormatter.dateFormat = "d MMM"
 
         var currentMonth: Int = -1
+        var pendingLabel = ""
+        var pendingStartX: CGFloat = 0
+        var hasPending = false
 
         // Determine label interval based on how tight the zoom is
         let weekPixels = 7 * pixelsPerDay
@@ -133,13 +157,10 @@ struct GanttHeaderView: View {
             // Month labels (top row, horizontal)
             if month != currentMonth {
                 currentMonth = month
-                let label = monthFormatter.string(from: date)
-                let text = Text(label).font(.caption2).foregroundColor(.secondary)
-                context.draw(
-                    context.resolve(text),
-                    at: CGPoint(x: x + 4, y: topRowHeight / 2),
-                    anchor: .leading
-                )
+                drawMonthLabelIfFits(context: context, label: pendingLabel, startX: pendingStartX, endX: x, topRowHeight: topRowHeight, valid: hasPending)
+                pendingLabel = monthFormatter.string(from: date)
+                pendingStartX = x
+                hasPending = true
 
                 var monthLine = Path()
                 monthLine.move(to: CGPoint(x: x, y: 0))
@@ -165,5 +186,6 @@ struct GanttHeaderView: View {
                 }
             }
         }
+        drawMonthLabelIfFits(context: context, label: pendingLabel, startX: pendingStartX, endX: CGFloat(totalDays) * pixelsPerDay, topRowHeight: topRowHeight, valid: hasPending)
     }
 }

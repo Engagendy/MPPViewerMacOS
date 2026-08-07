@@ -721,6 +721,54 @@ struct NativeProjectPlan: Codable, Hashable {
         (sprints.map(\.id).max() ?? 0) + 1
     }
 
+    /// The contiguous block of rows forming `taskID`'s subtree (the task and
+    /// every following row with a deeper outline level).
+    func taskSubtreeRange(startingAt index: Int) -> Range<Int> {
+        let baseLevel = tasks[index].outlineLevel
+        var endIndex = index + 1
+        while tasks.indices.contains(endIndex), tasks[endIndex].outlineLevel > baseLevel {
+            endIndex += 1
+        }
+        return index ..< endIndex
+    }
+
+    /// Moves a task's whole subtree next to an anchor row. Hierarchy is
+    /// positional: after the move the subtree's root level is clamped so the
+    /// row above it can legally be its parent or sibling, which is what lets
+    /// a task hop from one summary into another.
+    /// - Returns: true when the plan changed.
+    @discardableResult
+    mutating func relocateTaskSubtree(taskID: Int, anchorTaskID: Int, placeAfterAnchor: Bool) -> Bool {
+        guard taskID != anchorTaskID,
+              let sourceIndex = tasks.firstIndex(where: { $0.id == taskID }) else { return false }
+
+        let sourceRange = taskSubtreeRange(startingAt: sourceIndex)
+        guard let anchorIndex = tasks.firstIndex(where: { $0.id == anchorTaskID }),
+              !sourceRange.contains(anchorIndex) else { return false }
+
+        var block = Array(tasks[sourceRange])
+        tasks.removeSubrange(sourceRange)
+
+        guard let newAnchorIndex = tasks.firstIndex(where: { $0.id == anchorTaskID }) else {
+            tasks.insert(contentsOf: block, at: min(sourceRange.lowerBound, tasks.count))
+            return false
+        }
+
+        let insertionIndex = placeAfterAnchor ? newAnchorIndex + 1 : newAnchorIndex
+        let precedingLevel = insertionIndex > 0 ? tasks[insertionIndex - 1].outlineLevel : 0
+        let rootLevel = block[0].outlineLevel
+        let clampedRootLevel = max(1, min(rootLevel, precedingLevel + 1))
+        let levelDelta = clampedRootLevel - rootLevel
+        if levelDelta != 0 {
+            for index in block.indices {
+                block[index].outlineLevel = max(1, block[index].outlineLevel + levelDelta)
+            }
+        }
+
+        tasks.insert(contentsOf: block, at: insertionIndex)
+        return true
+    }
+
     func makeTask(name: String = "New Task", anchoredTo date: Date? = nil) -> NativePlanTask {
         let baseDate = Calendar.current.startOfDay(for: date ?? statusDate)
         return NativePlanTask(
@@ -964,7 +1012,8 @@ struct NativeProjectPlan: Codable, Hashable {
                 bcws: hierarchy.isSummary ? nil : financials?.plannedValue,
                 bcwp: hierarchy.isSummary ? nil : financials?.earnedValue,
                 acwp: hierarchy.isSummary ? nil : financials?.actualCost,
-                customFields: task.customFields.isEmpty ? nil : task.customFields.mapValues { AnyCodable($0) }
+                customFields: task.customFields.isEmpty ? nil : task.customFields.mapValues { AnyCodable($0) },
+                barColorHex: task.barColorHex
             )
         }
 
@@ -1250,6 +1299,7 @@ struct NativePlanTask: Codable, Identifiable, Hashable {
     var epicName: String
     var tags: [String]
     var customFields: [String: String]
+    var barColorHex: String?
 
     enum CodingKeys: String, CodingKey {
         case uniqueID
@@ -1284,6 +1334,7 @@ struct NativePlanTask: Codable, Identifiable, Hashable {
         case epicName
         case tags
         case customFields
+        case barColorHex
     }
 
     init(
@@ -1318,6 +1369,7 @@ struct NativePlanTask: Codable, Identifiable, Hashable {
         epicName: String,
         tags: [String],
         customFields: [String: String] = [:],
+        barColorHex: String? = nil,
         uniqueID: UUID = UUID()
     ) {
         self.uniqueID = uniqueID
@@ -1352,6 +1404,7 @@ struct NativePlanTask: Codable, Identifiable, Hashable {
         self.epicName = epicName
         self.tags = tags
         self.customFields = customFields
+        self.barColorHex = barColorHex
     }
 
     init(from decoder: Decoder) throws {
@@ -1388,6 +1441,7 @@ struct NativePlanTask: Codable, Identifiable, Hashable {
         epicName = try container.decodeIfPresent(String.self, forKey: .epicName) ?? ""
         tags = try container.decodeIfPresent([String].self, forKey: .tags) ?? []
         customFields = try container.decodeIfPresent([String: String].self, forKey: .customFields) ?? [:]
+        barColorHex = try container.decodeIfPresent(String.self, forKey: .barColorHex)
         let normalizedStart = Calendar.current.startOfDay(for: min(startDate, finishDate))
         let normalizedFinish = Calendar.current.startOfDay(for: max(startDate, finishDate))
         startDate = normalizedStart
@@ -3196,6 +3250,7 @@ final class PortfolioPlanTask {
     var epicName: String
     var tags: [String]
     var customFields: [String: String]?
+    var barColorHex: String?
     var orderIndex: Int
     var isCollapsed: Bool
     var isHiddenInGantt: Bool
@@ -3238,6 +3293,7 @@ final class PortfolioPlanTask {
         self.epicName = nativeTask.epicName
         self.tags = nativeTask.tags
         self.customFields = nativeTask.customFields.isEmpty ? nil : nativeTask.customFields
+        self.barColorHex = nativeTask.barColorHex
         self.orderIndex = orderIndex
         self.isCollapsed = false
         self.isHiddenInGantt = false
@@ -3277,6 +3333,7 @@ final class PortfolioPlanTask {
         epicName = nativeTask.epicName
         tags = nativeTask.tags
         customFields = nativeTask.customFields.isEmpty ? nil : nativeTask.customFields
+        barColorHex = nativeTask.barColorHex
         self.orderIndex = orderIndex
     }
 
@@ -3349,6 +3406,7 @@ final class PortfolioPlanTask {
             epicName: epicName,
             tags: tags,
             customFields: customFields ?? [:],
+            barColorHex: barColorHex,
             uniqueID: uniqueID
         )
     }

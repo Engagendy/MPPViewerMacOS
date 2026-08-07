@@ -2952,6 +2952,7 @@ struct ContentView: View {
     @State private var searchSuggestionTasks: [ProjectTask] = []
     @State private var searchSuggestionWorkItem: DispatchWorkItem?
     @State private var navigateToTaskID: Int?
+    @State private var showCommandPalette = false
     @State private var cachedFlaggedTaskIDs: Set<Int> = []
     @State private var editableWorkspaceError: String?
     @State private var documentActionMessage: String?
@@ -3697,6 +3698,43 @@ struct ContentView: View {
         alertConfiguredView
             .frame(minWidth: 1100, minHeight: 720)
             .background(WindowCloseConfigurator())
+            .background(commandPaletteShortcut)
+            .overlay {
+                if showCommandPalette {
+                    CommandPaletteView(
+                        views: commandPaletteViews,
+                        tasks: displayProject?.tasks ?? [],
+                        onSelectView: { selectedNav = $0 },
+                        onSelectTask: { taskID in
+                            selectedNav = .tasks
+                            navigateToTaskID = taskID
+                        },
+                        onDismiss: { showCommandPalette = false }
+                    )
+                    .transition(.opacity)
+                    .zIndex(500)
+                }
+            }
+    }
+
+    // Hidden button carries the ⌘K shortcut so the palette opens from anywhere
+    // in the window.
+    private var commandPaletteShortcut: some View {
+        Button("") { showCommandPalette.toggle() }
+            .keyboardShortcut("k", modifiers: .command)
+            .opacity(0)
+            .accessibilityHidden(true)
+    }
+
+    private var commandPaletteViews: [NavigationItem] {
+        var items: [NavigationItem] = [.portfolio, .dashboard, .executive, .summary]
+        if document.isEditablePlan {
+            items += [.planner, .agileBoard, .statusCenter]
+        }
+        items += [.tasks, .milestones, .gantt, .schedule, .timeline, .resources, .calendar,
+                  .validation, .diagnostics, .dependencyExplorer, .resourceRisks, .criticalPath,
+                  .earnedValue, .workload, .diff, .helpCenter]
+        return items
     }
 
     @ViewBuilder
@@ -4206,7 +4244,8 @@ struct ProjectDiagnosticsView: View {
     let project: ProjectModel
     @Binding var navigateToTaskID: Int?
     @Binding var selectedNav: NavigationItem?
-    @State private var cachedItems: [ProjectDiagnosticItem]
+    @State private var cachedItems: [ProjectDiagnosticItem] = []
+    @State private var isAnalyzing = true
 
     private var items: [ProjectDiagnosticItem] {
         cachedItems
@@ -4216,7 +4255,6 @@ struct ProjectDiagnosticsView: View {
         self.project = project
         self._navigateToTaskID = navigateToTaskID
         self._selectedNav = selectedNav
-        self._cachedItems = State(initialValue: ProjectDiagnostics.analyze(project: project))
     }
 
     var body: some View {
@@ -4242,7 +4280,10 @@ struct ProjectDiagnosticsView: View {
 
             Divider()
 
-            if items.isEmpty {
+            if isAnalyzing && items.isEmpty {
+                ProgressView("Analyzing diagnostics…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if items.isEmpty {
                 ContentUnavailableView(
                     "No Diagnostics",
                     systemImage: "stethoscope",
@@ -4302,8 +4343,15 @@ struct ProjectDiagnosticsView: View {
                 }
             }
         }
-        .onAppear {
-            cachedItems = ProjectDiagnostics.analyze(project: project)
+        .task {
+            // ProjectDiagnostics.analyze can be heavy on large plans; run it off
+            // the main thread so switching to this tab doesn't hang the UI.
+            let project = self.project
+            let result = await Task.detached(priority: .userInitiated) {
+                ProjectDiagnostics.analyze(project: project)
+            }.value
+            cachedItems = result
+            isAnalyzing = false
         }
     }
 
@@ -4330,7 +4378,8 @@ struct ProjectValidationView: View {
 
     @State private var selectedSeverity: ValidationSeverityFilter = .all
     @State private var sortOrder = [KeyPathComparator(\ProjectValidationIssue.sortSeverityRank, order: .reverse)]
-    @State private var cachedAllIssues: [ProjectValidationIssue]
+    @State private var cachedAllIssues: [ProjectValidationIssue] = []
+    @State private var isValidating = true
 
     private var issues: [ProjectValidationIssue] {
         let filtered: [ProjectValidationIssue]
@@ -4351,7 +4400,6 @@ struct ProjectValidationView: View {
         self.project = project
         self._navigateToTaskID = navigateToTaskID
         self._selectedNav = selectedNav
-        self._cachedAllIssues = State(initialValue: ProjectValidator.validate(project: project))
     }
 
     var body: some View {
@@ -4396,7 +4444,10 @@ struct ProjectValidationView: View {
 
             Divider()
 
-            if issues.isEmpty {
+            if isValidating && cachedAllIssues.isEmpty {
+                ProgressView("Validating plan…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if issues.isEmpty {
                 ContentUnavailableView(
                     "No Validation Issues",
                     systemImage: "checkmark.shield",
@@ -4461,8 +4512,15 @@ struct ProjectValidationView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .onAppear {
-            cachedAllIssues = ProjectValidator.validate(project: project)
+        .task {
+            // ProjectValidator.validate can be heavy on large plans; run it off
+            // the main thread so opening this tab doesn't hang the UI.
+            let project = self.project
+            let result = await Task.detached(priority: .userInitiated) {
+                ProjectValidator.validate(project: project)
+            }.value
+            cachedAllIssues = result
+            isValidating = false
         }
     }
 

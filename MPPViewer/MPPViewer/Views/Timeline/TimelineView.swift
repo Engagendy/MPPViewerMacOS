@@ -217,7 +217,9 @@ struct TimelineView: View {
             }
 
             let colorIdx = level1Index[topID] ?? 0
-            let color = phaseColors[colorIdx % phaseColors.count]
+            // A custom per-task color overrides the default per-phase palette.
+            let customColor = task.barColorHex.flatMap { Color(hex: $0) }
+            let color = customColor ?? phaseColors[colorIdx % phaseColors.count]
 
             var startDayOffset: Int = 0
             var endDayOffset: Int = 0
@@ -246,6 +248,7 @@ struct TimelineView: View {
                 baselineDescriptor: task.baselineVarianceDescriptor,
                 predecessorIDs: task.predecessors?.map(\.targetTaskUniqueID) ?? [],
                 color: color,
+                customColor: customColor,
                 laneIndex: laneIndex,
                 isLevel1: (task.outlineLevel ?? 1) <= 1 && task.summary == true,
                 isCritical: task.critical == true
@@ -422,8 +425,9 @@ struct TimelineView: View {
         diamond.addLine(to: CGPoint(x: x, y: cy + dSize / 2))
         diamond.addLine(to: CGPoint(x: x - dSize / 2, y: cy))
         diamond.closeSubpath()
-        context.fill(diamond, with: .color(.orange.opacity(opacity)))
-        context.stroke(diamond, with: .color(.orange.opacity(0.8 * opacity)), lineWidth: 1)
+        let milestoneColor = item.customColor ?? .orange
+        context.fill(diamond, with: .color(milestoneColor.opacity(opacity)))
+        context.stroke(diamond, with: .color(milestoneColor.opacity(0.8 * opacity)), lineWidth: 1)
 
         let label = Text("\(item.name)  \(item.startDateStr)")
             .font(.system(size: 9))
@@ -523,6 +527,7 @@ private struct TimelineItem {
     let baselineDescriptor: BaselineVarianceDescriptor?
     let predecessorIDs: [Int]
     let color: Color
+    let customColor: Color?
     let laneIndex: Int
     let isLevel1: Bool
     let isCritical: Bool

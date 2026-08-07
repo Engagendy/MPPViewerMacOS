@@ -26,6 +26,8 @@
 		A10000010000000000000015 /* ResourceSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000015 /* ResourceSheetView.swift */; };
 		A10000010000000000000016 /* CalendarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000016 /* CalendarView.swift */; };
 		A10000010000000000000017 /* DateFormatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000017 /* DateFormatting.swift */; };
+		A100000B00000000000000C2 /* XLSX.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000B00000000000000C2 /* XLSX.swift */; };
+		A100000A00000000000000C1 /* ColorHex.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000A00000000000000C1 /* ColorHex.swift */; };
 		A10000010000000000000018 /* DurationFormatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000018 /* DurationFormatting.swift */; };
 		A10000010000000000000019 /* ColorTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000019 /* ColorTheme.swift */; };
 		A10000010000000000000070 /* PDFExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000070 /* PDFExporter.swift */; };
@@ -38,6 +40,7 @@
 		A10000010000000000000081 /* EVMCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000081 /* EVMCalculator.swift */; };
 		A10000010000000000000082 /* WorkloadCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000082 /* WorkloadCalculator.swift */; };
 			A10000010000000000000083 /* FilterBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000083 /* FilterBarView.swift */; };
+		A100000C00000000000000C3 /* CommandPaletteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000C00000000000000C3 /* CommandPaletteView.swift */; };
 		A100000F00000000000000CD /* CalendarDatePicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000F00000000000000CE /* CalendarDatePicker.swift */; };
 			A10000010000000000000084 /* EarnedValueView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000084 /* EarnedValueView.swift */; };
 			A10000010000000000000085 /* WorkloadView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000085 /* WorkloadView.swift */; };
@@ -120,6 +123,8 @@
 		A20000010000000000000015 /* ResourceSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResourceSheetView.swift; sourceTree = "<group>"; };
 		A20000010000000000000016 /* CalendarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarView.swift; sourceTree = "<group>"; };
 		A20000010000000000000017 /* DateFormatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DateFormatting.swift; sourceTree = "<group>"; };
+		A200000B00000000000000C2 /* XLSX.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XLSX.swift; sourceTree = "<group>"; };
+		A200000A00000000000000C1 /* ColorHex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColorHex.swift; sourceTree = "<group>"; };
 		A20000010000000000000018 /* DurationFormatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DurationFormatting.swift; sourceTree = "<group>"; };
 		A20000010000000000000019 /* ColorTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColorTheme.swift; sourceTree = "<group>"; };
 		A20000010000000000000070 /* PDFExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFExporter.swift; sourceTree = "<group>"; };
@@ -134,6 +139,7 @@
 		A20000010000000000000081 /* EVMCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EVMCalculator.swift; sourceTree = "<group>"; };
 		A20000010000000000000082 /* WorkloadCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkloadCalculator.swift; sourceTree = "<group>"; };
 			A20000010000000000000083 /* FilterBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilterBarView.swift; sourceTree = "<group>"; };
+		A200000C00000000000000C3 /* CommandPaletteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandPaletteView.swift; sourceTree = "<group>"; };
 		A200000F00000000000000CE /* CalendarDatePicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarDatePicker.swift; sourceTree = "<group>"; };
 			A20000010000000000000084 /* EarnedValueView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EarnedValueView.swift; sourceTree = "<group>"; };
 			A20000010000000000000085 /* WorkloadView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkloadView.swift; sourceTree = "<group>"; };
@@ -322,6 +328,8 @@
 			isa = PBXGroup;
 			children = (
 				A20000010000000000000017 /* DateFormatting.swift */,
+				A200000B00000000000000C2 /* XLSX.swift */,
+				A200000A00000000000000C1 /* ColorHex.swift */,
 				A20000010000000000000018 /* DurationFormatting.swift */,
 				A20000010000000000000019 /* ColorTheme.swift */,
 				A20000010000000000136 /* SafeCollection.swift */,
@@ -395,6 +403,7 @@
 				isa = PBXGroup;
 				children = (
 					A20000010000000000000083 /* FilterBarView.swift */,
+					A200000C00000000000000C3 /* CommandPaletteView.swift */,
 					A200000F00000000000000CE /* CalendarDatePicker.swift */,
 					A20000010000000000000134 /* CSVImportMappingViews.swift */,
 				);
@@ -646,6 +655,8 @@
 				A10000010000000000000015 /* ResourceSheetView.swift in Sources */,
 				A10000010000000000000016 /* CalendarView.swift in Sources */,
 				A10000010000000000000017 /* DateFormatting.swift in Sources */,
+				A100000B00000000000000C2 /* XLSX.swift in Sources */,
+				A100000A00000000000000C1 /* ColorHex.swift in Sources */,
 				A10000010000000000000018 /* DurationFormatting.swift in Sources */,
 				A10000010000000000000019 /* ColorTheme.swift in Sources */,
 				A10000010000000000000070 /* PDFExporter.swift in Sources */,
@@ -657,6 +668,7 @@
 				A10000010000000000000081 /* EVMCalculator.swift in Sources */,
 				A10000010000000000000082 /* WorkloadCalculator.swift in Sources */,
 				A10000010000000000000083 /* FilterBarView.swift in Sources */,
+				A100000C00000000000000C3 /* CommandPaletteView.swift in Sources */,
 				A100000F00000000000000CD /* CalendarDatePicker.swift in Sources */,
 				A10000010000000000000134 /* CSVImportMappingViews.swift in Sources */,
 				A10000010000000000000084 /* EarnedValueView.swift in Sources */,
@@ -725,7 +737,7 @@
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.4;
-				MARKETING_VERSION = 2.5.0;
+				MARKETING_VERSION = 2.5.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mppviewer.MPPConverterXPC;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -753,7 +765,7 @@
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.4;
-				MARKETING_VERSION = 2.5.0;
+				MARKETING_VERSION = 2.5.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mppviewer.MPPConverterXPC;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -904,7 +916,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2.5.0;
+				MARKETING_VERSION = 2.5.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mppviewer.MPPViewer;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -934,7 +946,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2.5.0;
+				MARKETING_VERSION = 2.5.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mppviewer.MPPViewer;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
