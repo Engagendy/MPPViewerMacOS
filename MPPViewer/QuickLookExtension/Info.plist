@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleDisplayName</key>
-	<string>MPP Plan Preview</string>
+	<string>Planroom Plan Preview</string>
 	<key>NSExtension</key>
 	<dict>
 		<key>NSExtensionAttributes</key>

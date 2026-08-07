@@ -1,4 +1,4 @@
-# MPP Viewer — Manual QA Checklist
+# Planroom — Manual QA Checklist
 
 Fast pass to verify every feature/view. Start by creating a fresh plan:
 **File → New**, then in **Plan Builder** add a couple of phases with tasks

@@ -2980,7 +2980,7 @@ struct ContentView: View {
     private var contentNavigationTitle: String {
         displayProject?.properties.projectTitle
         ?? currentProject?.properties.projectTitle
-        ?? "MPP Viewer"
+        ?? "Planroom"
     }
 
     private var appearConfiguredView: AnyView {

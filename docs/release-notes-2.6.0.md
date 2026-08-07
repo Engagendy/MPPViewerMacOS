@@ -1,4 +1,4 @@
-# MPP Viewer 2.6.0 — App Store "What's New"
+# Planroom 2.6.0 — App Store "What's New"
 
 ## Suggested App Store Connect text
 

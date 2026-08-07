@@ -63,7 +63,7 @@ struct MPPViewerApp: App {
         .defaultSize(width: 1280, height: 820)
         .commands {
             CommandGroup(replacing: .appTermination) {
-                Button("Quit MPP Viewer") {
+                Button("Quit Planroom") {
                     AppDelegate.shared?.quitApplication(nil)
                 }
                 .keyboardShortcut("q", modifiers: .command)

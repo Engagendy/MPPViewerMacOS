@@ -3,7 +3,9 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleDisplayName</key>
-	<string>MPP Viewer</string>
+	<string>Planroom</string>
+	<key>CFBundleName</key>
+	<string>Planroom</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>CFBundleDocumentTypes</key>
@@ -14,7 +16,7 @@
 				<string>mppplan</string>
 			</array>
 			<key>CFBundleTypeName</key>
-			<string>MPP Viewer Plan</string>
+			<string>Planroom Plan</string>
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
 			<key>LSHandlerRank</key>
@@ -77,7 +79,7 @@
 				<string>public.json</string>
 			</array>
 			<key>UTTypeDescription</key>
-			<string>MPP Viewer Plan</string>
+			<string>Planroom Plan</string>
 			<key>UTTypeIdentifier</key>
 			<string>com.mppviewer.plan</string>
 			<key>UTTypeTagSpecification</key>

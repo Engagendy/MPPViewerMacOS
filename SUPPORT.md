@@ -1,13 +1,13 @@
-# MPP Viewer Support
+# Planroom Support
 
-MPP Viewer support is available by email and through GitHub.
+Planroom support is available by email and through GitHub.
 
 ## Contact
 
 - Email: engagendy@gmail.com
 - GitHub issues: https://github.com/Engagendy/MPPViewerMacOS/issues
 
-For bug reports, include your macOS version, MPP Viewer version, the type of file you opened (`.mpp` or `.mppplan`), and the steps that reproduce the issue.
+For bug reports, include your macOS version, Planroom version, the type of file you opened (`.mpp` or `.mppplan`), and the steps that reproduce the issue.
 
 ## Sample Files
 

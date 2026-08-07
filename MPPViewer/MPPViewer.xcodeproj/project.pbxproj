@@ -933,7 +933,7 @@
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = MPPViewer/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = "MPP Viewer";
+				INFOPLIST_KEY_CFBundleDisplayName = Planroom;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "© 2026 Ahmed El-Gendy";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -963,7 +963,7 @@
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = MPPViewer/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = "MPP Viewer";
+				INFOPLIST_KEY_CFBundleDisplayName = Planroom;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "© 2026 Ahmed El-Gendy";
 				LD_RUNPATH_SEARCH_PATHS = (

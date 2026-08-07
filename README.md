@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="MPPViewer/MPPViewer/Assets.xcassets/AppIcon.appiconset/icon_256x256.png" width="128" height="128" alt="MPP Viewer Icon">
+  <img src="MPPViewer/MPPViewer/Assets.xcassets/AppIcon.appiconset/icon_256x256.png" width="128" height="128" alt="Planroom Icon">
 </p>
 
-<h1 align="center">MPP Viewer</h1>
+<h1 align="center">Planroom</h1>
 
 <p align="center">
   <strong>A free, native macOS app for reviewing, creating, and updating project and portfolio plans</strong><br>
@@ -20,7 +20,7 @@
 
 ---
 
-## Why MPP Viewer
+## Why Planroom
 
 - Review Microsoft Project schedules on macOS without opening Windows or buying Microsoft Project.
 - Build native plans directly in the app with grid editing, Gantt editing, resources, calendars, statusing, and finance.
@@ -166,7 +166,7 @@ brew install --cask mpp-viewer
 ### Direct Download
 
 1. Download the latest `.dmg` from [GitHub Releases](https://github.com/Engagendy/MPPViewerMacOS/releases)
-2. Open the DMG and drag **MPP Viewer** to your Applications folder
+2. Open the DMG and drag **Planroom** to your Applications folder
 3. On first launch, right-click the app → **Open** → **Open** if macOS shows a security prompt.
 
 > The app bundles its own Java runtime and converter — no prerequisites needed.
@@ -184,7 +184,7 @@ xattr -cr /Applications/MPPViewer.app
 ```
 
 **Option C — System Settings:**
-Go to **System Settings → Privacy & Security**, scroll down, and click **Open Anyway** next to the MPP Viewer message.
+Go to **System Settings → Privacy & Security**, scroll down, and click **Open Anyway** next to the Planroom message.
 
 ---
 

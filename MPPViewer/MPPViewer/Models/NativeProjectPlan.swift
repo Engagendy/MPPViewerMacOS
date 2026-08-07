@@ -25,7 +25,7 @@ enum NativePlanFormatError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case let .unsupportedSchemaVersion(found, supported):
-            return "This plan was saved by a newer version of MPP Viewer (format v\(found); this app supports up to v\(supported)). Update MPP Viewer to open it."
+            return "This plan was saved by a newer version of Planroom (format v\(found); this app supports up to v\(supported)). Update Planroom to open it."
         }
     }
 }
@@ -1037,8 +1037,8 @@ struct NativeProjectPlan: Codable, Hashable {
             category: "Native Plan",
             keywords: nil,
             defaultCalendarUniqueId: defaultCalendarUniqueID,
-            shortApplicationName: "MPP Viewer",
-            fullApplicationName: "MPP Viewer"
+            shortApplicationName: "Planroom",
+            fullApplicationName: "Planroom"
         )
 
         let tasksByID: [Int: ProjectTask] = Dictionary(nonThrowingUniquePairs: projectTasks.map { ($0.uniqueID, $0) })
