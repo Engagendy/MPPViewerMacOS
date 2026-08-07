@@ -11,6 +11,11 @@
 		A10000010000000000000001 /* MPPViewerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000001 /* MPPViewerApp.swift */; };
 		A10000010000000000000002 /* MPPDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000002 /* MPPDocument.swift */; };
 		A10000010000000000000003 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000003 /* ContentView.swift */; };
+		A100000E00000000000000D1 /* PortfolioDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000E00000000000000D1 /* PortfolioDashboardView.swift */; };
+		A100000E00000000000000D2 /* AgileBoardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000E00000000000000D2 /* AgileBoardView.swift */; };
+		A100000E00000000000000D3 /* StatusCenterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000E00000000000000D3 /* StatusCenterView.swift */; };
+		A100000E00000000000000D4 /* DiagnosticsAndValidation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000E00000000000000D4 /* DiagnosticsAndValidation.swift */; };
+		A100000E00000000000000D5 /* AppGuideView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000E00000000000000D5 /* AppGuideView.swift */; };
 		A10000010000000000000004 /* ProjectModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000004 /* ProjectModel.swift */; };
 		A10000010000000000000005 /* ProjectStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000005 /* ProjectStore.swift */; };
 		A10000010000000000000006 /* MPPConverterService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000006 /* MPPConverterService.swift */; };
@@ -109,6 +114,11 @@
 		A20000010000000000000001 /* MPPViewerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MPPViewerApp.swift; sourceTree = "<group>"; };
 		A20000010000000000000002 /* MPPDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MPPDocument.swift; sourceTree = "<group>"; };
 		A20000010000000000000003 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		A200000E00000000000000D1 /* PortfolioDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PortfolioDashboardView.swift; path = "../Views/Portfolio/PortfolioDashboardView.swift"; sourceTree = "<group>"; };
+		A200000E00000000000000D2 /* AgileBoardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AgileBoardView.swift; path = "../Views/Agile/AgileBoardView.swift"; sourceTree = "<group>"; };
+		A200000E00000000000000D3 /* StatusCenterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StatusCenterView.swift; path = "../Views/Status/StatusCenterView.swift"; sourceTree = "<group>"; };
+		A200000E00000000000000D4 /* DiagnosticsAndValidation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DiagnosticsAndValidation.swift; path = "../Views/Diagnostics/DiagnosticsAndValidation.swift"; sourceTree = "<group>"; };
+		A200000E00000000000000D5 /* AppGuideView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppGuideView.swift; path = "../Views/Help/AppGuideView.swift"; sourceTree = "<group>"; };
 		A20000010000000000000004 /* ProjectModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectModel.swift; sourceTree = "<group>"; };
 		A20000010000000000000005 /* ProjectStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectStore.swift; sourceTree = "<group>"; };
 		A20000010000000000000006 /* MPPConverterService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MPPConverterService.swift; sourceTree = "<group>"; };
@@ -246,6 +256,11 @@
 				A20000010000000000000001 /* MPPViewerApp.swift */,
 				A20000010000000000000002 /* MPPDocument.swift */,
 				A20000010000000000000003 /* ContentView.swift */,
+				A200000E00000000000000D1 /* PortfolioDashboardView.swift */,
+				A200000E00000000000000D2 /* AgileBoardView.swift */,
+				A200000E00000000000000D3 /* StatusCenterView.swift */,
+				A200000E00000000000000D4 /* DiagnosticsAndValidation.swift */,
+				A200000E00000000000000D5 /* AppGuideView.swift */,
 				A20000010000000000000135 /* PortfolioModelContainer.swift */,
 			);
 			path = App;
@@ -642,6 +657,11 @@
 				A10000010000000000000001 /* MPPViewerApp.swift in Sources */,
 				A10000010000000000000002 /* MPPDocument.swift in Sources */,
 				A10000010000000000000003 /* ContentView.swift in Sources */,
+				A100000E00000000000000D1 /* PortfolioDashboardView.swift in Sources */,
+				A100000E00000000000000D2 /* AgileBoardView.swift in Sources */,
+				A100000E00000000000000D3 /* StatusCenterView.swift in Sources */,
+				A100000E00000000000000D4 /* DiagnosticsAndValidation.swift in Sources */,
+				A100000E00000000000000D5 /* AppGuideView.swift in Sources */,
 				A10000010000000000000004 /* ProjectModel.swift in Sources */,
 				A10000010000000000000005 /* ProjectStore.swift in Sources */,
 				A10000010000000000000006 /* MPPConverterService.swift in Sources */,
