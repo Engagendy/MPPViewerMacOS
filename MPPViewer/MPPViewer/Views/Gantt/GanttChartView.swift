@@ -3485,12 +3485,16 @@ struct GanttCanvasView: View {
     var onRemoveDependency: ((Int, Int) -> Void)? = nil
 
     @Environment(\.colorScheme) var colorScheme
-    @State private var layoutState: GanttCanvasLayoutState
-    // The input the cached layout was built from. If auto-fit (or any other
-    // change) lands before onChange starts observing, the cache is stale on
-    // first render; comparing lets us detect and rebuild instead of drawing
-    // bars at the wrong scale.
-    @State private var layoutStateInput: GanttCanvasLayoutInput?
+    // Memoized layout keyed by the input it was built from. A reference-type
+    // box lets the accessor validate-and-rebuild during body evaluation
+    // without state churn, so a stale cache (e.g. auto-fit changing
+    // pixelsPerDay before onChange observes) rebuilds exactly once — not on
+    // every access — and bars are never drawn at the wrong scale.
+    private final class LayoutMemo {
+        var input: GanttCanvasLayoutInput?
+        var state: GanttCanvasLayoutState?
+    }
+    @State private var layoutMemo = LayoutMemo()
 
     private let trailingLabelHitWidth: CGFloat = 420
 
@@ -3554,18 +3558,6 @@ struct GanttCanvasView: View {
         self.reorderableSummaryIDs = reorderableSummaryIDs
         self.onSelectDependency = onSelectDependency
         self.onRemoveDependency = onRemoveDependency
-        self._layoutState = State(
-            initialValue: GanttCanvasLayoutState.build(
-                tasks: tasks,
-                allTasks: allTasks,
-                rowIndexByTaskID: rowIndexByTaskID,
-                startDate: startDate,
-                totalDays: totalDays,
-                pixelsPerDay: pixelsPerDay,
-                rowHeight: rowHeight,
-                showBaseline: showBaseline
-            )
-        )
     }
 
     private var rowShadingOpacity: Double { colorScheme == .dark ? 0.08 : 0.04 }
@@ -3574,15 +3566,14 @@ struct GanttCanvasView: View {
     private var barBgOpacity: Double { colorScheme == .dark ? 0.35 : 0.25 }
     private var baselineOpacity: Double { colorScheme == .dark ? 0.4 : 0.25 }
 
-    /// The layout to render with. Falls back to a fresh build when the cached
-    /// state was produced from a different input (e.g. auto-fit changed
-    /// pixelsPerDay before onChange was observing), so bars are never drawn at
-    /// a stale scale.
+    /// The layout to render with, rebuilt lazily (and exactly once) whenever
+    /// the inputs differ from what the memoized layout was built from.
     private var activeLayoutState: GanttCanvasLayoutState {
-        if let layoutStateInput, layoutStateInput == layoutInput {
-            return layoutState
+        let input = layoutInput
+        if let cachedInput = layoutMemo.input, cachedInput == input, let cached = layoutMemo.state {
+            return cached
         }
-        return GanttCanvasLayoutState.build(
+        let built = GanttCanvasLayoutState.build(
             tasks: tasks,
             allTasks: allTasks,
             rowIndexByTaskID: rowIndexByTaskID,
@@ -3592,6 +3583,9 @@ struct GanttCanvasView: View {
             rowHeight: rowHeight,
             showBaseline: showBaseline
         )
+        layoutMemo.input = input
+        layoutMemo.state = built
+        return built
     }
 
     private var timelineContentWidth: CGFloat {
@@ -3686,14 +3680,6 @@ struct GanttCanvasView: View {
             editableBarsOverlay
         }
         .coordinateSpace(name: canvasCoordinateSpaceName)
-        .onChange(of: layoutInput) { _, _ in
-            refreshLayoutState()
-        }
-        .onAppear {
-            if layoutStateInput != layoutInput {
-                refreshLayoutState()
-            }
-        }
     }
 
     private var summaryReorderRows: [(index: Int, task: ProjectTask)] {
@@ -4395,20 +4381,6 @@ struct GanttCanvasView: View {
             }
         }
         .allowsHitTesting(false)
-    }
-
-    private func refreshLayoutState() {
-        layoutState = GanttCanvasLayoutState.build(
-            tasks: tasks,
-            allTasks: allTasks,
-            rowIndexByTaskID: rowIndexByTaskID,
-            startDate: startDate,
-            totalDays: totalDays,
-            pixelsPerDay: pixelsPerDay,
-            rowHeight: rowHeight,
-            showBaseline: showBaseline
-        )
-        layoutStateInput = layoutInput
     }
 
     private func drawBaselineBadge(
