@@ -79,10 +79,13 @@ struct CommandPaletteView: View {
 
                 ScrollViewReader { proxy in
                     ScrollView {
+                        // One consistent identity per row (its own id) for both
+                        // the ForEach and the scroll anchor. A positional
+                        // .id(index) here froze the list: indices never change,
+                        // so the lazy stack kept showing the unfiltered rows.
                         LazyVStack(spacing: 0) {
                             ForEach(Array(results.enumerated()), id: \.element.id) { index, row in
                                 rowView(row, isHighlighted: index == highlighted)
-                                    .id(index)
                                     .contentShape(Rectangle())
                                     .onTapGesture { activate(row) }
                                     .onHover { if $0 { highlighted = index } }
@@ -91,7 +94,9 @@ struct CommandPaletteView: View {
                     }
                     .frame(maxHeight: 340)
                     .onChange(of: highlighted) { _, new in
-                        withAnimation(.easeOut(duration: 0.1)) { proxy.scrollTo(new, anchor: .center) }
+                        let rows = results
+                        guard rows.indices.contains(new) else { return }
+                        withAnimation(.easeOut(duration: 0.1)) { proxy.scrollTo(rows[new].id, anchor: .center) }
                     }
                 }
             }
