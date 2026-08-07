@@ -63,24 +63,58 @@ struct GanttHeaderView: View {
         .frame(width: totalWidth, height: headerHeight)
     }
 
-    // MARK: - Zoomed in: horizontal day labels
+    // MARK: - Responsive Month Label Drawing
 
-    /// Draws a month label only when its visible span is wide enough to hold
-    /// the text, so a narrow first/last partial month doesn't collide with the
-    /// next month's label.
-    private func drawMonthLabelIfFits(
+    private func drawMonthLabelResponsive(
         context: GraphicsContext,
-        label: String,
+        date: Date,
         startX: CGFloat,
         endX: CGFloat,
         topRowHeight: CGFloat,
         valid: Bool
     ) {
-        guard valid, !label.isEmpty else { return }
-        let text = Text(label).font(.caption2).foregroundColor(.secondary)
-        let resolved = context.resolve(text)
-        let width = resolved.measure(in: CGSize(width: .greatestFiniteMagnitude, height: topRowHeight)).width
-        guard (endX - startX) >= width + 8 else { return }
+        guard valid else { return }
+        let availableWidth = endX - startX
+        guard availableWidth >= 10 else { return }
+
+        let font = Font.caption2
+
+        let fullFormatter = DateFormatter()
+        fullFormatter.dateFormat = "MMM yyyy"
+
+        let shortFormatter = DateFormatter()
+        shortFormatter.dateFormat = "MMM ''yy"
+
+        let miniFormatter = DateFormatter()
+        miniFormatter.dateFormat = "MMM"
+
+        let fullText = fullFormatter.string(from: date)
+        let shortText = shortFormatter.string(from: date)
+        let miniText = miniFormatter.string(from: date)
+
+        let fullResolved = context.resolve(Text(fullText).font(font).foregroundColor(.secondary))
+        let fullWidth = fullResolved.measure(in: CGSize(width: .greatestFiniteMagnitude, height: topRowHeight)).width
+
+        let textToDraw: String
+        if availableWidth >= fullWidth + 6 {
+            textToDraw = fullText
+        } else {
+            let shortResolved = context.resolve(Text(shortText).font(font).foregroundColor(.secondary))
+            let shortWidth = shortResolved.measure(in: CGSize(width: .greatestFiniteMagnitude, height: topRowHeight)).width
+            if availableWidth >= shortWidth + 4 {
+                textToDraw = shortText
+            } else {
+                let miniResolved = context.resolve(Text(miniText).font(.system(size: 8)).foregroundColor(.secondary))
+                let miniWidth = miniResolved.measure(in: CGSize(width: .greatestFiniteMagnitude, height: topRowHeight)).width
+                if availableWidth >= miniWidth + 2 {
+                    textToDraw = miniText
+                } else {
+                    return
+                }
+            }
+        }
+
+        let resolved = context.resolve(Text(textToDraw).font(font).foregroundColor(.secondary))
         context.draw(resolved, at: CGPoint(x: startX + 4, y: topRowHeight / 2), anchor: .leading)
     }
 
@@ -89,11 +123,9 @@ struct GanttHeaderView: View {
         let bottomRowHeight = size.height * 0.5
         let dayFormatter = DateFormatter()
         dayFormatter.dateFormat = "d"
-        let monthFormatter = DateFormatter()
-        monthFormatter.dateFormat = "MMM yyyy"
 
         var currentMonth: Int = -1
-        var pendingLabel = ""
+        var pendingDate: Date?
         var pendingStartX: CGFloat = 0
         var hasPending = false
 
@@ -105,9 +137,10 @@ struct GanttHeaderView: View {
 
             if month != currentMonth {
                 currentMonth = month
-                // Finalize the previous month now that we know where it ends.
-                drawMonthLabelIfFits(context: context, label: pendingLabel, startX: pendingStartX, endX: x, topRowHeight: topRowHeight, valid: hasPending)
-                pendingLabel = monthFormatter.string(from: date)
+                if let pendingDate {
+                    drawMonthLabelResponsive(context: context, date: pendingDate, startX: pendingStartX, endX: x, topRowHeight: topRowHeight, valid: hasPending)
+                }
+                pendingDate = date
                 pendingStartX = x
                 hasPending = true
 
@@ -126,24 +159,21 @@ struct GanttHeaderView: View {
                 )
             }
         }
-        drawMonthLabelIfFits(context: context, label: pendingLabel, startX: pendingStartX, endX: CGFloat(totalDays) * pixelsPerDay, topRowHeight: topRowHeight, valid: hasPending)
+        if let pendingDate {
+            drawMonthLabelResponsive(context: context, date: pendingDate, startX: pendingStartX, endX: CGFloat(totalDays) * pixelsPerDay, topRowHeight: topRowHeight, valid: hasPending)
+        }
     }
-
-    // MARK: - Zoomed out: vertical week/day labels
 
     private func drawMonthsAndWeeksVertical(context: GraphicsContext, size: CGSize, calendar: Calendar, totalDays: Int) {
         let topRowHeight: CGFloat = 20
-        let monthFormatter = DateFormatter()
-        monthFormatter.dateFormat = "MMM yyyy"
         let weekFormatter = DateFormatter()
         weekFormatter.dateFormat = "d MMM"
 
         var currentMonth: Int = -1
-        var pendingLabel = ""
+        var pendingDate: Date?
         var pendingStartX: CGFloat = 0
         var hasPending = false
 
-        // Determine label interval based on how tight the zoom is
         let weekPixels = 7 * pixelsPerDay
         let labelEveryNWeeks: Int = weekPixels >= 30 ? 1 : (weekPixels >= 15 ? 2 : 4)
         var weekCounter = 0
@@ -154,11 +184,12 @@ struct GanttHeaderView: View {
             let month = calendar.component(.month, from: date)
             let weekday = calendar.component(.weekday, from: date)
 
-            // Month labels (top row, horizontal)
             if month != currentMonth {
                 currentMonth = month
-                drawMonthLabelIfFits(context: context, label: pendingLabel, startX: pendingStartX, endX: x, topRowHeight: topRowHeight, valid: hasPending)
-                pendingLabel = monthFormatter.string(from: date)
+                if let pendingDate {
+                    drawMonthLabelResponsive(context: context, date: pendingDate, startX: pendingStartX, endX: x, topRowHeight: topRowHeight, valid: hasPending)
+                }
+                pendingDate = date
                 pendingStartX = x
                 hasPending = true
 
@@ -168,7 +199,6 @@ struct GanttHeaderView: View {
                 context.stroke(monthLine, with: .color(.gray.opacity(gridLineOpacity)), lineWidth: 0.5)
             }
 
-            // Week labels (on Mondays) — drawn vertically
             if weekday == 2 {
                 weekCounter += 1
                 if weekCounter % labelEveryNWeeks == 0 {
@@ -176,7 +206,6 @@ struct GanttHeaderView: View {
                     let text = Text(label).font(.system(size: 8)).foregroundColor(.secondary)
                     let resolved = context.resolve(text)
 
-                    // Draw rotated -90 degrees (bottom-to-top)
                     var rotatedContext = context
                     let anchorX = x + 2
                     let anchorY = size.height - 2
@@ -186,6 +215,8 @@ struct GanttHeaderView: View {
                 }
             }
         }
-        drawMonthLabelIfFits(context: context, label: pendingLabel, startX: pendingStartX, endX: CGFloat(totalDays) * pixelsPerDay, topRowHeight: topRowHeight, valid: hasPending)
+        if let pendingDate {
+            drawMonthLabelResponsive(context: context, date: pendingDate, startX: pendingStartX, endX: CGFloat(totalDays) * pixelsPerDay, topRowHeight: topRowHeight, valid: hasPending)
+        }
     }
 }

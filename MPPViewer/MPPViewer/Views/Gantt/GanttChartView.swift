@@ -3486,6 +3486,11 @@ struct GanttCanvasView: View {
 
     @Environment(\.colorScheme) var colorScheme
     @State private var layoutState: GanttCanvasLayoutState
+    // The input the cached layout was built from. If auto-fit (or any other
+    // change) lands before onChange starts observing, the cache is stale on
+    // first render; comparing lets us detect and rebuild instead of drawing
+    // bars at the wrong scale.
+    @State private var layoutStateInput: GanttCanvasLayoutInput?
 
     private let trailingLabelHitWidth: CGFloat = 420
 
@@ -3569,8 +3574,28 @@ struct GanttCanvasView: View {
     private var barBgOpacity: Double { colorScheme == .dark ? 0.35 : 0.25 }
     private var baselineOpacity: Double { colorScheme == .dark ? 0.4 : 0.25 }
 
+    /// The layout to render with. Falls back to a fresh build when the cached
+    /// state was produced from a different input (e.g. auto-fit changed
+    /// pixelsPerDay before onChange was observing), so bars are never drawn at
+    /// a stale scale.
+    private var activeLayoutState: GanttCanvasLayoutState {
+        if let layoutStateInput, layoutStateInput == layoutInput {
+            return layoutState
+        }
+        return GanttCanvasLayoutState.build(
+            tasks: tasks,
+            allTasks: allTasks,
+            rowIndexByTaskID: rowIndexByTaskID,
+            startDate: startDate,
+            totalDays: totalDays,
+            pixelsPerDay: pixelsPerDay,
+            rowHeight: rowHeight,
+            showBaseline: showBaseline
+        )
+    }
+
     private var timelineContentWidth: CGFloat {
-        layoutState.timelineContentWidth
+        activeLayoutState.timelineContentWidth
     }
 
     private var interactiveContentWidth: CGFloat {
@@ -3626,7 +3651,7 @@ struct GanttCanvasView: View {
 
     private var visibleDependencySegments: [GanttDependencySegment] {
         let expandedRect = visibleBounds.insetBy(dx: -120, dy: -rowHeight * 2)
-        return layoutState.dependencySegments.filter { segment in
+        return activeLayoutState.dependencySegments.filter { segment in
             let minX = min(segment.start.x, segment.end.x, segment.midX)
             let maxX = max(segment.start.x, segment.end.x, segment.midX)
             let minY = min(segment.start.y, segment.end.y)
@@ -3639,7 +3664,7 @@ struct GanttCanvasView: View {
     }
 
     private var taskGeometryByID: [Int: GanttTaskGeometry] {
-        layoutState.taskGeometryByID
+        activeLayoutState.taskGeometryByID
     }
 
     var body: some View {
@@ -3663,6 +3688,11 @@ struct GanttCanvasView: View {
         .coordinateSpace(name: canvasCoordinateSpaceName)
         .onChange(of: layoutInput) { _, _ in
             refreshLayoutState()
+        }
+        .onAppear {
+            if layoutStateInput != layoutInput {
+                refreshLayoutState()
+            }
         }
     }
 
@@ -4378,6 +4408,7 @@ struct GanttCanvasView: View {
             rowHeight: rowHeight,
             showBaseline: showBaseline
         )
+        layoutStateInput = layoutInput
     }
 
     private func drawBaselineBadge(
