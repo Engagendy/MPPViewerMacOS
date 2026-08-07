@@ -1781,6 +1781,31 @@ struct GanttChartView: View {
                     } label: {
                         Label("Mark Not Started", systemImage: "circle")
                     }
+
+                    if !assignableResources.isEmpty {
+                        Menu {
+                            ForEach(assignableResources, id: \.id) { resource in
+                                Button(resource.name.isEmpty ? "Resource \(resource.id)" : resource.name) {
+                                    assignResourceToSelection(resourceID: resource.id)
+                                }
+                            }
+                        } label: {
+                            Label("Assign Resource", systemImage: "person.badge.plus")
+                        }
+
+                        let assignedIDs = assignedResourceIDs(in: selection)
+                        if !assignedIDs.isEmpty {
+                            Menu {
+                                ForEach(assignableResources.filter { assignedIDs.contains($0.id) }, id: \.id) { resource in
+                                    Button(resource.name.isEmpty ? "Resource \(resource.id)" : resource.name) {
+                                        unassignResourceFromSelection(resourceID: resource.id)
+                                    }
+                                }
+                            } label: {
+                                Label("Unassign Resource", systemImage: "person.badge.minus")
+                            }
+                        }
+                    }
                 }
                 Divider()
             }
@@ -1920,6 +1945,47 @@ struct GanttChartView: View {
         fullSyncGanttPlan { workingPlan in
             for index in workingPlan.tasks.indices where targets.contains(workingPlan.tasks[index].id) {
                 workingPlan.tasks[index].percentComplete = percent
+            }
+            workingPlan.reschedule()
+        }
+    }
+
+    // Work resources available to assign (excludes material/cost resources).
+    private var assignableResources: [NativePlanResource] {
+        nativeResources.filter { $0.type.lowercased() == "work" || $0.type.isEmpty }
+    }
+
+    // Resources currently assigned to any task in the selection (for unassign).
+    private func assignedResourceIDs(in taskIDs: Set<Int>) -> Set<Int> {
+        Set(nativeAssignments.compactMap { assignment in
+            taskIDs.contains(assignment.taskID) ? assignment.resourceID : nil
+        })
+    }
+
+    private func assignResourceToSelection(resourceID: Int) {
+        guard planModel != nil else { return }
+        let targets = effectiveSelectedTaskIDs.intersection(editableTaskIDs)
+        guard !targets.isEmpty else { return }
+        fullSyncGanttPlan { workingPlan in
+            for taskID in targets {
+                let alreadyAssigned = workingPlan.assignments.contains {
+                    $0.taskID == taskID && $0.resourceID == resourceID
+                }
+                if !alreadyAssigned {
+                    workingPlan.assignments.append(workingPlan.makeAssignment(taskID: taskID, resourceID: resourceID))
+                }
+            }
+            workingPlan.reschedule()
+        }
+    }
+
+    private func unassignResourceFromSelection(resourceID: Int) {
+        guard planModel != nil else { return }
+        let targets = effectiveSelectedTaskIDs.intersection(editableTaskIDs)
+        guard !targets.isEmpty else { return }
+        fullSyncGanttPlan { workingPlan in
+            workingPlan.assignments.removeAll {
+                targets.contains($0.taskID) && $0.resourceID == resourceID
             }
             workingPlan.reschedule()
         }
