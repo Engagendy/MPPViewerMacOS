@@ -1,0 +1,4 @@
+/* The localized bundle name wins over the generated CFBundleName, so the
+   menu bar, Dock, and About panel all show the product name. */
+"CFBundleName" = "Planroom";
+"CFBundleDisplayName" = "Planroom";

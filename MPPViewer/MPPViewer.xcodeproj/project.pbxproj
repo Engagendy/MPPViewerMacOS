@@ -31,6 +31,7 @@
 		A10000010000000000000019 /* ColorTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000019 /* ColorTheme.swift */; };
 		A10000010000000000000020 /* ScheduleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000022 /* ScheduleView.swift */; };
 		A10000010000000000000021 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000023 /* Assets.xcassets */; };
+		A100000F00000000000000E1 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = A200000F00000000000000E2 /* InfoPlist.strings */; };
 		A10000010000000000000030 /* MilestonesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000032 /* MilestonesView.swift */; };
 		A10000010000000000000040 /* MPPConverterProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000040 /* MPPConverterProtocol.swift */; };
 		A10000010000000000000050 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000052 /* DashboardView.swift */; };
@@ -136,6 +137,7 @@
 		A20000010000000000000001 /* MPPViewerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MPPViewerApp.swift; sourceTree = "<group>"; };
 		A20000010000000000000002 /* MPPDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MPPDocument.swift; sourceTree = "<group>"; };
 		A20000010000000000000003 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		A300000F00000000000000E3 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		A20000010000000000000004 /* ProjectModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectModel.swift; sourceTree = "<group>"; };
 		A20000010000000000000005 /* ProjectStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectStore.swift; sourceTree = "<group>"; };
 		A20000010000000000000006 /* MPPConverterService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MPPConverterService.swift; sourceTree = "<group>"; };
@@ -291,6 +293,7 @@
 				A20000010000000000000020 /* Info.plist */,
 				A20000010000000000000021 /* MPPViewer.entitlements */,
 				A20000010000000000000023 /* Assets.xcassets */,
+				A200000F00000000000000E2 /* InfoPlist.strings */,
 				A50000010000000000000003 /* App */,
 				A50000010000000000000004 /* Models */,
 				A50000010000000000000005 /* Services */,
@@ -629,6 +632,17 @@
 		};
 /* End PBXNativeTarget section */
 
+/* Begin PBXVariantGroup section */
+		A200000F00000000000000E2 /* InfoPlist.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				A300000F00000000000000E3 /* en */,
+			);
+			name = InfoPlist.strings;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
+
 /* Begin PBXProject section */
 		A90000010000000000000001 /* Project object */ = {
 			isa = PBXProject;
@@ -693,6 +707,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A10000010000000000000021 /* Assets.xcassets in Resources */,
+				A100000F00000000000000E1 /* InfoPlist.strings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -925,7 +940,7 @@
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.4;
-				MARKETING_VERSION = 2.6.1;
+				MARKETING_VERSION = 2.6.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mppviewer.MPPConverterXPC;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -953,7 +968,7 @@
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.4;
-				MARKETING_VERSION = 2.6.1;
+				MARKETING_VERSION = 2.6.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mppviewer.MPPConverterXPC;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -1110,7 +1125,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2.6.1;
+				MARKETING_VERSION = 2.6.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mppviewer.MPPViewer;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -1140,7 +1155,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2.6.1;
+				MARKETING_VERSION = 2.6.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mppviewer.MPPViewer;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
