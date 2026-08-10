@@ -2255,6 +2255,7 @@ enum NavigationItem: String, CaseIterable, Identifiable {
     case earnedValue = "Earned Value"
     case workload = "Workload"
     case calendar = "Calendar"
+    case eventsLeave = "Events & Leave"
     case timeline = "Timeline"
     case diff = "Compare"
     case helpCenter = "Guide & Help"
@@ -2283,6 +2284,7 @@ enum NavigationItem: String, CaseIterable, Identifiable {
         case .earnedValue: return "chart.line.uptrend.xyaxis"
         case .workload: return "person.badge.clock"
         case .calendar: return "calendar"
+        case .eventsLeave: return "calendar.badge.clock"
         case .timeline: return "rectangle.split.3x1"
         case .diff: return "arrow.triangle.2.circlepath"
         case .helpCenter: return "questionmark.circle"
@@ -3278,7 +3280,7 @@ struct ContentView: View {
         case .earnedValue:
             EarnedValueView(project: project)
         case .workload:
-            WorkloadView(project: project)
+            WorkloadView(project: project, resourceLeaves: portfolioPlan?.nativeResourceLeavesForUI ?? [])
         case .calendar:
             if let portfolioPlan {
                 NativeCalendarEditorView(planModel: portfolioPlan)
@@ -3293,6 +3295,16 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 CalendarView(calendars: project.calendars)
+            }
+        case .eventsLeave:
+            if let portfolioPlan {
+                EventsLeaveManagerView(planModel: portfolioPlan)
+            } else {
+                ContentUnavailableView(
+                    "Events & Leave",
+                    systemImage: "calendar.badge.clock",
+                    description: Text("Open an editable plan to add holidays, events, and resource leave.")
+                )
             }
         case .timeline:
             TimelineView(project: project)

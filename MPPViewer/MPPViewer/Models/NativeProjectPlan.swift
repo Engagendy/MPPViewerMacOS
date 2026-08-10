@@ -63,6 +63,12 @@ struct NativeProjectPlan: Codable, Hashable {
     var typeWorkflowOverrides: [NativeBoardTypeWorkflow]
     var sprints: [NativePlanSprint]
     var statusSnapshots: [NativeStatusSnapshot]
+    /// Visual-only holidays / observances (e.g. Ramadan) shown as timeline bands.
+    /// Never consulted by the scheduler.
+    var timelineEvents: [PlanTimelineEvent]
+    /// Visual-only per-resource leave shown as bands on that resource's rows.
+    /// Never consulted by the scheduler.
+    var resourceLeaves: [PlanResourceLeave]
 
     enum CodingKeys: String, CodingKey {
         case schemaVersion
@@ -94,6 +100,8 @@ struct NativeProjectPlan: Codable, Hashable {
         case typeWorkflowOverrides
         case sprints
         case statusSnapshots
+        case timelineEvents
+        case resourceLeaves
     }
 
     static let defaultBoardColumns = ["Backlog", "Ready", "In Progress", "Review", "Done"]
@@ -160,7 +168,9 @@ struct NativeProjectPlan: Codable, Hashable {
         workflowColumns: [NativeBoardWorkflowColumn],
         typeWorkflowOverrides: [NativeBoardTypeWorkflow],
         sprints: [NativePlanSprint],
-        statusSnapshots: [NativeStatusSnapshot]
+        statusSnapshots: [NativeStatusSnapshot],
+        timelineEvents: [PlanTimelineEvent] = [],
+        resourceLeaves: [PlanResourceLeave] = []
     ) {
         self.schemaVersion = Self.currentSchemaVersion
         self.portfolioID = portfolioID
@@ -197,6 +207,8 @@ struct NativeProjectPlan: Codable, Hashable {
         self.typeWorkflowOverrides = synchronizedStorage.typeWorkflowOverrides
         self.sprints = sprints
         self.statusSnapshots = statusSnapshots
+        self.timelineEvents = timelineEvents
+        self.resourceLeaves = resourceLeaves
     }
 
     init(from decoder: Decoder) throws {
@@ -246,6 +258,8 @@ struct NativeProjectPlan: Codable, Hashable {
         typeWorkflowOverrides = synchronizedStorage.typeWorkflowOverrides
         sprints = try container.decodeIfPresent([NativePlanSprint].self, forKey: .sprints) ?? []
         statusSnapshots = try container.decodeIfPresent([NativeStatusSnapshot].self, forKey: .statusSnapshots) ?? []
+        timelineEvents = try container.decodeIfPresent([PlanTimelineEvent].self, forKey: .timelineEvents) ?? []
+        resourceLeaves = try container.decodeIfPresent([PlanResourceLeave].self, forKey: .resourceLeaves) ?? []
     }
 
     static func normalizedBoardColumns(_ columns: [String]) -> [String] {
@@ -2111,6 +2125,131 @@ struct NativeCalendarException: Codable, Identifiable, Hashable {
     }
 }
 
+/// A visual-only holiday, observance, or event drawn as a band across the
+/// timeline. Purely presentational — the scheduler never reads these.
+struct PlanTimelineEvent: Codable, Identifiable, Hashable {
+    enum Kind: String, Codable, CaseIterable, Identifiable {
+        case holiday
+        case observance
+        case event
+
+        var id: String { rawValue }
+
+        var label: String {
+            switch self {
+            case .holiday: return "Holiday"
+            case .observance: return "Observance"
+            case .event: return "Event"
+            }
+        }
+
+        var defaultColorHex: String {
+            switch self {
+            case .holiday: return "#E5484D"    // red
+            case .observance: return "#8E5AD6" // purple
+            case .event: return "#2F7DE1"      // blue
+            }
+        }
+    }
+
+    var id: UUID
+    var name: String
+    var startDate: Date
+    var endDate: Date
+    var kind: Kind
+    /// Optional override; when empty the kind's default color is used.
+    var colorHex: String
+
+    init(
+        id: UUID = UUID(),
+        name: String,
+        startDate: Date,
+        endDate: Date,
+        kind: Kind = .holiday,
+        colorHex: String = ""
+    ) {
+        self.id = id
+        self.name = name
+        self.startDate = Calendar.current.startOfDay(for: startDate)
+        self.endDate = Calendar.current.startOfDay(for: endDate)
+        self.kind = kind
+        self.colorHex = colorHex
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, startDate, endDate, kind, colorHex
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = container.decodeLossyUUIDIfPresent(forKey: .id) ?? UUID()
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? "Event"
+        let start = try container.decodeIfPresent(Date.self, forKey: .startDate) ?? Date()
+        startDate = Calendar.current.startOfDay(for: start)
+        let end = try container.decodeIfPresent(Date.self, forKey: .endDate) ?? start
+        endDate = Calendar.current.startOfDay(for: end)
+        kind = (try? container.decodeIfPresent(Kind.self, forKey: .kind)) ?? .holiday
+        colorHex = try container.decodeIfPresent(String.self, forKey: .colorHex) ?? ""
+    }
+
+    var effectiveColorHex: String {
+        colorHex.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? kind.defaultColorHex
+            : colorHex
+    }
+}
+
+/// A visual-only leave/absence window for a single resource, drawn as a band on
+/// that resource's task rows. Purely presentational — the scheduler ignores it.
+struct PlanResourceLeave: Codable, Identifiable, Hashable {
+    var id: UUID
+    var resourceID: Int
+    var name: String
+    var startDate: Date
+    var endDate: Date
+    var colorHex: String
+
+    static let defaultColorHex = "#F5A524" // amber
+
+    init(
+        id: UUID = UUID(),
+        resourceID: Int,
+        name: String = "Leave",
+        startDate: Date,
+        endDate: Date,
+        colorHex: String = ""
+    ) {
+        self.id = id
+        self.resourceID = resourceID
+        self.name = name
+        self.startDate = Calendar.current.startOfDay(for: startDate)
+        self.endDate = Calendar.current.startOfDay(for: endDate)
+        self.colorHex = colorHex
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, resourceID, name, startDate, endDate, colorHex
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = container.decodeLossyUUIDIfPresent(forKey: .id) ?? UUID()
+        resourceID = try container.decodeIfPresent(Int.self, forKey: .resourceID) ?? 0
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? "Leave"
+        let start = try container.decodeIfPresent(Date.self, forKey: .startDate) ?? Date()
+        startDate = Calendar.current.startOfDay(for: start)
+        let end = try container.decodeIfPresent(Date.self, forKey: .endDate) ?? start
+        endDate = Calendar.current.startOfDay(for: end)
+        colorHex = try container.decodeIfPresent(String.self, forKey: .colorHex) ?? ""
+    }
+
+    var effectiveColorHex: String {
+        colorHex.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? Self.defaultColorHex
+            : colorHex
+    }
+}
+
 private struct TaskHierarchyMetadata {
     let outlineLevel: Int
     let outlineNumber: String
@@ -2630,6 +2769,11 @@ final class PortfolioProjectPlan {
     var taskCount: Int
     var updatedAt: Date
     var isArchived: Bool?
+    /// Visual-only timeline holidays/observances/events. Default enables
+    /// SwiftData lightweight migration for plans saved before this field existed.
+    var timelineEvents: [PlanTimelineEvent] = []
+    /// Visual-only per-resource leave windows.
+    var resourceLeaves: [PlanResourceLeave] = []
 
     var isArchivedValue: Bool {
         isArchived ?? false
@@ -2689,6 +2833,8 @@ final class PortfolioProjectPlan {
         self.statusSnapshots = []
         self.workflowColumns = []
         self.typeWorkflowOverrides = []
+        self.timelineEvents = nativePlan.timelineEvents
+        self.resourceLeaves = nativePlan.resourceLeaves
         update(from: nativePlan)
     }
 
@@ -2715,6 +2861,8 @@ final class PortfolioProjectPlan {
         boardColumns = NativeProjectPlan.normalizedBoardColumns(nativePlan.boardColumns)
         updatedAt = Date()
         isArchived = isArchived ?? false
+        timelineEvents = nativePlan.timelineEvents
+        resourceLeaves = nativePlan.resourceLeaves
 
         syncResources(from: nativePlan.resources, in: context)
         syncCalendars(from: nativePlan.calendars, in: context)
@@ -2835,7 +2983,9 @@ final class PortfolioProjectPlan {
             workflowColumns: workflowColumnRows.map { $0.asNativeWorkflowColumn() },
             typeWorkflowOverrides: typeWorkflowRows.map { $0.asNativeTypeWorkflow() },
             sprints: sprintRows.map { $0.asNativeSprint() },
-            statusSnapshots: statusSnapshotRows.map { $0.asNativeStatusSnapshot() }
+            statusSnapshots: statusSnapshotRows.map { $0.asNativeStatusSnapshot() },
+            timelineEvents: timelineEvents,
+            resourceLeaves: resourceLeaves
         )
         .normalizedResourceIDsForAssignmentCompatibility()
     }
@@ -2922,9 +3072,19 @@ final class PortfolioProjectPlan {
             workflowColumns: nativeWorkflowColumns,
             typeWorkflowOverrides: nativeTypeWorkflowOverrides,
             sprints: nativeSprints,
-            statusSnapshots: nativeStatusSnapshots
+            statusSnapshots: nativeStatusSnapshots,
+            timelineEvents: timelineEvents,
+            resourceLeaves: resourceLeaves
         )
         .normalizedResourceIDsForAssignmentCompatibility()
+    }
+
+    var nativeTimelineEventsForUI: [PlanTimelineEvent] {
+        timelineEvents.sorted { $0.startDate < $1.startDate }
+    }
+
+    var nativeResourceLeavesForUI: [PlanResourceLeave] {
+        resourceLeaves.sorted { $0.startDate < $1.startDate }
     }
 
     var orderedTaskRows: [PortfolioPlanTask] {

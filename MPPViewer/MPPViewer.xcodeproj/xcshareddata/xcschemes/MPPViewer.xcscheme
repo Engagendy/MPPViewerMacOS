@@ -16,7 +16,7 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "A60000010000000000000001"
-               BuildableName = "MPPViewer.app"
+               BuildableName = "Planroom.app"
                BlueprintName = "MPPViewer"
                ReferencedContainer = "container:MPPViewer.xcodeproj">
             </BuildableReference>
@@ -46,7 +46,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "A60000010000000000000001"
-            BuildableName = "MPPViewer.app"
+            BuildableName = "Planroom.app"
             BlueprintName = "MPPViewer"
             ReferencedContainer = "container:MPPViewer.xcodeproj">
          </BuildableReference>
@@ -80,7 +80,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "A60000010000000000000001"
-            BuildableName = "MPPViewer.app"
+            BuildableName = "Planroom.app"
             BlueprintName = "MPPViewer"
             ReferencedContainer = "container:MPPViewer.xcodeproj">
          </BuildableReference>
@@ -104,7 +104,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "A60000010000000000000001"
-            BuildableName = "MPPViewer.app"
+            BuildableName = "Planroom.app"
             BlueprintName = "MPPViewer"
             ReferencedContainer = "container:MPPViewer.xcodeproj">
          </BuildableReference>

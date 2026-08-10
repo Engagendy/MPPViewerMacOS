@@ -1247,6 +1247,143 @@ enum CSVExporter {
         )
     }
 
+    // MARK: - Events & Leave templates / import
+
+    private static let eventImportTemplateHeaders = ["Name", "Type (Holiday/Observance/Event)", "Start (YYYY-MM-DD)", "End (YYYY-MM-DD)", "Color (optional #hex)"]
+    private static let eventImportTemplateSampleRows = [
+        ["Ramadan", "Observance", "2027-02-18", "2027-03-19", ""],
+        ["National Day", "Holiday", "2027-12-02", "2027-12-03", ""]
+    ]
+
+    @MainActor
+    static func exportEventImportTemplateCSV() {
+        exportCSVTemplate(headers: eventImportTemplateHeaders, sampleRows: eventImportTemplateSampleRows, fileName: "Events Import Template.csv")
+    }
+
+    @MainActor
+    static func exportEventImportTemplateExcel() {
+        exportWorkbookTemplate(headers: eventImportTemplateHeaders, sampleRows: eventImportTemplateSampleRows, sheetName: "Events Import", fileName: "Events Import Example.xlsx")
+    }
+
+    private static let leaveImportTemplateHeaders = ["Resource", "Reason", "Start (YYYY-MM-DD)", "End (YYYY-MM-DD)", "Color (optional #hex)"]
+
+    /// The leave template pre-lists the plan's resources (one row each) so the
+    /// user only has to fill in dates against valid resource names.
+    private static func leaveImportTemplateSampleRows(resources: [NativePlanResource]) -> [[String]] {
+        guard !resources.isEmpty else {
+            return [["Resource Name", "Annual leave", "2027-08-01", "2027-08-10", ""]]
+        }
+        return resources.map { [$0.name, "Leave", "", "", ""] }
+    }
+
+    @MainActor
+    static func exportLeaveImportTemplateCSV(resources: [NativePlanResource]) {
+        exportCSVTemplate(headers: leaveImportTemplateHeaders, sampleRows: leaveImportTemplateSampleRows(resources: resources), fileName: "Resource Leave Import Template.csv")
+    }
+
+    @MainActor
+    static func exportLeaveImportTemplateExcel(resources: [NativePlanResource]) {
+        exportWorkbookTemplate(headers: leaveImportTemplateHeaders, sampleRows: leaveImportTemplateSampleRows(resources: resources), sheetName: "Resource Leave", fileName: "Resource Leave Import Example.xlsx")
+    }
+
+    private static func templateColumnIndex(_ headers: [String], _ keywords: [String]) -> Int? {
+        for (index, header) in headers.enumerated() {
+            let lowered = header.lowercased()
+            if keywords.contains(where: { lowered.contains($0) }) { return index }
+        }
+        return nil
+    }
+
+    private static func templateCell(_ row: [String], _ index: Int?) -> String {
+        guard let index, row.indices.contains(index) else { return "" }
+        return row[index].trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func parseTemplateDate(_ raw: String) -> Date? {
+        let trimmed = raw.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return nil }
+        for format in ["yyyy-MM-dd", "MM/dd/yyyy", "dd/MM/yyyy", "M/d/yyyy", "dd-MM-yyyy", "yyyy/MM/dd"] {
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.dateFormat = format
+            if let date = formatter.date(from: trimmed) { return date }
+        }
+        return nil
+    }
+
+    /// Opens a CSV/Excel file and parses timeline events. Shows a summary alert.
+    @MainActor
+    static func importTimelineEvents() -> [PlanTimelineEvent]? {
+        guard let selected = selectTabularFile(), let header = selected.rows.first else { return nil }
+        let nameI = templateColumnIndex(header, ["name"]) ?? 0
+        let typeI = templateColumnIndex(header, ["type", "kind"]) ?? 1
+        let startI = templateColumnIndex(header, ["start"]) ?? 2
+        let endI = templateColumnIndex(header, ["end", "finish"]) ?? 3
+        let colorI = templateColumnIndex(header, ["color", "hex"])
+
+        var events: [PlanTimelineEvent] = []
+        var skipped = 0
+        for row in selected.rows.dropFirst() {
+            let hasContent = row.contains { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            let name = templateCell(row, nameI)
+            guard hasContent, !name.isEmpty, let start = parseTemplateDate(templateCell(row, startI)) else {
+                if hasContent { skipped += 1 }
+                continue
+            }
+            let end = parseTemplateDate(templateCell(row, endI)) ?? start
+            let kind: PlanTimelineEvent.Kind
+            switch templateCell(row, typeI).lowercased() {
+            case let s where s.contains("observ"): kind = .observance
+            case let s where s.contains("event"): kind = .event
+            default: kind = .holiday
+            }
+            events.append(PlanTimelineEvent(name: name, startDate: start, endDate: end, kind: kind, colorHex: templateCell(row, colorI)))
+        }
+
+        showImportAlert(
+            title: events.isEmpty ? "Nothing Imported" : "Events Imported",
+            message: "Imported \(events.count) event(s)." + (skipped > 0 ? " Skipped \(skipped) row(s) with a missing name or start date." : "")
+        )
+        return events.isEmpty ? nil : events
+    }
+
+    /// Opens a CSV/Excel file and parses resource leave, matching each row's
+    /// resource name (case-insensitively) to a plan resource. Shows a summary.
+    @MainActor
+    static func importResourceLeaves(resources: [NativePlanResource]) -> [PlanResourceLeave]? {
+        guard let selected = selectTabularFile(), let header = selected.rows.first else { return nil }
+        let resourceI = templateColumnIndex(header, ["resource", "name"]) ?? 0
+        let reasonI = templateColumnIndex(header, ["reason", "note"]) ?? 1
+        let startI = templateColumnIndex(header, ["start"]) ?? 2
+        let endI = templateColumnIndex(header, ["end", "finish"]) ?? 3
+        let colorI = templateColumnIndex(header, ["color", "hex"])
+
+        let byName = Dictionary(resources.map { ($0.name.lowercased(), $0.id) }, uniquingKeysWith: { first, _ in first })
+
+        var leaves: [PlanResourceLeave] = []
+        var skipped = 0
+        var unmatched = 0
+        for row in selected.rows.dropFirst() {
+            let hasContent = row.contains { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            guard hasContent else { continue }
+            let resourceName = templateCell(row, resourceI)
+            guard let start = parseTemplateDate(templateCell(row, startI)) else { skipped += 1; continue }
+            guard let resourceID = byName[resourceName.lowercased()] else { unmatched += 1; continue }
+            let end = parseTemplateDate(templateCell(row, endI)) ?? start
+            let reason = templateCell(row, reasonI)
+            leaves.append(PlanResourceLeave(resourceID: resourceID, name: reason.isEmpty ? "Leave" : reason, startDate: start, endDate: end, colorHex: templateCell(row, colorI)))
+        }
+
+        var notes: [String] = []
+        if skipped > 0 { notes.append("\(skipped) row(s) had no valid start date") }
+        if unmatched > 0 { notes.append("\(unmatched) row(s) referenced an unknown resource") }
+        showImportAlert(
+            title: leaves.isEmpty ? "Nothing Imported" : "Leave Imported",
+            message: "Imported \(leaves.count) leave record(s)." + (notes.isEmpty ? "" : " Skipped: " + notes.joined(separator: ", ") + ".")
+        )
+        return leaves.isEmpty ? nil : leaves
+    }
+
     @MainActor
     static func importTasksFromCSV(into originalPlan: NativeProjectPlan) -> CSVImportResult? {
         guard let session = selectTaskImportSession() else { return nil }

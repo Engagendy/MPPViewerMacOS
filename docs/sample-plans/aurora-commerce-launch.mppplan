@@ -387,6 +387,48 @@
   "defaultCalendarUniqueID" : 1,
   "manager" : "Maya Patel",
   "portfolioID" : "8416094B-95BD-4485-B04E-8F089646A3CE",
+  "resourceLeaves" : [
+    {
+      "colorHex" : "",
+      "endDate" : "2026-05-19T20:00:00Z",
+      "id" : "37074EED-025D-4FCE-867B-30821EF3E2D0",
+      "name" : "Sick leave",
+      "resourceID" : 3,
+      "startDate" : "2026-05-17T20:00:00Z"
+    },
+    {
+      "colorHex" : "",
+      "endDate" : "2026-06-11T20:00:00Z",
+      "id" : "3BA91383-4A33-43B5-BD33-56E6F164265A",
+      "name" : "Annual leave",
+      "resourceID" : 1,
+      "startDate" : "2026-06-07T20:00:00Z"
+    },
+    {
+      "colorHex" : "",
+      "endDate" : "2026-06-23T20:00:00Z",
+      "id" : "3EC9F069-D841-40A8-B8EB-B8AADF3395D0",
+      "name" : "Personal",
+      "resourceID" : 5,
+      "startDate" : "2026-06-21T20:00:00Z"
+    },
+    {
+      "colorHex" : "",
+      "endDate" : "2026-07-09T20:00:00Z",
+      "id" : "308266C9-9309-44BF-963C-9900BAD40015",
+      "name" : "Vacation",
+      "resourceID" : 2,
+      "startDate" : "2026-07-05T20:00:00Z"
+    },
+    {
+      "colorHex" : "",
+      "endDate" : "2026-07-23T20:00:00Z",
+      "id" : "0B3EBF7C-E288-4759-AD77-90E4581BEE10",
+      "name" : "Annual leave",
+      "resourceID" : 4,
+      "startDate" : "2026-07-19T20:00:00Z"
+    }
+  ],
   "resources" : [
     {
       "accrueAt" : "start",
@@ -474,6 +516,7 @@
       "uniqueID" : "6B621EDA-E365-4FC9-994E-23B434408EB6"
     }
   ],
+  "schemaVersion" : 1,
   "sprints" : [
 
   ],
@@ -485,6 +528,9 @@
     {
       "agileType" : "Story",
       "boardStatus" : "Backlog",
+      "customFields" : {
+
+      },
       "durationDays" : 9,
       "epicName" : "",
       "finishDate" : "2026-05-13T20:00:00Z",
@@ -517,6 +563,9 @@
       "baselineStartDate" : "2026-05-03T20:00:00Z",
       "boardStatus" : "Ready",
       "calendarUniqueID" : 1,
+      "customFields" : {
+
+      },
       "durationDays" : 3,
       "epicName" : "",
       "finishDate" : "2026-05-05T20:00:00Z",
@@ -549,6 +598,9 @@
       "baselineStartDate" : "2026-05-06T20:00:00Z",
       "boardStatus" : "Backlog",
       "calendarUniqueID" : 1,
+      "customFields" : {
+
+      },
       "durationDays" : 5,
       "epicName" : "",
       "finishDate" : "2026-05-12T20:00:00Z",
@@ -584,6 +636,9 @@
       "calendarUniqueID" : 1,
       "constraintDate" : "2026-05-13T20:00:00Z",
       "constraintType" : "MSO",
+      "customFields" : {
+
+      },
       "durationDays" : 1,
       "epicName" : "",
       "finishDate" : "2026-05-13T20:00:00Z",
@@ -609,6 +664,9 @@
     {
       "agileType" : "Task",
       "boardStatus" : "Ready",
+      "customFields" : {
+
+      },
       "durationDays" : 1,
       "epicName" : "",
       "finishDate" : "2026-05-13T20:00:00Z",
@@ -634,6 +692,9 @@
     {
       "agileType" : "Story",
       "boardStatus" : "Backlog",
+      "customFields" : {
+
+      },
       "durationDays" : 16,
       "epicName" : "",
       "finishDate" : "2026-06-05T20:00:00Z",
@@ -666,6 +727,9 @@
       "baselineStartDate" : "2026-05-14T20:00:00Z",
       "boardStatus" : "Backlog",
       "calendarUniqueID" : 2,
+      "customFields" : {
+
+      },
       "durationDays" : 5,
       "epicName" : "",
       "finishDate" : "2026-05-20T20:00:00Z",
@@ -698,6 +762,9 @@
       "baselineStartDate" : "2026-05-21T20:00:00Z",
       "boardStatus" : "Backlog",
       "calendarUniqueID" : 2,
+      "customFields" : {
+
+      },
       "durationDays" : 8,
       "epicName" : "",
       "finishDate" : "2026-06-01T20:00:00Z",
@@ -730,6 +797,9 @@
       "calendarUniqueID" : 1,
       "constraintDate" : "2026-06-04T20:00:00Z",
       "constraintType" : "FNET",
+      "customFields" : {
+
+      },
       "durationDays" : 1,
       "epicName" : "",
       "finishDate" : "2026-06-04T20:00:00Z",
@@ -755,6 +825,9 @@
     {
       "agileType" : "Story",
       "boardStatus" : "Backlog",
+      "customFields" : {
+
+      },
       "durationDays" : 31,
       "epicName" : "",
       "finishDate" : "2026-07-16T20:00:00Z",
@@ -786,6 +859,9 @@
       "baselineStartDate" : "2026-06-07T20:00:00Z",
       "boardStatus" : "Backlog",
       "calendarUniqueID" : 1,
+      "customFields" : {
+
+      },
       "durationDays" : 10,
       "epicName" : "",
       "finishDate" : "2026-06-18T20:00:00Z",
@@ -817,6 +893,9 @@
       "baselineStartDate" : "2026-06-21T20:00:00Z",
       "boardStatus" : "Backlog",
       "calendarUniqueID" : 1,
+      "customFields" : {
+
+      },
       "durationDays" : 13,
       "epicName" : "",
       "finishDate" : "2026-07-07T20:00:00Z",
@@ -848,6 +927,9 @@
       "baselineStartDate" : "2026-06-30T20:00:00Z",
       "boardStatus" : "Backlog",
       "calendarUniqueID" : 1,
+      "customFields" : {
+
+      },
       "durationDays" : 10,
       "epicName" : "",
       "finishDate" : "2026-07-13T20:00:00Z",
@@ -880,6 +962,9 @@
       "baselineStartDate" : "2026-07-05T20:00:00Z",
       "boardStatus" : "Backlog",
       "calendarUniqueID" : 1,
+      "customFields" : {
+
+      },
       "durationDays" : 10,
       "epicName" : "",
       "finishDate" : "2026-07-16T20:00:00Z",
@@ -906,6 +991,9 @@
     {
       "agileType" : "Story",
       "boardStatus" : "Backlog",
+      "customFields" : {
+
+      },
       "durationDays" : 19,
       "epicName" : "",
       "finishDate" : "2026-08-12T20:00:00Z",
@@ -937,6 +1025,9 @@
       "baselineStartDate" : "2026-07-19T20:00:00Z",
       "boardStatus" : "Backlog",
       "calendarUniqueID" : 3,
+      "customFields" : {
+
+      },
       "durationDays" : 7,
       "epicName" : "",
       "finishDate" : "2026-07-27T20:00:00Z",
@@ -967,6 +1058,9 @@
       "baselineStartDate" : "2026-07-28T20:00:00Z",
       "boardStatus" : "Backlog",
       "calendarUniqueID" : 3,
+      "customFields" : {
+
+      },
       "durationDays" : 7,
       "epicName" : "",
       "finishDate" : "2026-08-05T20:00:00Z",
@@ -998,6 +1092,9 @@
       "baselineStartDate" : "2026-08-06T20:00:00Z",
       "boardStatus" : "Backlog",
       "calendarUniqueID" : 3,
+      "customFields" : {
+
+      },
       "durationDays" : 4,
       "epicName" : "",
       "finishDate" : "2026-08-11T20:00:00Z",
@@ -1030,6 +1127,9 @@
       "calendarUniqueID" : 3,
       "constraintDate" : "2026-08-12T20:00:00Z",
       "constraintType" : "MSO",
+      "customFields" : {
+
+      },
       "durationDays" : 1,
       "epicName" : "",
       "finishDate" : "2026-08-12T20:00:00Z",
@@ -1051,6 +1151,40 @@
 
       ],
       "uniqueID" : "BF9E8D9F-84E0-44A3-8CAD-8E67648AAD5F"
+    }
+  ],
+  "timelineEvents" : [
+    {
+      "colorHex" : "",
+      "endDate" : "2026-05-28T20:00:00Z",
+      "id" : "357250B6-02F6-4733-B4FF-13B9F57BCFB2",
+      "kind" : "holiday",
+      "name" : "Eid al-Adha",
+      "startDate" : "2026-05-26T20:00:00Z"
+    },
+    {
+      "colorHex" : "",
+      "endDate" : "2026-06-14T20:00:00Z",
+      "id" : "C7432B86-8B59-4ED9-B8D2-344F51A7E9DA",
+      "kind" : "event",
+      "name" : "Design Review",
+      "startDate" : "2026-06-14T20:00:00Z"
+    },
+    {
+      "colorHex" : "",
+      "endDate" : "2026-07-14T20:00:00Z",
+      "id" : "B736CAA1-CD03-44CC-BE87-B0C1B500331C",
+      "kind" : "event",
+      "name" : "Company Offsite",
+      "startDate" : "2026-07-12T20:00:00Z"
+    },
+    {
+      "colorHex" : "",
+      "endDate" : "2026-08-04T20:00:00Z",
+      "id" : "D29E0E9B-4663-434D-A71C-6A0828B6E98A",
+      "kind" : "observance",
+      "name" : "Code Freeze",
+      "startDate" : "2026-08-02T20:00:00Z"
     }
   ],
   "title" : "Aurora Commerce Launch Workspace",

@@ -90,10 +90,51 @@ enum PDFExporter {
                 pdfContext.draw(croppedImage, in: drawRect)
             }
 
+            drawBrandingFooter(in: pdfContext, pageWidth: pageWidth)
+
             pdfContext.endPDFPage()
         }
 
         pdfContext.closePDF()
+    }
+
+    /// Draws a Planroom brand mark + wordmark along the bottom of a PDF page.
+    @MainActor
+    private static func drawBrandingFooter(in ctx: CGContext, pageWidth: CGFloat) {
+        let footerHeight: CGFloat = 26
+        // White strip so the branding stays legible over chart content.
+        ctx.saveGState()
+        ctx.setFillColor(NSColor.white.cgColor)
+        ctx.fill(CGRect(x: 0, y: 0, width: pageWidth, height: footerHeight))
+        ctx.restoreGState()
+
+        let nsCtx = NSGraphicsContext(cgContext: ctx, flipped: false)
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = nsCtx
+
+        var textX: CGFloat = 16
+        if let icon = NSApp?.applicationIconImage {
+            icon.draw(in: CGRect(x: 16, y: 5, width: 16, height: 16))
+            textX = 38
+        }
+        let brand: [NSAttributedString.Key: Any] = [
+            .font: NSFont.boldSystemFont(ofSize: 11),
+            .foregroundColor: NSColor.secondaryLabelColor
+        ]
+        NSAttributedString(string: "Planroom", attributes: brand).draw(at: CGPoint(x: textX, y: 7))
+
+        let stampFormatter = DateFormatter()
+        stampFormatter.dateStyle = .medium
+        stampFormatter.timeStyle = .short
+        let stamp: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 9),
+            .foregroundColor: NSColor.tertiaryLabelColor
+        ]
+        let stampString = NSAttributedString(string: "Exported \(stampFormatter.string(from: Date()))", attributes: stamp)
+        let stampSize = stampString.size()
+        stampString.draw(at: CGPoint(x: pageWidth - stampSize.width - 16, y: 8))
+
+        NSGraphicsContext.restoreGraphicsState()
     }
 
     // MARK: - Task List PDF Export

@@ -12,6 +12,18 @@ struct ResourceSheetView: View {
     @State private var selectedResourceID: Int? = nil
     @State private var inspectorWidth: CGFloat = 360
 
+    /// Per-resource assignment count + peak allocation, computed once when the
+    /// data changes rather than in every table cell on every render/scroll.
+    private struct ResourceRowMetrics { let count: Int; let peak: Double }
+    @State private var metricsByResourceID: [Int: ResourceRowMetrics] = [:]
+
+    private var metricsSignature: Int {
+        var hasher = Hasher()
+        hasher.combine(resources.count)
+        hasher.combine(assignments.count)
+        return hasher.finalize()
+    }
+
     private var workResources: [ResourceRow] {
         resources
             .filter { $0.type?.lowercased() == "work" || $0.type == nil }
@@ -66,8 +78,7 @@ struct ResourceSheetView: View {
                         .width(min: 60, ideal: 80, max: 100)
 
                         TableColumn("Assignments") { row in
-                            let resource = row.resource
-                            let count = resourceAssignments(for: resource).count
+                            let count = row.resource.uniqueID.flatMap { metricsByResourceID[$0]?.count } ?? 0
                             if count > 0 {
                                 Text("\(count)")
                                     .monospacedDigit()
@@ -76,9 +87,10 @@ struct ResourceSheetView: View {
                         .width(min: 60, ideal: 80, max: 100)
 
                         TableColumn("Peak Load") { row in
-                            let resource = row.resource
-                            Text(peakAllocationText(for: resource))
-                                .foregroundStyle(peakAllocationColor(for: resource))
+                            let peak = row.resource.uniqueID.flatMap { metricsByResourceID[$0]?.peak } ?? 0
+                            let maxUnits = row.resource.maxUnits ?? 100
+                            Text(peak > 0 ? "\(Int(peak))%" : "0%")
+                                .foregroundStyle(peak > maxUnits ? Color.red : Color.secondary)
                         }
                         .width(min: 80, ideal: 100, max: 120)
                     }
@@ -104,8 +116,65 @@ struct ResourceSheetView: View {
                 if selectedResourceID == nil {
                     selectedResourceID = workResources.first?.id
                 }
+                recomputeMetrics()
+            }
+            .onChange(of: metricsSignature) { _, _ in
+                recomputeMetrics()
             }
         }
+    }
+
+    /// Builds the per-resource assignment count + peak allocation once. Peak is
+    /// computed with a sweep line (O(n log n)) instead of scanning every day.
+    private func recomputeMetrics() {
+        let calendar = Calendar.current
+        var counts: [Int: Int] = [:]
+        var intervalsByResource: [Int: [ResourceLoadInterval]] = [:]
+
+        for assignment in assignments {
+            guard let resourceID = assignment.resourceUniqueID else { continue }
+            counts[resourceID, default: 0] += 1
+            let task = allTasks[assignment.taskUniqueID ?? -1]
+            guard let start = assignment.start.flatMap(DateFormatting.parseMPXJDate) ?? task?.startDate,
+                  let finish = assignment.finish.flatMap(DateFormatting.parseMPXJDate) ?? task?.finishDate
+            else { continue }
+            intervalsByResource[resourceID, default: []].append(
+                ResourceLoadInterval(
+                    start: calendar.startOfDay(for: start),
+                    finish: calendar.startOfDay(for: finish),
+                    units: assignment.assignmentUnits ?? 100
+                )
+            )
+        }
+
+        var metrics: [Int: ResourceRowMetrics] = [:]
+        for resource in resources {
+            guard let resourceID = resource.uniqueID else { continue }
+            metrics[resourceID] = ResourceRowMetrics(
+                count: counts[resourceID] ?? 0,
+                peak: Self.peakUnits(intervalsByResource[resourceID] ?? [], calendar: calendar)
+            )
+        }
+        metricsByResourceID = metrics
+    }
+
+    private static func peakUnits(_ intervals: [ResourceLoadInterval], calendar: Calendar) -> Double {
+        guard !intervals.isEmpty else { return 0 }
+        var events: [(day: Date, delta: Double)] = []
+        events.reserveCapacity(intervals.count * 2)
+        for interval in intervals {
+            events.append((interval.start, interval.units))
+            let dayAfter = calendar.date(byAdding: .day, value: 1, to: interval.finish) ?? interval.finish
+            events.append((dayAfter, -interval.units))
+        }
+        events.sort { $0.day < $1.day }
+        var running = 0.0
+        var peak = 0.0
+        for event in events {
+            running += event.delta
+            peak = max(peak, running)
+        }
+        return peak
     }
 
     private func resourceAssignments(for resource: ProjectResource) -> [ResourceAssignment] {
@@ -113,50 +182,6 @@ struct ResourceSheetView: View {
         return assignments.filter { $0.resourceUniqueID == uniqueID }
     }
 
-    private func peakAllocationText(for resource: ProjectResource) -> String {
-        let peak = peakAllocationPercent(for: resource)
-        guard peak > 0 else { return "0%" }
-        return "\(Int(peak))%"
-    }
-
-    private func peakAllocationColor(for resource: ProjectResource) -> Color {
-        let peak = peakAllocationPercent(for: resource)
-        let maxUnits = resource.maxUnits ?? 100
-        return peak > maxUnits ? .red : .secondary
-    }
-
-    private func peakAllocationPercent(for resource: ProjectResource) -> Double {
-        let resourceAssignments = resourceAssignments(for: resource)
-        guard !resourceAssignments.isEmpty else { return 0 }
-
-        let intervals = resourceAssignments.compactMap { assignment -> ResourceLoadInterval? in
-            let task = allTasks[assignment.taskUniqueID ?? -1]
-            guard let start = assignment.start.flatMap(DateFormatting.parseMPXJDate) ?? task?.startDate,
-                  let finish = assignment.finish.flatMap(DateFormatting.parseMPXJDate) ?? task?.finishDate
-            else { return nil }
-            return ResourceLoadInterval(
-                start: Calendar.current.startOfDay(for: start),
-                finish: Calendar.current.startOfDay(for: finish),
-                units: assignment.assignmentUnits ?? 100
-            )
-        }
-
-        var peak: Double = 0
-        let calendar = Calendar.current
-        for interval in intervals {
-            var day = interval.start
-            while day <= interval.finish {
-                let total = intervals
-                    .filter { $0.start <= day && $0.finish >= day }
-                    .reduce(0.0) { $0 + $1.units }
-                peak = max(peak, total)
-                guard let next = calendar.date(byAdding: .day, value: 1, to: day) else { break }
-                day = next
-            }
-        }
-
-        return peak
-    }
 
     private func resizeHandle(totalWidth: CGFloat) -> some View {
         Rectangle()

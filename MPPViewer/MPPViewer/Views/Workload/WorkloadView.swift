@@ -2,6 +2,8 @@ import SwiftUI
 
 struct WorkloadView: View {
     let project: ProjectModel
+    /// Visual-only leave windows, drawn as amber bands on each resource's row.
+    var resourceLeaves: [PlanResourceLeave] = []
 
     @State private var workloads: [ResourceWorkload] = []
     @State private var pixelsPerDay: CGFloat = 8
@@ -64,8 +66,33 @@ struct WorkloadView: View {
                 HStack(spacing: 12) {
                     legendItem(color: .green, label: "Normal (<=100%)")
                     legendItem(color: .red, label: "Over-allocated")
+                    if !resourceLeaves.isEmpty {
+                        legendItem(color: .orange, label: "Leave")
+                    }
                 }
                 .font(.caption2)
+
+                Divider().frame(height: 16)
+
+                Menu {
+                    Button {
+                        exportToPDF()
+                    } label: {
+                        Label("Export PDF…", systemImage: "doc.richtext")
+                    }
+                    Button {
+                        exportToSVG()
+                    } label: {
+                        Label("Export SVG (Vector)…", systemImage: "square.on.square.dashed")
+                    }
+                } label: {
+                    Label("Export", systemImage: "square.and.arrow.up")
+                        .font(.caption)
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .disabled(workloads.isEmpty)
+                .help("Export the resource workload as a PDF or scalable SVG, including leave bands.")
 
                 Divider().frame(height: 16)
 
@@ -269,6 +296,20 @@ struct WorkloadView: View {
 
     // MARK: - Canvas
 
+    /// Inclusive [from...to] date span → x/width in canvas coordinates, clipped
+    /// to the visible timeline. Nil when the span is entirely off-chart.
+    private func leaveBandGeometry(from: Date, to: Date) -> (x: CGFloat, width: CGFloat)? {
+        guard totalDays > 0 else { return nil }
+        let cal = Calendar.current
+        let origin = cal.startOfDay(for: dateRange.start)
+        let startOffset = cal.dateComponents([.day], from: origin, to: cal.startOfDay(for: from)).day ?? 0
+        let endOffset = cal.dateComponents([.day], from: origin, to: cal.startOfDay(for: to)).day ?? 0
+        let lo = max(0, min(startOffset, endOffset))
+        let hi = min(totalDays - 1, max(startOffset, endOffset))
+        guard hi >= lo else { return nil }
+        return (CGFloat(lo) * pixelsPerDay, CGFloat(hi - lo + 1) * pixelsPerDay)
+    }
+
     private var workloadCanvas: some View {
         Canvas { context, size in
             // Grid lines
@@ -287,6 +328,36 @@ struct WorkloadView: View {
                 vline.move(to: CGPoint(x: x, y: 0))
                 vline.addLine(to: CGPoint(x: x, y: size.height))
                 context.stroke(vline, with: .color(.gray.opacity(gridLineOpacity)), lineWidth: 0.5)
+            }
+
+            // Resource leave bands (drawn behind the allocation bars).
+            if !resourceLeaves.isEmpty {
+                let leavesByResourceID = Dictionary(grouping: resourceLeaves, by: \.resourceID)
+                for (rowIndex, workload) in workloads.enumerated() {
+                    guard let resourceID = workload.resource.uniqueID,
+                          let leaves = leavesByResourceID[resourceID] else { continue }
+                    let y = CGFloat(rowIndex) * rowHeight
+                    for leave in leaves {
+                        guard let band = leaveBandGeometry(from: leave.startDate, to: leave.endDate) else { continue }
+                        let color = Color(hex: leave.effectiveColorHex) ?? .orange
+                        let rect = CGRect(x: band.x, y: y + 1, width: band.width, height: rowHeight - 2)
+                        context.fill(Path(rect), with: .color(color.opacity(colorScheme == .dark ? 0.28 : 0.20)))
+                        for edgeX in [band.x, band.x + band.width] {
+                            var edge = Path()
+                            edge.move(to: CGPoint(x: edgeX, y: y + 1))
+                            edge.addLine(to: CGPoint(x: edgeX, y: y + rowHeight - 1))
+                            context.stroke(edge, with: .color(color.opacity(0.6)), lineWidth: 1)
+                        }
+                        // Label the band with the reason when it fits.
+                        let reason = leave.name.trimmingCharacters(in: .whitespaces)
+                        if band.width > 34 {
+                            let text = Text(reason.isEmpty ? "Leave" : reason)
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundColor(color)
+                            context.draw(context.resolve(text), at: CGPoint(x: band.x + 4, y: y + rowHeight / 2), anchor: .leading)
+                        }
+                    }
+                }
             }
 
             // Resource bars
@@ -311,8 +382,10 @@ struct WorkloadView: View {
                     let xStart = CGFloat(load.dayOffset) * pixelsPerDay
                     let barWidth = max(2, 7 * pixelsPerDay - 2) // 7 days wide minus gap
 
-                    // Height proportional to allocation (cap visual at 200%)
-                    let pct = min(2.0, load.allocationPercent / 100.0)
+                    // Height proportional to allocation, clamped to the row so
+                    // over-allocated bars never spill into the row above or the
+                    // date header. Over-allocation is shown by the red fill.
+                    let pct = min(1.0, load.allocationPercent / 100.0)
                     let barHeight = maxBarHeight * CGFloat(pct)
                     let barY = y + barInset + (maxBarHeight - barHeight)
 
@@ -335,6 +408,90 @@ struct WorkloadView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Export
+
+    private var exportContentSize: CGSize {
+        CGSize(
+            width: nameColumnWidth + 1 + timelineWidth,
+            height: 44 + CGFloat(workloads.count) * rowHeight
+        )
+    }
+
+    /// A fixed-size, non-scrolling composition (name column + header + canvas)
+    /// captured for PDF export.
+    private var workloadExportContent: some View {
+        HStack(alignment: .top, spacing: 0) {
+            VStack(alignment: .leading, spacing: 0) {
+                Color.clear
+                    .frame(width: nameColumnWidth, height: 44)
+                    .background(Color(nsColor: .controlBackgroundColor))
+                ForEach(workloads) { workload in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(workload.resource.name ?? "Unknown")
+                                .font(.caption).fontWeight(.medium).lineLimit(1)
+                            Text("Peak: \(Int(workload.peakAllocation))%")
+                                .font(.caption2)
+                                .foregroundStyle(workload.isOverAllocated ? .red : .secondary)
+                        }
+                        Spacer()
+                    }
+                    .padding(.horizontal, 8)
+                    .frame(width: nameColumnWidth, height: rowHeight)
+                    Divider()
+                }
+            }
+            Divider()
+            VStack(alignment: .leading, spacing: 0) {
+                GanttHeaderView(dateRange: dateRange, pixelsPerDay: pixelsPerDay, totalWidth: timelineWidth)
+                workloadCanvas
+                    .frame(width: timelineWidth, height: CGFloat(workloads.count) * rowHeight)
+            }
+        }
+        .frame(width: exportContentSize.width, height: exportContentSize.height, alignment: .topLeading)
+        .background(Color(nsColor: .textBackgroundColor))
+    }
+
+    @MainActor
+    private func exportToPDF() {
+        guard !workloads.isEmpty else { return }
+        let title = project.properties.projectTitle ?? "Workload"
+        PDFExporter.exportGanttToPDF(
+            view: workloadExportContent,
+            contentSize: exportContentSize,
+            fileName: "\(title) - Workload \(PDFExporter.fileNameTimestamp).pdf"
+        )
+    }
+
+    @MainActor
+    private func exportToSVG() {
+        guard !workloads.isEmpty else { return }
+        let rows: [SVGExporter.WorkloadRow] = workloads.map { workload in
+            let resourceID = workload.resource.uniqueID ?? -1
+            return SVGExporter.WorkloadRow(
+                name: workload.resource.name ?? "Unknown",
+                peakPercent: workload.peakAllocation,
+                isOverAllocated: workload.isOverAllocated,
+                weeks: workload.weeklyLoads.map {
+                    SVGExporter.WorkloadWeek(dayOffset: $0.dayOffset, allocationPercent: $0.allocationPercent, isOver: $0.isOverAllocated)
+                },
+                leaves: resourceLeaves.filter { $0.resourceID == resourceID }.map {
+                    SVGExporter.WorkloadLeave(start: $0.startDate, finish: $0.endDate, name: $0.name, colorHex: $0.effectiveColorHex)
+                }
+            )
+        }
+        let title = project.properties.projectTitle ?? "Workload"
+        SVGExporter.exportWorkload(
+            rows: rows,
+            rangeStart: dateRange.start,
+            rangeEnd: dateRange.end,
+            pixelsPerDay: max(2, pixelsPerDay),
+            rowHeight: max(28, rowHeight),
+            title: title,
+            fileName: "\(title) - Workload \(PDFExporter.fileNameTimestamp).svg"
+        )
     }
 
     private func legendItem(color: Color, label: String) -> some View {

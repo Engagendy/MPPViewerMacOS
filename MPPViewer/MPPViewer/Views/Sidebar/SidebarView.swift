@@ -26,6 +26,9 @@ struct SidebarView: View {
                 sidebarRow(.timeline)
                 sidebarRow(.resources)
                 sidebarRow(.calendar)
+                if showsPlanner {
+                    sidebarRow(.eventsLeave)
+                }
             }
 
             Section("Analysis") {

@@ -2,6 +2,14 @@ import SwiftUI
 import AppKit
 import SwiftData
 
+/// Clipboard payload for copying plan-builder rows within the app. Carries the
+/// full task subtree plus its assignments so paste can recreate them faithfully.
+struct PlannerClipboardPayload: Codable {
+    static let pasteboardType = NSPasteboard.PasteboardType("com.planroom.plantasks")
+    var tasks: [NativePlanTask]
+    var assignments: [NativePlanAssignment]
+}
+
 struct PlanEditorView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.undoManager) private var undoManager
@@ -554,6 +562,10 @@ struct PlanEditorView: View {
             onDelete: deleteSelectedTask,
             onExpandTasks: expandAllGridTasks,
             onCollapseTasks: collapseAllGridTasks,
+            onInsertAbove: insertRowAboveSelection,
+            onInsertBelow: insertRowBelowSelection,
+            onCopyRows: copySelectedRows,
+            onPasteRows: pasteRows,
             makeHeader: taskGridHeader(layout:),
             makeRow: taskGridRow(row:layout:)
         )
@@ -2246,14 +2258,216 @@ struct PlanEditorView: View {
     private func duplicateSelectedTask() {
         commitInspectorEdits()
         guard let selectedTaskIndex else { return }
-        var duplicate = plan.tasks[selectedTaskIndex]
-        duplicate.id = plan.nextTaskID()
-        duplicate.name += " Copy"
-        duplicate.predecessorTaskIDs = duplicate.predecessorTaskIDs.filter { $0 != duplicate.id }
-        let insertionIndex = subtreeRange(for: selectedTaskIndex).upperBound
-        plan.tasks.insert(duplicate, at: insertionIndex)
+        let range = subtreeRange(for: selectedTaskIndex)
+        let block = Array(plan.tasks[range])
+        let blockIDs = Set(block.map(\.id))
+        let blockAssignments = plan.assignments.filter { blockIDs.contains($0.taskID) }
+
+        var cloned = cloneTaskBlock(block, sourceAssignments: blockAssignments)
+        // Timing is preserved: the clone keeps each row's stored start date and
+        // any still-valid external predecessors, so the scheduler places it on
+        // the same dates as the original. Only rename the root for clarity.
+        if !cloned.tasks.isEmpty {
+            cloned.tasks[0].name += " Copy"
+        }
+
+        plan.tasks.insert(contentsOf: cloned.tasks, at: range.upperBound)
+        plan.assignments.append(contentsOf: cloned.assignments)
         reschedulePlan()
-        selectedTaskID = duplicate.id
+        selectedTaskID = cloned.tasks.first?.id
+    }
+
+    /// Clones a contiguous block of tasks with fresh task/assignment identities.
+    /// Predecessors pointing *inside* the block are remapped to the clones;
+    /// predecessors pointing to rows that still exist in the plan are kept (so
+    /// duplicated timing matches the source); dangling links are dropped.
+    private func cloneTaskBlock(
+        _ block: [NativePlanTask],
+        sourceAssignments: [NativePlanAssignment]
+    ) -> (tasks: [NativePlanTask], assignments: [NativePlanAssignment]) {
+        var nextTaskID = plan.nextTaskID()
+        var idRemap: [Int: Int] = [:]
+        for task in block {
+            idRemap[task.id] = nextTaskID
+            nextTaskID += 1
+        }
+
+        let existingIDs = Set(plan.tasks.map(\.id))
+        var nextAssignmentID = plan.nextAssignmentID()
+        var newTasks: [NativePlanTask] = []
+        var newAssignments: [NativePlanAssignment] = []
+
+        for task in block {
+            var copy = task
+            copy.uniqueID = UUID()
+            copy.id = idRemap[task.id] ?? task.id
+            copy.predecessorTaskIDs = task.predecessorTaskIDs.compactMap { predID in
+                idRemap[predID] ?? (existingIDs.contains(predID) ? predID : nil)
+            }
+            newTasks.append(copy)
+
+            for assignment in sourceAssignments where assignment.taskID == task.id {
+                var clone = assignment
+                clone.uniqueID = UUID()
+                clone.id = nextAssignmentID
+                nextAssignmentID += 1
+                clone.taskID = copy.id
+                newAssignments.append(clone)
+            }
+        }
+
+        return (newTasks, newAssignments)
+    }
+
+    private func addTask(before taskID: Int, focus: PlannerGridColumn? = nil) {
+        commitInspectorEdits()
+        guard let anchorIndex = taskIndex(for: taskID) else { return }
+        let anchorTask = plan.tasks[anchorIndex]
+        var newTask = plan.makeTask(anchoredTo: anchorTask.startDate)
+        newTask.outlineLevel = anchorTask.outlineLevel
+        // Insert at the anchor's own row so it lands directly above it without
+        // disturbing the neighbor's dates.
+        plan.tasks.insert(newTask, at: anchorIndex)
+        reschedulePlan()
+        selectedTaskID = newTask.id
+        if let focus {
+            pendingGridFocusTarget = PlannerGridFocusTarget(taskID: newTask.id, column: focus)
+        }
+    }
+
+    private func insertRowAboveSelection() {
+        if let selectedTaskID {
+            addTask(before: selectedTaskID, focus: .name)
+        } else {
+            addTask(focus: .name)
+        }
+    }
+
+    private func insertRowBelowSelection() {
+        addTask(after: selectedTaskID, focus: .name)
+    }
+
+    // MARK: Row copy / paste
+
+    private func copySelectedRows() {
+        commitInspectorEdits()
+        guard let selectedTaskIndex else { return }
+        let range = subtreeRange(for: selectedTaskIndex)
+        let block = Array(plan.tasks[range])
+        let blockIDs = Set(block.map(\.id))
+        let blockAssignments = plan.assignments.filter { blockIDs.contains($0.taskID) }
+        let payload = PlannerClipboardPayload(tasks: block, assignments: blockAssignments)
+
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        if let data = try? JSONEncoder().encode(payload) {
+            pasteboard.setData(data, forType: PlannerClipboardPayload.pasteboardType)
+        }
+        // Also expose a tab-separated fallback so rows can paste into Excel.
+        let tsv = block.map { task in
+            [task.name, String(task.durationDays), DateFormatting.simpleDate(task.startDate)]
+                .joined(separator: "\t")
+        }.joined(separator: "\n")
+        pasteboard.setString(tsv, forType: .string)
+    }
+
+    private func pasteRows() {
+        commitInspectorEdits()
+        let pasteboard = NSPasteboard.general
+
+        if let data = pasteboard.data(forType: PlannerClipboardPayload.pasteboardType),
+           let payload = try? JSONDecoder().decode(PlannerClipboardPayload.self, from: data) {
+            insertClonedBlock(tasks: payload.tasks, assignments: payload.assignments)
+            return
+        }
+
+        if let text = pasteboard.string(forType: .string),
+           !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            pasteSpreadsheetRows(text)
+        }
+    }
+
+    private func insertClonedBlock(tasks: [NativePlanTask], assignments: [NativePlanAssignment]) {
+        guard !tasks.isEmpty else { return }
+        let cloned = cloneTaskBlock(tasks, sourceAssignments: assignments)
+        var newTasks = cloned.tasks
+
+        // Re-level the pasted block so its root sits at the selection's level.
+        let targetLevel = selectedTaskIndex.map { plan.tasks[$0].outlineLevel } ?? 1
+        let rootLevel = newTasks.first?.outlineLevel ?? 1
+        let levelDelta = targetLevel - rootLevel
+        if levelDelta != 0 {
+            for index in newTasks.indices {
+                newTasks[index].outlineLevel = max(1, newTasks[index].outlineLevel + levelDelta)
+            }
+        }
+
+        let insertionIndex = selectedTaskIndex.map { subtreeRange(for: $0).upperBound } ?? plan.tasks.endIndex
+        plan.tasks.insert(contentsOf: newTasks, at: insertionIndex)
+        plan.assignments.append(contentsOf: cloned.assignments)
+        reschedulePlan()
+        selectedTaskID = newTasks.first?.id
+    }
+
+    /// Parses tab/newline-separated text pasted from Excel/Sheets into new tasks.
+    /// Columns: Name, Duration (days), Start date, % Complete — all but Name
+    /// optional. Extra columns are ignored.
+    private func pasteSpreadsheetRows(_ text: String) {
+        let lines = text.split(whereSeparator: \.isNewline)
+        let targetLevel = selectedTaskIndex.map { plan.tasks[$0].outlineLevel } ?? 1
+        var nextID = plan.nextTaskID()
+        var created: [NativePlanTask] = []
+
+        for line in lines {
+            let columns = line.components(separatedBy: "\t")
+            let name = columns[0].trimmingCharacters(in: .whitespaces)
+            guard !name.isEmpty else { continue }
+
+            var task = plan.makeTask(name: name, anchoredTo: plan.statusDate)
+            task.uniqueID = UUID()
+            task.id = nextID
+            nextID += 1
+            task.outlineLevel = targetLevel
+
+            if columns.count > 1 {
+                let digits = columns[1].filter { $0.isNumber }
+                if let duration = Int(digits), duration > 0 {
+                    task.durationDays = duration
+                }
+            }
+            if columns.count > 2, let date = parsePastedDate(columns[2]) {
+                task.startDate = Calendar.current.startOfDay(for: date)
+                task.manuallyScheduled = true
+            }
+            if columns.count > 3 {
+                let digits = columns[3].filter { $0.isNumber }
+                if let percent = Double(digits) {
+                    task.percentComplete = min(100, max(0, percent))
+                }
+            }
+
+            created.append(task)
+        }
+
+        guard !created.isEmpty else { return }
+        let insertionIndex = selectedTaskIndex.map { subtreeRange(for: $0).upperBound } ?? plan.tasks.endIndex
+        plan.tasks.insert(contentsOf: created, at: insertionIndex)
+        reschedulePlan()
+        selectedTaskID = created.first?.id
+    }
+
+    private func parsePastedDate(_ raw: String) -> Date? {
+        let trimmed = raw.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return nil }
+        for format in ["yyyy-MM-dd", "MM/dd/yyyy", "dd/MM/yyyy", "M/d/yyyy", "dd-MM-yyyy", "yyyy/MM/dd"] {
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.dateFormat = format
+            if let date = formatter.date(from: trimmed) {
+                return date
+            }
+        }
+        return nil
     }
 
     private func deleteSelectedTask() {
@@ -3883,6 +4097,10 @@ private struct PlannerTaskListPane<RowContent: View, HeaderContent: View>: View 
     let onDelete: () -> Void
     let onExpandTasks: () -> Void
     let onCollapseTasks: () -> Void
+    let onInsertAbove: () -> Void
+    let onInsertBelow: () -> Void
+    let onCopyRows: () -> Void
+    let onPasteRows: () -> Void
     let makeHeader: (PlannerGridLayout) -> HeaderContent
     let makeRow: (PlannerGridRowModel, PlannerGridLayout) -> RowContent
 
@@ -4042,7 +4260,33 @@ private struct PlannerTaskListPane<RowContent: View, HeaderContent: View>: View 
                     }
                     .buttonStyle(.accessoryBar)
                     .disabled(!selectedTaskAvailable)
-                    .help("Duplicate selected task")
+                    .help("Duplicate selected task (keeps timing and resources)")
+
+                    Menu {
+                        Button(action: onInsertAbove) {
+                            Label("Insert Row Above", systemImage: "arrow.up.to.line")
+                        }
+                        .keyboardShortcut(.return, modifiers: [.command, .shift])
+                        Button(action: onInsertBelow) {
+                            Label("Insert Row Below", systemImage: "arrow.down.to.line")
+                        }
+                        Divider()
+                        Button(action: onCopyRows) {
+                            Label("Copy Row(s)", systemImage: "doc.on.doc")
+                        }
+                        .keyboardShortcut("c", modifiers: [.command, .shift])
+                        .disabled(!selectedTaskAvailable)
+                        Button(action: onPasteRows) {
+                            Label("Paste Row(s)", systemImage: "doc.on.clipboard")
+                        }
+                        .keyboardShortcut("v", modifiers: [.command, .shift])
+                    } label: {
+                        Image(systemName: "rectangle.stack.badge.plus")
+                    }
+                    .menuStyle(.button)
+                    .buttonStyle(.accessoryBar)
+                    .fixedSize()
+                    .help("Insert, copy, and paste rows. Paste also accepts tab-separated rows from Excel/Sheets. (⇧⌘C copy · ⇧⌘V paste · ⇧⌘↩ insert above)")
 
                     Button(action: onMoveUp) {
                         Image(systemName: "arrow.up")
@@ -4084,6 +4328,8 @@ private struct PlannerTaskListPane<RowContent: View, HeaderContent: View>: View 
             shortcutHint("Enter", description: "Down same column")
             shortcutHint("Cmd+Return", description: "New row")
             shortcutHint("Cmd+[ / ]", description: "Outdent / indent")
+            shortcutHint("⇧Cmd+C / V", description: "Copy / paste rows")
+            shortcutHint("⇧Cmd+Return", description: "Insert above")
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 12)

@@ -27,7 +27,9 @@ struct NativeResourcesEditorView: View {
 
     private var selectedResource: PortfolioPlanResource? {
         guard let selectedResourceID else { return nil }
-        return orderedResources.first(where: { $0.legacyID == selectedResourceID })
+        // Look up in the unsorted list — no need to sort the whole array just to
+        // find one resource (this runs several times per body evaluation).
+        return planModel.resources.first(where: { $0.legacyID == selectedResourceID })
     }
 
     private var calendarOptions: [ProjectCalendar] {
@@ -47,7 +49,7 @@ struct NativeResourcesEditorView: View {
                 HStack {
                     Text("Resources")
                         .font(.headline)
-                    Text("(\(orderedResources.count))")
+                    Text("(\(planModel.resources.count))")
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
@@ -169,7 +171,16 @@ struct NativeResourcesEditorView: View {
             }
         }
         .onChange(of: planModel.updatedAt) { _, _ in
-            refreshReviewProject()
+            // Only the read-only review pane renders the derived ProjectModel, so
+            // there's no need to rebuild it while editing in the edit pane.
+            if mode == .review {
+                refreshReviewProject()
+            }
+        }
+        .onChange(of: mode) { _, newMode in
+            if newMode == .review {
+                refreshReviewProject()
+            }
         }
         .sheet(item: $resourceImportSession) { session in
             ResourceCSVImportMappingSheet(
@@ -209,11 +220,13 @@ struct NativeResourcesEditorView: View {
                 selectedResourceID = orderedResources.first?.legacyID
             }
         }
-        .onChange(of: orderedResources.map(\.legacyID)) { _, ids in
-            if let selectedResourceID, ids.contains(selectedResourceID) {
+        .onChange(of: planModel.resources.count) { _, _ in
+            // Reconcile the selection only when resources are added/removed,
+            // without sorting/mapping the whole list on every body pass.
+            if let selectedResourceID, planModel.resources.contains(where: { $0.legacyID == selectedResourceID }) {
                 return
             }
-            selectedResourceID = ids.first
+            selectedResourceID = orderedResources.first?.legacyID
         }
         .onDisappear {
             persistPlanImmediately()
@@ -234,14 +247,21 @@ struct NativeResourcesEditorView: View {
     private func persistPlanImmediately() {
         persistenceWorkItem?.cancel()
         persist()
-    }
-
-    @MainActor
-    private func persist() {
-        planModel.updatedAt = Date()
+        // Heavy work (portfolio metrics + full ProjectModel rebuild) is deferred
+        // to here — when leaving the screen — instead of running on every
+        // keystroke, which is what made editing feel sluggish.
         planModel.refreshPortfolioMetrics()
         modelContext.saveReportingFailures()
         refreshReviewProject()
+    }
+
+    /// Lightweight per-edit persistence: mark the plan dirty and save the field
+    /// change. The expensive project rebuild is only done when it's actually
+    /// needed (entering review mode, or leaving the screen).
+    @MainActor
+    private func persist() {
+        planModel.updatedAt = Date()
+        modelContext.saveReportingFailures()
     }
 
     private func reopenResourceImportMapping() {
