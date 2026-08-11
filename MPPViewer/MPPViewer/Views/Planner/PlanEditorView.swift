@@ -57,6 +57,7 @@ struct PlanEditorView: View {
     @State private var latestRescheduleGeneration = 0
 
     @State private var selectedTaskID: Int?
+    @State private var multiSelectedGridTaskIDs: Set<Int> = []
     @State private var pendingGridFocusTarget: PlannerGridFocusTarget?
     @State private var inspectorWidth: CGFloat = 320
     @State private var inspectorDragStartWidth: CGFloat?
@@ -699,7 +700,7 @@ struct PlanEditorView: View {
         return PlannerGridRowView(
             row: row,
             layout: layout,
-            isSelected: selectedTaskID == row.id,
+            isSelected: selectedTaskID == row.id || multiSelectedGridTaskIDs.contains(row.id),
             isCollapsed: collapsedGridTaskIDs.contains(row.id),
             resourceOptions: gridResourceOptions,
             nameValue: gridTextDrafts[PlannerGridCellKey(taskID: row.id, column: .name)] ?? row.name,
@@ -773,10 +774,60 @@ struct PlanEditorView: View {
                 toggleGridTaskCollapse(row.id)
             },
             onTap: {
-                selectedTaskID = row.id
+                handleGridRowTap(row.id)
             }
         )
         .equatable()
+    }
+
+    /// Click = single select. Cmd-click toggles membership in the multi
+    /// selection. Shift-click selects the visible range from the anchor row.
+    private func handleGridRowTap(_ taskID: Int) {
+        let modifiers = NSEvent.modifierFlags.intersection(.deviceIndependentFlagsMask)
+
+        if modifiers.contains(.command) {
+            var selection = multiSelectedGridTaskIDs
+            if selection.isEmpty, let selectedTaskID, selectedTaskID != taskID {
+                selection.insert(selectedTaskID)
+            }
+            if selection.contains(taskID) {
+                selection.remove(taskID)
+            } else {
+                selection.insert(taskID)
+            }
+            multiSelectedGridTaskIDs = selection
+            selectedTaskID = taskID
+            return
+        }
+
+        if modifiers.contains(.shift), let anchorID = selectedTaskID, anchorID != taskID {
+            let visibleIDs = visibleGridRowModels.map(\.id)
+            if let anchorIndex = visibleIDs.firstIndex(of: anchorID),
+               let targetIndex = visibleIDs.firstIndex(of: taskID) {
+                let range = min(anchorIndex, targetIndex) ... max(anchorIndex, targetIndex)
+                multiSelectedGridTaskIDs = Set(visibleIDs[range])
+                return
+            }
+        }
+
+        multiSelectedGridTaskIDs = []
+        selectedTaskID = taskID
+    }
+
+    /// Selected task IDs whose subtree is not already contained in another
+    /// selected task's subtree, in row order — the roots bulk ops act on.
+    private func multiSelectionRootIndices() -> [Int] {
+        let validIDs = multiSelectedGridTaskIDs.filter { taskIndex(for: $0) != nil }
+        guard validIDs.count > 1 else { return [] }
+        let indices = validIDs.compactMap { taskIndex(for: $0) }.sorted()
+        var roots: [Int] = []
+        var coveredUpTo = -1
+        for index in indices {
+            guard index > coveredUpTo else { continue }
+            roots.append(index)
+            coveredUpTo = subtreeRange(for: index).upperBound - 1
+        }
+        return roots
     }
 
     private var inspectorPane: some View {
@@ -2351,9 +2402,16 @@ struct PlanEditorView: View {
 
     private func copySelectedRows() {
         commitInspectorEdits()
-        guard let selectedTaskIndex else { return }
-        let range = subtreeRange(for: selectedTaskIndex)
-        let block = Array(plan.tasks[range])
+
+        let block: [NativePlanTask]
+        let bulkRoots = multiSelectionRootIndices()
+        if !bulkRoots.isEmpty {
+            block = bulkRoots.flatMap { Array(plan.tasks[subtreeRange(for: $0)]) }
+        } else if let selectedTaskIndex {
+            block = Array(plan.tasks[subtreeRange(for: selectedTaskIndex)])
+        } else {
+            return
+        }
         let blockIDs = Set(block.map(\.id))
         let blockAssignments = plan.assignments.filter { blockIDs.contains($0.taskID) }
         let payload = PlannerClipboardPayload(tasks: block, assignments: blockAssignments)
@@ -2472,6 +2530,25 @@ struct PlanEditorView: View {
 
     private func deleteSelectedTask() {
         commitInspectorEdits()
+
+        // Bulk path: remove every selected root subtree in one operation.
+        let bulkRoots = multiSelectionRootIndices()
+        if !bulkRoots.isEmpty {
+            let ranges = bulkRoots.map { subtreeRange(for: $0) }
+            let removedIDs = Set(ranges.flatMap { plan.tasks[$0].map(\.id) })
+            for range in ranges.reversed() {
+                plan.tasks.removeSubrange(range)
+            }
+            for index in plan.tasks.indices {
+                plan.tasks[index].predecessorTaskIDs.removeAll { removedIDs.contains($0) }
+            }
+            plan.assignments.removeAll { removedIDs.contains($0.taskID) }
+            multiSelectedGridTaskIDs = []
+            reschedulePlan()
+            selectedTaskID = plan.tasks.first?.id
+            return
+        }
+
         guard let selectedTaskIndex else { return }
         let range = subtreeRange(for: selectedTaskIndex)
         let removedIDs = Set(plan.tasks[range].map(\.id))
@@ -2499,6 +2576,25 @@ struct PlanEditorView: View {
     }
 
     private func indentSelectedTask() {
+        // Bulk path: indent each selected root, top to bottom, so earlier
+        // indents cascade naturally into later ones.
+        let bulkRoots = multiSelectionRootIndices()
+        if !bulkRoots.isEmpty {
+            commitInspectorEdits()
+            for taskID in bulkRoots.map({ plan.tasks[$0].id }) {
+                guard let index = taskIndex(for: taskID), index > 0 else { continue }
+                let currentLevel = plan.tasks[index].outlineLevel
+                let previousLevel = plan.tasks[index - 1].outlineLevel
+                let newLevel = min(currentLevel + 1, previousLevel + 1)
+                guard newLevel != currentLevel else { continue }
+                for subIndex in subtreeRange(for: index) {
+                    plan.tasks[subIndex].outlineLevel = max(1, plan.tasks[subIndex].outlineLevel + newLevel - currentLevel)
+                }
+            }
+            reschedulePlan()
+            return
+        }
+
         guard let selectedTaskIndex, canIndentSelectedTask() else { return }
         let currentLevel = plan.tasks[selectedTaskIndex].outlineLevel
         let previousLevel = plan.tasks[selectedTaskIndex - 1].outlineLevel
@@ -2516,6 +2612,21 @@ struct PlanEditorView: View {
     }
 
     private func outdentSelectedTask() {
+        // Bulk path: promote every selected root subtree one level.
+        let bulkRoots = multiSelectionRootIndices()
+        if !bulkRoots.isEmpty {
+            commitInspectorEdits()
+            for taskID in bulkRoots.map({ plan.tasks[$0].id }) {
+                guard let index = taskIndex(for: taskID),
+                      plan.tasks[index].outlineLevel > 1 else { continue }
+                for subIndex in subtreeRange(for: index) {
+                    plan.tasks[subIndex].outlineLevel = max(1, plan.tasks[subIndex].outlineLevel - 1)
+                }
+            }
+            reschedulePlan()
+            return
+        }
+
         guard canOutdentSelectedTask() else { return }
         adjustSelectedSubtreeOutlineLevel(by: -1)
     }
@@ -4347,6 +4458,7 @@ private struct PlannerTaskListPane<RowContent: View, HeaderContent: View>: View 
             shortcutHint("Cmd+[ / ]", description: "Outdent / indent")
             shortcutHint("⇧Cmd+C / V", description: "Copy / paste rows")
             shortcutHint("⇧Cmd+Return", description: "Insert above")
+            shortcutHint("Cmd/⇧+Click", description: "Multi-select rows")
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 12)
