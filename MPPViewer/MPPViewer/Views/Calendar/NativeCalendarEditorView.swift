@@ -412,19 +412,22 @@ struct NativeCalendarEditorView: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         } else {
-                            ForEach(Array(calendar.exceptions.indices), id: \.self) { index in
+                            // Iterate by stable identity, not array index: removing
+                            // an exception must not leave a captured index that then
+                            // reads calendar.exceptions[index] out of range.
+                            ForEach(calendar.exceptions) { exception in
+                                let exceptionID = exception.id
                                 exceptionEditor(exception: Binding(
-                                    get: { calendar.exceptions[index] },
-                                    set: {
+                                    get: { calendar.exceptions.first(where: { $0.id == exceptionID }) ?? exception },
+                                    set: { newValue in
+                                        guard let idx = calendar.exceptions.firstIndex(where: { $0.id == exceptionID }) else { return }
                                         var updated = calendar.exceptions
-                                        updated[index] = $0
+                                        updated[idx] = newValue
                                         calendar.exceptions = updated
                                         schedulePlanPersistence()
                                     }
                                 )) {
-                                    var updated = calendar.exceptions
-                                    updated.remove(at: index)
-                                    calendar.exceptions = updated
+                                    calendar.exceptions = calendar.exceptions.filter { $0.id != exceptionID }
                                     schedulePlanPersistence()
                                 }
                             }

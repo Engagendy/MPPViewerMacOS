@@ -1085,7 +1085,7 @@ struct GanttChartView: View {
                     Button(role: .destructive) {
                         removeSelectedDependency()
                     } label: {
-                        Label("Remove Link", systemImage: "link.badge.minus")
+                        Label("Remove Link", systemImage: "minus.circle")
                     }
                     .buttonStyle(.bordered)
                     .hoverHighlight()
@@ -1170,7 +1170,7 @@ struct GanttChartView: View {
                     successorID: dependency.successorID
                 )
             } label: {
-                Label("Remove Link", systemImage: "link.badge.minus")
+                Label("Remove Link", systemImage: "minus.circle")
             }
             .buttonStyle(.bordered)
             .hoverHighlight()
@@ -2161,7 +2161,7 @@ struct GanttChartView: View {
             Button {
                 clearPredecessors(for: task.uniqueID)
             } label: {
-                Label("Clear Predecessors", systemImage: "link.badge.minus")
+                Label("Clear Predecessors", systemImage: "minus.circle")
             }
             .disabled(!isEditingEnabled || (task.predecessors?.isEmpty ?? true))
 
@@ -4433,7 +4433,7 @@ struct GanttCanvasView: View {
                                 Button(role: .destructive) {
                                     onRemoveDependency?(segment.predecessorID, segment.successorID)
                                 } label: {
-                                    Label("Remove Link", systemImage: "link.badge.minus")
+                                    Label("Remove Link", systemImage: "minus.circle")
                                 }
                             }
                     }
