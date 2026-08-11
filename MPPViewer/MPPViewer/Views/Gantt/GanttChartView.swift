@@ -5135,6 +5135,7 @@ struct ResourceLeaveRow: View {
 /// leave. Edits persist directly to the SwiftData-backed plan. Visual only.
 struct EventsLeaveManagerView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.undoManager) private var undoManager
     let planModel: PortfolioProjectPlan
 
     @State private var events: [PlanTimelineEvent]
@@ -5199,9 +5200,19 @@ struct EventsLeaveManagerView: View {
                 }
             )
         }
+        // Resync when the plan changes underneath us (undo/redo, Gantt sheet).
+        .onChange(of: planModel.timelineEvents) { _, newValue in
+            if events != newValue { events = newValue }
+        }
+        .onChange(of: planModel.resourceLeaves) { _, newValue in
+            if leaves != newValue { leaves = newValue }
+        }
     }
 
     private func persist() {
+        let previousEvents = planModel.timelineEvents
+        let previousLeaves = planModel.resourceLeaves
+
         planModel.timelineEvents = events.map { event in
             var normalized = event
             if normalized.endDate < normalized.startDate { normalized.endDate = normalized.startDate }
@@ -5213,7 +5224,38 @@ struct EventsLeaveManagerView: View {
             return normalized
         }
         planModel.updatedAt = Date()
+
+        if previousEvents != planModel.timelineEvents || previousLeaves != planModel.resourceLeaves {
+            Self.registerUndo(
+                undoManager,
+                planModel: planModel,
+                modelContext: modelContext,
+                events: previousEvents,
+                leaves: previousLeaves
+            )
+        }
         try? modelContext.save()
+    }
+
+    /// Snapshot-based undo/redo for event & leave edits: each registration
+    /// captures the arrays to restore and re-registers the inverse.
+    private static func registerUndo(
+        _ undoManager: UndoManager?,
+        planModel: PortfolioProjectPlan,
+        modelContext: ModelContext,
+        events: [PlanTimelineEvent],
+        leaves: [PlanResourceLeave]
+    ) {
+        undoManager?.registerUndo(withTarget: planModel) { model in
+            let redoEvents = model.timelineEvents
+            let redoLeaves = model.resourceLeaves
+            model.timelineEvents = events
+            model.resourceLeaves = leaves
+            model.updatedAt = Date()
+            try? modelContext.save()
+            registerUndo(undoManager, planModel: model, modelContext: modelContext, events: redoEvents, leaves: redoLeaves)
+        }
+        undoManager?.setActionName("Edit Events & Leave")
     }
 }
 

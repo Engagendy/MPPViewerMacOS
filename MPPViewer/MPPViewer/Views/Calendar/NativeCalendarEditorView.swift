@@ -3,6 +3,7 @@ import SwiftData
 
 struct NativeCalendarEditorView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.undoManager) private var undoManager
 
     let planModel: PortfolioProjectPlan
 
@@ -276,6 +277,48 @@ struct NativeCalendarEditorView: View {
         }
     }
 
+    /// Applies an exception-list change with undo/redo support: each apply
+    /// snapshots the previous list and registers the inverse restore.
+    private func applyExceptions(
+        _ newExceptions: [NativeCalendarException],
+        to calendar: PortfolioPlanCalendar,
+        actionName: String
+    ) {
+        let previous = calendar.exceptions
+        guard previous != newExceptions else { return }
+        Self.registerExceptionsUndo(
+            undoManager,
+            calendar: calendar,
+            exceptions: previous,
+            actionName: actionName,
+            onApply: schedulePlanPersistence
+        )
+        calendar.exceptions = newExceptions
+        schedulePlanPersistence()
+    }
+
+    private static func registerExceptionsUndo(
+        _ undoManager: UndoManager?,
+        calendar: PortfolioPlanCalendar,
+        exceptions: [NativeCalendarException],
+        actionName: String,
+        onApply: @escaping () -> Void
+    ) {
+        undoManager?.registerUndo(withTarget: calendar) { target in
+            let redoValue = target.exceptions
+            target.exceptions = exceptions
+            onApply()
+            registerExceptionsUndo(
+                undoManager,
+                calendar: target,
+                exceptions: redoValue,
+                actionName: actionName,
+                onApply: onApply
+            )
+        }
+        undoManager?.setActionName(actionName)
+    }
+
     private func schedulePlanPersistence() {
         persistenceWorkItem?.cancel()
         let workItem = DispatchWorkItem {
@@ -423,12 +466,14 @@ struct NativeCalendarEditorView: View {
                                         guard let idx = calendar.exceptions.firstIndex(where: { $0.id == exceptionID }) else { return }
                                         var updated = calendar.exceptions
                                         updated[idx] = newValue
-                                        calendar.exceptions = updated
-                                        schedulePlanPersistence()
+                                        applyExceptions(updated, to: calendar, actionName: "Edit Exception")
                                     }
                                 )) {
-                                    calendar.exceptions = calendar.exceptions.filter { $0.id != exceptionID }
-                                    schedulePlanPersistence()
+                                    applyExceptions(
+                                        calendar.exceptions.filter { $0.id != exceptionID },
+                                        to: calendar,
+                                        actionName: "Remove Exception"
+                                    )
                                 }
                             }
                         }
@@ -444,8 +489,7 @@ struct NativeCalendarEditorView: View {
                                     type: "non_working"
                                 )
                             )
-                            calendar.exceptions = updated
-                            schedulePlanPersistence()
+                            applyExceptions(updated, to: calendar, actionName: "Add Exception")
                         } label: {
                             Label("Add Exception", systemImage: "plus")
                         }
