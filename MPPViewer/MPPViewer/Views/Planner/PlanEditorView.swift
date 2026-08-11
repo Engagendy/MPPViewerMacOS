@@ -567,6 +567,7 @@ struct PlanEditorView: View {
             onInsertBelow: insertRowBelowSelection,
             onCopyRows: copySelectedRows,
             onPasteRows: pasteRows,
+            onCreateSamplePlan: createSamplePlan,
             makeHeader: taskGridHeader(layout:),
             makeRow: taskGridRow(row:layout:)
         )
@@ -2304,6 +2305,86 @@ struct PlanEditorView: View {
         if let focus {
             pendingGridFocusTarget = PlannerGridFocusTarget(taskID: newTask.id, column: focus)
         }
+    }
+
+    /// Seeds an empty plan with a compact example project — two phases with
+    /// linked tasks, three resources with assignments, a holiday and a leave —
+    /// so a new user can explore every feature immediately.
+    private func createSamplePlan() {
+        guard plan.tasks.isEmpty else { return }
+        commitInspectorEdits()
+
+        let calendar = Calendar.current
+        let anchor = calendar.startOfDay(for: plan.statusDate)
+        func at(_ dayOffset: Int) -> Date {
+            calendar.date(byAdding: .day, value: dayOffset, to: anchor) ?? anchor
+        }
+
+        var nextResourceID = plan.nextResourceID()
+        var resources: [NativePlanResource] = []
+        for name in ["Sara Malik", "Adam Chen", "Nour Farouk"] {
+            var resource = plan.makeResource(name: name)
+            resource.id = nextResourceID
+            nextResourceID += 1
+            resources.append(resource)
+        }
+        plan.resources.append(contentsOf: resources)
+
+        struct SampleRow {
+            let name: String
+            let level: Int
+            let duration: Int
+            let startOffset: Int
+            let predecessorOffsets: [Int]
+            let milestone: Bool
+            let resourceIndex: Int?
+        }
+        let rows: [SampleRow] = [
+            SampleRow(name: "Discovery", level: 1, duration: 1, startOffset: 0, predecessorOffsets: [], milestone: false, resourceIndex: nil),
+            SampleRow(name: "Stakeholder Interviews", level: 2, duration: 4, startOffset: 0, predecessorOffsets: [], milestone: false, resourceIndex: 0),
+            SampleRow(name: "Requirements Workshop", level: 2, duration: 3, startOffset: 0, predecessorOffsets: [1], milestone: false, resourceIndex: 1),
+            SampleRow(name: "Scope Sign-off", level: 2, duration: 1, startOffset: 0, predecessorOffsets: [2], milestone: true, resourceIndex: nil),
+            SampleRow(name: "Delivery", level: 1, duration: 1, startOffset: 0, predecessorOffsets: [], milestone: false, resourceIndex: nil),
+            SampleRow(name: "Build Core Features", level: 2, duration: 10, startOffset: 0, predecessorOffsets: [3], milestone: false, resourceIndex: 1),
+            SampleRow(name: "Design Review", level: 2, duration: 2, startOffset: 0, predecessorOffsets: [5], milestone: false, resourceIndex: 2),
+            SampleRow(name: "User Testing", level: 2, duration: 5, startOffset: 0, predecessorOffsets: [6], milestone: false, resourceIndex: 0),
+            SampleRow(name: "Launch", level: 2, duration: 1, startOffset: 0, predecessorOffsets: [7], milestone: true, resourceIndex: nil),
+        ]
+
+        var createdTasks: [NativePlanTask] = []
+        var firstTaskID = plan.nextTaskID()
+        for row in rows {
+            var task = plan.makeTask(name: row.name, anchoredTo: at(row.startOffset))
+            task.id = firstTaskID
+            firstTaskID += 1
+            task.outlineLevel = row.level
+            task.durationDays = row.duration
+            task.isMilestone = row.milestone
+            task.predecessorTaskIDs = row.predecessorOffsets.map { createdTasks[$0].id }
+            createdTasks.append(task)
+        }
+        plan.tasks = createdTasks
+
+        var nextAssignmentID = plan.nextAssignmentID()
+        for (index, row) in rows.enumerated() where row.resourceIndex != nil {
+            var assignment = plan.makeAssignment(
+                taskID: createdTasks[index].id,
+                resourceID: resources[row.resourceIndex ?? 0].id
+            )
+            assignment.id = nextAssignmentID
+            nextAssignmentID += 1
+            plan.assignments.append(assignment)
+        }
+
+        plan.timelineEvents.append(
+            PlanTimelineEvent(name: "Public Holiday", startDate: at(9), endDate: at(10), kind: .holiday)
+        )
+        plan.resourceLeaves.append(
+            PlanResourceLeave(resourceID: resources[0].id, name: "Annual leave", startDate: at(14), endDate: at(18))
+        )
+
+        reschedulePlan()
+        selectedTaskID = createdTasks.first?.id
     }
 
     private func duplicateSelectedTask() {
@@ -4229,6 +4310,7 @@ private struct PlannerTaskListPane<RowContent: View, HeaderContent: View>: View 
     let onInsertBelow: () -> Void
     let onCopyRows: () -> Void
     let onPasteRows: () -> Void
+    let onCreateSamplePlan: () -> Void
     let makeHeader: (PlannerGridLayout) -> HeaderContent
     let makeRow: (PlannerGridRowModel, PlannerGridLayout) -> RowContent
 
@@ -4243,12 +4325,38 @@ private struct PlannerTaskListPane<RowContent: View, HeaderContent: View>: View 
                 Divider()
 
                 if tasksEmpty {
-                    ContentUnavailableView(
-                        "No Tasks Yet",
-                        systemImage: "list.bullet.rectangle",
-                        description: Text("Start by adding the first task for this plan.")
-                    )
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    VStack(spacing: 20) {
+                        ContentUnavailableView(
+                            "No Tasks Yet",
+                            systemImage: "list.bullet.rectangle",
+                            description: Text("Start with a ready-made example, add your first task, or import an existing plan.")
+                        )
+
+                        HStack(spacing: 12) {
+                            Button {
+                                onCreateSamplePlan()
+                            } label: {
+                                Label("Create Sample Plan", systemImage: "sparkles")
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .help("Fill the plan with a small example project — phases, tasks, resources, a holiday and leave — to explore every feature.")
+
+                            Button {
+                                onAddTask()
+                            } label: {
+                                Label("Add First Task", systemImage: "plus")
+                            }
+                            .buttonStyle(.bordered)
+
+                            Button {
+                                onImportTasks()
+                            } label: {
+                                Label("Import CSV/Excel", systemImage: "square.and.arrow.down")
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     ScrollView([.horizontal, .vertical]) {
                         VStack(spacing: 0) {
