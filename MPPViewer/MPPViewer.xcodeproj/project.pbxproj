@@ -1127,6 +1127,7 @@
 				);
 				MARKETING_VERSION = 2.6.5;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mppviewer.MPPViewer;
+				PRODUCT_MODULE_NAME = MPPViewer;
 				PRODUCT_NAME = Planroom;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -1157,6 +1158,7 @@
 				);
 				MARKETING_VERSION = 2.6.5;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mppviewer.MPPViewer;
+				PRODUCT_MODULE_NAME = MPPViewer;
 				PRODUCT_NAME = Planroom;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -1183,7 +1185,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MPPViewer.app/Contents/MacOS/MPPViewer";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Planroom.app/Contents/MacOS/Planroom";
 				TEST_TARGET_NAME = MPPViewer;
 			};
 			name = Debug;
@@ -1208,7 +1210,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MPPViewer.app/Contents/MacOS/MPPViewer";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Planroom.app/Contents/MacOS/Planroom";
 				TEST_TARGET_NAME = MPPViewer;
 			};
 			name = Release;

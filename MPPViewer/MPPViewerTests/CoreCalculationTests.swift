@@ -369,3 +369,81 @@ final class CoreCalculationTests: XCTestCase {
         XCTAssertTrue(result.criticalTaskIDs.isEmpty)
     }
 }
+
+// MARK: - Incremental scheduling equivalence
+
+final class IncrementalSchedulerTests: XCTestCase {
+
+    private func day(_ year: Int, _ month: Int, _ dayOfMonth: Int) -> Date {
+        var components = DateComponents()
+        components.year = year
+        components.month = month
+        components.day = dayOfMonth
+        return Calendar.current.startOfDay(for: Calendar.current.date(from: components)!)
+    }
+
+    /// A phase with a chain of children plus an independent branch, so the test
+    /// covers summaries, successors, and untouched tasks.
+    private func makePlan() -> NativeProjectPlan {
+        var plan = NativeProjectPlan.empty()
+        func task(_ id: Int, _ name: String, level: Int, duration: Int, preds: [Int] = []) -> NativePlanTask {
+            var t = plan.makeTask(name: name, anchoredTo: day(2026, 3, 2))
+            t.id = id
+            t.outlineLevel = level
+            t.durationDays = duration
+            t.predecessorTaskIDs = preds
+            return t
+        }
+        plan.tasks = [
+            task(1, "Phase", level: 1, duration: 1),
+            task(2, "Design", level: 2, duration: 5),
+            task(3, "Build", level: 2, duration: 10, preds: [2]),
+            task(4, "Test", level: 2, duration: 4, preds: [3]),
+            task(5, "Docs", level: 1, duration: 3),
+        ]
+        plan.reschedule()
+        return plan
+    }
+
+    func testIncrementalMatchesFullAfterDurationChange() {
+        var plan = makePlan()
+        // Change Design's duration; Build/Test/Phase must move identically in
+        // both modes while Docs stays frozen.
+        let index = plan.tasks.firstIndex(where: { $0.id == 2 })!
+        plan.tasks[index].durationDays = 9
+
+        let full = PlanScheduler.scheduleSync(plan).tasks
+        let incremental = PlanScheduler.scheduleSync(plan, changedTaskIDs: [2]).tasks
+
+        XCTAssertEqual(full.count, incremental.count)
+        for (fullTask, incrementalTask) in zip(full, incremental) {
+            XCTAssertEqual(fullTask.id, incrementalTask.id)
+            XCTAssertEqual(fullTask.startDate, incrementalTask.startDate, "start mismatch for \(fullTask.name)")
+            XCTAssertEqual(fullTask.finishDate, incrementalTask.finishDate, "finish mismatch for \(fullTask.name)")
+            XCTAssertEqual(fullTask.durationDays, incrementalTask.durationDays, "duration mismatch for \(fullTask.name)")
+        }
+    }
+
+    func testIncrementalMatchesFullAfterPredecessorChange() {
+        var plan = makePlan()
+        // Link Docs after Test — the changed task is Docs itself.
+        let index = plan.tasks.firstIndex(where: { $0.id == 5 })!
+        plan.tasks[index].predecessorTaskIDs = [4]
+
+        let full = PlanScheduler.scheduleSync(plan).tasks
+        let incremental = PlanScheduler.scheduleSync(plan, changedTaskIDs: [5]).tasks
+
+        for (fullTask, incrementalTask) in zip(full, incremental) {
+            XCTAssertEqual(fullTask.startDate, incrementalTask.startDate, "start mismatch for \(fullTask.name)")
+            XCTAssertEqual(fullTask.finishDate, incrementalTask.finishDate, "finish mismatch for \(fullTask.name)")
+        }
+    }
+
+    func testIncrementalFallsBackWhenChangedIDMissing() {
+        let plan = makePlan()
+        // Unknown ID must not crash and must behave like a full pass.
+        let full = PlanScheduler.scheduleSync(plan).tasks
+        let incremental = PlanScheduler.scheduleSync(plan, changedTaskIDs: [999]).tasks
+        XCTAssertEqual(full.map(\.startDate), incremental.map(\.startDate))
+    }
+}

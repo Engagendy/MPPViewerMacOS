@@ -3426,7 +3426,9 @@ struct PlanEditorView: View {
 
         Task(priority: .userInitiated) {
             var scheduledPlan = planSnapshot
-            await scheduledPlan.reschedule()
+            // Cell-level edits reschedule incrementally (changed + downstream +
+            // ancestors); structural changes pass an empty set → full pass.
+            await scheduledPlan.reschedule(changedTaskIDs: changedTaskIDs)
             let scheduledTasks = scheduledPlan.tasks
 
             await MainActor.run {

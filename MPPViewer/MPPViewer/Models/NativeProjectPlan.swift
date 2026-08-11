@@ -879,6 +879,16 @@ struct NativeProjectPlan: Codable, Hashable {
         tasks = await PlanScheduler.schedule(self).tasks
     }
 
+    /// Incremental reschedule: only the changed tasks, their transitive
+    /// successors, and ancestor summaries are recomputed. Pass an empty set
+    /// (or use `reschedule()`) after structural changes.
+    mutating func reschedule(changedTaskIDs: Set<Int>) async {
+        tasks = await PlanScheduler.schedule(
+            self,
+            changedTaskIDs: changedTaskIDs.isEmpty ? nil : changedTaskIDs
+        ).tasks
+    }
+
     mutating func captureBaseline() {
         let scheduledTasks = PlanScheduler.scheduleSync(self).tasks
         let scheduledByID = Dictionary(nonThrowingUniquePairs: scheduledTasks.map { ($0.id, $0) })
@@ -2265,11 +2275,17 @@ struct PlanScheduleResult {
 
 enum PlanScheduler {
     @PlanActor
-    static func schedule(_ plan: NativeProjectPlan) -> PlanScheduleResult {
-        scheduleSync(plan)
+    static func schedule(_ plan: NativeProjectPlan, changedTaskIDs: Set<Int>? = nil) -> PlanScheduleResult {
+        scheduleSync(plan, changedTaskIDs: changedTaskIDs)
     }
 
-    static func scheduleSync(_ plan: NativeProjectPlan) -> PlanScheduleResult {
+    /// Schedules the plan. When `changedTaskIDs` is provided (incremental mode),
+    /// tasks outside the affected set — the changed tasks, their transitive
+    /// successors, and all ancestor summaries of those — are pre-seeded into the
+    /// memo cache with their current (previously scheduled) dates, so the
+    /// forward pass only recomputes what an edit could actually move. Structural
+    /// changes (insert/delete/reorder/indent) must pass nil for a full pass.
+    static func scheduleSync(_ plan: NativeProjectPlan, changedTaskIDs: Set<Int>? = nil) -> PlanScheduleResult {
         guard !plan.tasks.isEmpty else {
             return PlanScheduleResult(tasks: [], criticalTaskIDs: [], totalSlackSecondsByTaskID: [:])
         }
@@ -2310,6 +2326,38 @@ enum PlanScheduler {
         var scheduledByID: [Int: NativePlanTask] = [:]
         var schedulingStack: Set<Int> = []
         var workingCalendarAvailabilityByID: [Int: Bool] = [:]
+
+        // Incremental mode: freeze every task an edit cannot move. Stored dates
+        // on frozen tasks ARE the previous schedule (the scheduler writes its
+        // results back to plan.tasks), so seeding them as already-scheduled is
+        // exact, not an approximation.
+        if let changedTaskIDs, !changedTaskIDs.isEmpty,
+           changedTaskIDs.allSatisfy({ originalByID[$0] != nil }) {
+            var affected = changedTaskIDs
+
+            // Transitive successors of every changed task.
+            var frontier = Array(changedTaskIDs)
+            while let taskID = frontier.popLast() {
+                for successorID in successorMap[taskID] ?? [] where !affected.contains(successorID) {
+                    affected.insert(successorID)
+                    frontier.append(successorID)
+                }
+            }
+
+            // Ancestor summaries roll up from children, so every ancestor of an
+            // affected task must recompute too.
+            for taskID in affected {
+                var parentID = hierarchy[taskID]?.parentTaskUniqueID
+                while let currentParentID = parentID, !affected.contains(currentParentID) {
+                    affected.insert(currentParentID)
+                    parentID = hierarchy[currentParentID]?.parentTaskUniqueID
+                }
+            }
+
+            for task in plan.tasks where !affected.contains(task.id) {
+                scheduledByID[task.id] = task
+            }
+        }
 
         func resolvedWeeklyWorkingDay(
             weekday: Int,
