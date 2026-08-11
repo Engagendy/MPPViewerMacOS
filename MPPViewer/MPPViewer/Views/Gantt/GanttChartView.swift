@@ -1524,9 +1524,13 @@ struct GanttChartView: View {
     }
 
     private func exportToPDF() {
-        let contentView = ganttContent(taskListWidth: exportTaskListWidth)
+        // The task-list column is only drawn in edit mode; when it isn't, the
+        // header/bars start at x=0, so the events lane must use the same width
+        // (0) or its title chips shift right by the list width.
+        let listWidth = showsEditSidebar ? exportTaskListWidth : 0
+        let contentView = ganttContent(taskListWidth: listWidth)
         let contentSize = CGSize(
-            width: exportTaskListWidth + chartContentWidth,
+            width: listWidth + chartContentWidth,
             height: CGFloat(flatTasks.count) * rowHeight + ganttHeaderHeight
         )
         let title = project.properties.projectTitle ?? "Gantt Chart"
@@ -1603,9 +1607,10 @@ struct GanttChartView: View {
     }
 
     private func printGantt() {
-        let contentView = ganttContent(taskListWidth: exportTaskListWidth)
+        let listWidth = showsEditSidebar ? exportTaskListWidth : 0
+        let contentView = ganttContent(taskListWidth: listWidth)
         let contentSize = CGSize(
-            width: exportTaskListWidth + chartContentWidth,
+            width: listWidth + chartContentWidth,
             height: CGFloat(flatTasks.count) * rowHeight + ganttHeaderHeight
         )
         let title = project.properties.projectTitle ?? "Gantt Chart"
