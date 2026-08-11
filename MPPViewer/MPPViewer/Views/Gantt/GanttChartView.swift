@@ -1524,25 +1524,26 @@ struct GanttChartView: View {
     }
 
     private func exportToPDF() {
-        // The task-list column is only drawn in edit mode; when it isn't, the
-        // header/bars start at x=0, so the events lane must use the same width
-        // (0) or its title chips shift right by the list width.
-        let listWidth = showsEditSidebar ? exportTaskListWidth : 0
-        let contentView = ganttContent(taskListWidth: listWidth)
-        let contentSize = CGSize(
-            width: listWidth + chartContentWidth,
-            height: CGFloat(flatTasks.count) * rowHeight + ganttHeaderHeight
-        )
+        // True-vector PDF sharing the SVG exporter's layout: crisp at any
+        // zoom, small files, and immune to the drawingGroup bitmap-capture
+        // problems of the old NSHostingView path.
         let title = project.properties.projectTitle ?? "Gantt Chart"
-        PDFExporter.exportGanttToPDF(
-            view: contentView,
-            contentSize: contentSize,
+        PDFExporter.exportGanttVectorPDF(
+            rows: svgExportRows,
+            bands: svgOverlayBands,
+            rangeStart: dateRange.start,
+            rangeEnd: dateRange.end,
+            pixelsPerDay: max(2, pixelsPerDay),
+            rowHeight: max(28, rowHeight),
+            title: title,
             fileName: "\(title) - Gantt \(PDFExporter.fileNameTimestamp).pdf"
         )
     }
 
-    private func exportToSVG() {
-        let rows: [SVGExporter.GanttRow] = flatTasks.map { task in
+    /// Rows for the vector exporters (SVG + PDF): task name with a start–end
+    /// date subtitle.
+    private var svgExportRows: [SVGExporter.GanttRow] {
+        flatTasks.map { task in
             let subtitle: String?
             if let start = task.startDate, let finish = task.finishDate {
                 subtitle = "\(DateFormatting.shortDate(start)) – \(DateFormatting.shortDate(finish))"
@@ -1562,9 +1563,12 @@ struct GanttChartView: View {
                 subtitle: subtitle
             )
         }
+    }
+
+    private func exportToSVG() {
         let title = project.properties.projectTitle ?? "Gantt Chart"
         SVGExporter.exportGantt(
-            rows: rows,
+            rows: svgExportRows,
             rangeStart: dateRange.start,
             rangeEnd: dateRange.end,
             pixelsPerDay: max(2, pixelsPerDay),
@@ -5412,8 +5416,8 @@ struct EventsLeaveTimelineView: View {
                 pixelsPerDay: pixelsPerDay,
                 totalDays: totalDays,
                 onFitAll: { shouldAutoFit = true; fit(to: viewportWidth) },
-                onShowWeek: { shouldAutoFit = false; pixelsPerDay = 24 },
-                onShowMonth: { shouldAutoFit = false; pixelsPerDay = 8 },
+                onShowWeek: { shouldAutoFit = false; pixelsPerDay = 40 },
+                onShowMonth: { shouldAutoFit = false; pixelsPerDay = 10 },
                 onZoomOut: { shouldAutoFit = false; pixelsPerDay = max(2, pixelsPerDay / 1.5) },
                 onZoomIn: { shouldAutoFit = false; pixelsPerDay = min(100, pixelsPerDay * 1.5) }
             )
