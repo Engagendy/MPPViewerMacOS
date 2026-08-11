@@ -709,7 +709,7 @@ struct PlanEditorView: View {
             percentValue: gridTextDrafts[PlannerGridCellKey(taskID: row.id, column: .percent)] ?? row.percentText,
             milestoneValue: liveTask?.isMilestone ?? row.isMilestone,
             predecessorsValue: gridTextDrafts[PlannerGridCellKey(taskID: row.id, column: .predecessors)] ?? row.predecessorText,
-            primaryAssignmentResourceIDValue: gridAssignmentDrafts[row.id]?.resourceID ?? row.primaryAssignmentResourceID,
+            primaryAssignmentResourceIDValue: gridAssignmentDrafts[row.id].map(\.resourceID) ?? row.primaryAssignmentResourceID,
             primaryAssignmentUnitsValue: {
                 if let draft = gridAssignmentDrafts[row.id] {
                     return draft.resourceID == nil ? "" : String(Int(draft.units))
@@ -3270,16 +3270,26 @@ struct PlanEditorView: View {
     private func primaryAssignmentResourceBinding(for taskID: Int, fallback: Int?) -> Binding<Int?> {
         Binding(
             get: {
-                gridAssignmentDrafts[taskID]?.resourceID
-                ?? primaryAssignmentIndex(for: taskID).flatMap { plan.assignments[$0].resourceID }
-                ?? fallback
+                // A draft is authoritative even when its resourceID is nil
+                // (the user explicitly chose "Unassigned"), so use `.map` to keep
+                // nil from falling through to the previous resource.
+                if let draft = gridAssignmentDrafts[taskID] {
+                    return draft.resourceID
+                }
+                return primaryAssignmentIndex(for: taskID).flatMap { plan.assignments[$0].resourceID } ?? fallback
             },
             set: { newValue in
                 let baseUnits = gridAssignmentDrafts[taskID]?.units
                     ?? primaryAssignmentIndex(for: taskID).map { plan.assignments[$0].units }
                     ?? 100
                 gridAssignmentDrafts[taskID] = PlannerGridAssignmentDraft(resourceID: newValue, units: baseUnits)
-                scheduleGridDraftCommit(reschedule: false)
+                // Resource changes are discrete — apply on the next tick so the
+                // change (including unassigning) sticks without a debounce window,
+                // while avoiding a re-entrant mutation during the view update.
+                gridDraftCommitWorkItem?.cancel()
+                let workItem = DispatchWorkItem { commitGridDrafts(reschedule: false) }
+                gridDraftCommitWorkItem = workItem
+                DispatchQueue.main.async(execute: workItem)
             }
         )
     }
