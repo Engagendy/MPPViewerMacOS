@@ -1710,7 +1710,12 @@ struct GanttChartView: View {
                     .background(chip.color.opacity(0.92), in: Capsule())
                     .fixedSize()
                     .contentShape(Capsule())
-                    .help(chip.tooltip)
+                    .help(chip.tooltip + (isNativeEditablePlan ? "\nClick to edit" : ""))
+                    .onTapGesture {
+                        if isNativeEditablePlan {
+                            isEventLeaveEditorPresented = true
+                        }
+                    }
                     .offset(x: taskListWidth + chip.x + 2, y: CGFloat(chip.laneRow) * eventsLaneChipRowHeight + 2)
             }
         }
@@ -4974,9 +4979,11 @@ struct EventLeaveEditorView: View {
             } else {
                 List {
                     ForEach($events) { $event in
-                        TimelineEventRow(event: $event) {
-                            events.removeAll { $0.id == event.id }
-                        }
+                        TimelineEventRow(
+                            event: $event,
+                            onDelete: { events.removeAll { $0.id == event.id } },
+                            onDuplicate: { copy in events.append(copy) }
+                        )
                     }
                 }
                 .listStyle(.inset)
@@ -5054,6 +5061,7 @@ struct EventLeaveEditorView: View {
 struct TimelineEventRow: View {
     @Binding var event: PlanTimelineEvent
     let onDelete: () -> Void
+    var onDuplicate: ((PlanTimelineEvent) -> Void)? = nil
 
     var body: some View {
         HStack(spacing: 8) {
@@ -5080,12 +5088,47 @@ struct TimelineEventRow: View {
             DatePicker("", selection: $event.endDate, displayedComponents: .date)
                 .labelsHidden()
 
+            if let onDuplicate {
+                Menu {
+                    Button("Repeat Next Year") {
+                        onDuplicate(event.shiftedByOneYear(calendarIdentifier: .gregorian))
+                    }
+                    Button("Repeat Next Year (Hijri)") {
+                        onDuplicate(event.shiftedByOneYear(calendarIdentifier: .islamicUmmAlQura))
+                    }
+                } label: {
+                    Image(systemName: "repeat")
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .help("Add a copy of this event one year later. Use Hijri for observances like Ramadan and Eid, whose dates follow the Islamic calendar.")
+            }
+
             Button(role: .destructive, action: onDelete) {
                 Image(systemName: "trash")
             }
             .buttonStyle(.borderless)
         }
         .padding(.vertical, 2)
+    }
+}
+
+extension PlanTimelineEvent {
+    /// A copy of this event shifted one year later in the given calendar.
+    /// Hijri (islamicUmmAlQura) keeps observances like Ramadan aligned with the
+    /// Islamic year (~11 days earlier each Gregorian year).
+    func shiftedByOneYear(calendarIdentifier: Calendar.Identifier) -> PlanTimelineEvent {
+        var shiftCalendar = Calendar(identifier: calendarIdentifier)
+        shiftCalendar.timeZone = Calendar.current.timeZone
+        let newStart = shiftCalendar.date(byAdding: .year, value: 1, to: startDate) ?? startDate
+        let newEnd = shiftCalendar.date(byAdding: .year, value: 1, to: endDate) ?? endDate
+        return PlanTimelineEvent(
+            name: name,
+            startDate: newStart,
+            endDate: newEnd,
+            kind: kind,
+            colorHex: colorHex
+        )
     }
 }
 
