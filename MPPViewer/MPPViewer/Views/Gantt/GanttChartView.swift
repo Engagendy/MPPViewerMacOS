@@ -2660,9 +2660,12 @@ struct GanttChartView: View {
         guard canIndent(taskID: taskID), let selectedIndex = nativeTasks.firstIndex(where: { $0.id == taskID }) else { return }
 
         fullSyncGanttPlan { workingPlan in
-            let newLevel = workingPlan.tasks[selectedIndex - 1].outlineLevel + 1
-            let delta = newLevel - workingPlan.tasks[selectedIndex].outlineLevel
-            adjustSubtreeOutlineLevel(taskID: taskID, by: delta, in: &workingPlan)
+            // Demote by a single level, capped at one below the row above, so a
+            // single indent is a single step (peer, not grandchild).
+            let currentLevel = workingPlan.tasks[selectedIndex].outlineLevel
+            let previousLevel = workingPlan.tasks[selectedIndex - 1].outlineLevel
+            let newLevel = min(currentLevel + 1, previousLevel + 1)
+            adjustSubtreeOutlineLevel(taskID: taskID, by: newLevel - currentLevel, in: &workingPlan)
             workingPlan.reschedule()
             selectedTaskID = taskID
         }

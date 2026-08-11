@@ -2500,9 +2500,14 @@ struct PlanEditorView: View {
 
     private func indentSelectedTask() {
         guard let selectedTaskIndex, canIndentSelectedTask() else { return }
-        let newLevel = plan.tasks[selectedTaskIndex - 1].outlineLevel + 1
-        let delta = newLevel - plan.tasks[selectedTaskIndex].outlineLevel
-        adjustSelectedSubtreeOutlineLevel(by: delta)
+        let currentLevel = plan.tasks[selectedTaskIndex].outlineLevel
+        let previousLevel = plan.tasks[selectedTaskIndex - 1].outlineLevel
+        // Demote by exactly one level, but never deeper than one below the row
+        // above. This keeps a single indent a single step: indenting a level-1
+        // row under a level-2 sibling makes it that sibling's peer (level 2),
+        // not its child (level 3).
+        let newLevel = min(currentLevel + 1, previousLevel + 1)
+        adjustSelectedSubtreeOutlineLevel(by: newLevel - currentLevel)
     }
 
     private func canOutdentSelectedTask() -> Bool {

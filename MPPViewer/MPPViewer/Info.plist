@@ -4,10 +4,6 @@
 <dict>
 	<key>CFBundleDisplayName</key>
 	<string>Planroom</string>
-	<key>CFBundleName</key>
-	<string>Planroom</string>
-	<key>ITSAppUsesNonExemptEncryption</key>
-	<false/>
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>
@@ -43,34 +39,16 @@
 			</array>
 		</dict>
 	</array>
+	<key>CFBundleName</key>
+	<string>Planroom</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.business</string>
 	<key>LSMinimumSystemVersion</key>
-	<string>14.0</string>
+	<string>14.4</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright 2025. All rights reserved.</string>
-	<key>UTImportedTypeDeclarations</key>
-	<array>
-		<dict>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>public.data</string>
-			</array>
-			<key>UTTypeDescription</key>
-			<string>Microsoft Project File</string>
-			<key>UTTypeIdentifier</key>
-			<string>com.microsoft.project</string>
-			<key>UTTypeTagSpecification</key>
-			<dict>
-				<key>public.filename-extension</key>
-				<array>
-					<string>mpp</string>
-				</array>
-				<key>public.mime-type</key>
-				<string>application/vnd.ms-project</string>
-			</dict>
-		</dict>
-	</array>
 	<key>UTExportedTypeDeclarations</key>
 	<array>
 		<dict>
@@ -90,6 +68,28 @@
 				</array>
 				<key>public.mime-type</key>
 				<string>application/vnd.mppviewer.plan+json</string>
+			</dict>
+		</dict>
+	</array>
+	<key>UTImportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Microsoft Project File</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.microsoft.project</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>mpp</string>
+				</array>
+				<key>public.mime-type</key>
+				<string>application/vnd.ms-project</string>
 			</dict>
 		</dict>
 	</array>
