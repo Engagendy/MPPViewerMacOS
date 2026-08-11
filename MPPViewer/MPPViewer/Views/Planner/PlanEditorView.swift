@@ -701,7 +701,7 @@ struct PlanEditorView: View {
         return PlannerGridRowView(
             row: row,
             layout: layout,
-            isSelected: selectedTaskID == row.id || multiSelectedGridTaskIDs.contains(row.id),
+            isSelected: selectedTaskID == row.id,
             isCollapsed: collapsedGridTaskIDs.contains(row.id),
             resourceOptions: gridResourceOptions,
             nameValue: gridTextDrafts[PlannerGridCellKey(taskID: row.id, column: .name)] ?? row.name,
@@ -775,7 +775,11 @@ struct PlanEditorView: View {
                 toggleGridTaskCollapse(row.id)
             },
             onTap: {
-                handleGridRowTap(row.id)
+                handleGridRowTap(row.id, isCommand: false, isShift: false)
+            },
+            isMultiSelected: multiSelectedGridTaskIDs.contains(row.id),
+            onModifiedTap: { isCommand, isShift in
+                handleGridRowTap(row.id, isCommand: isCommand, isShift: isShift)
             }
         )
         .equatable()
@@ -783,10 +787,10 @@ struct PlanEditorView: View {
 
     /// Click = single select. Cmd-click toggles membership in the multi
     /// selection. Shift-click selects the visible range from the anchor row.
-    private func handleGridRowTap(_ taskID: Int) {
-        let modifiers = NSEvent.modifierFlags.intersection(.deviceIndependentFlagsMask)
-
-        if modifiers.contains(.command) {
+    /// Modifier state arrives from SwiftUI's gesture recognition (not polled
+    /// at tap time), so rapid clicks register reliably.
+    private func handleGridRowTap(_ taskID: Int, isCommand: Bool, isShift: Bool) {
+        if isCommand {
             var selection = multiSelectedGridTaskIDs
             if selection.isEmpty, let selectedTaskID, selectedTaskID != taskID {
                 selection.insert(selectedTaskID)
@@ -801,7 +805,7 @@ struct PlanEditorView: View {
             return
         }
 
-        if modifiers.contains(.shift), let anchorID = selectedTaskID, anchorID != taskID {
+        if isShift, let anchorID = selectedTaskID, anchorID != taskID {
             let visibleIDs = visibleGridRowModels.map(\.id)
             if let anchorIndex = visibleIDs.firstIndex(of: anchorID),
                let targetIndex = visibleIDs.firstIndex(of: taskID) {
@@ -4698,6 +4702,11 @@ private struct PlannerGridRowView: View, Equatable {
     let onFocusAssignmentUnits: () -> Void
     let onToggleCollapse: () -> Void
     let onTap: () -> Void
+    /// Membership in the Cmd/Shift multi-selection: highlights the row without
+    /// switching it into editing mode (that stays exclusive to the anchor row).
+    var isMultiSelected: Bool = false
+    /// Called instead of onTap when Command or Shift is held.
+    var onModifiedTap: ((_ isCommand: Bool, _ isShift: Bool) -> Void)? = nil
 
     static func == (lhs: PlannerGridRowView, rhs: PlannerGridRowView) -> Bool {
         let resourceOptionsEquivalent = (!lhs.isSelected && !rhs.isSelected) || lhs.resourceOptions == rhs.resourceOptions
@@ -4705,6 +4714,7 @@ private struct PlannerGridRowView: View, Equatable {
         return lhs.row == rhs.row &&
         lhs.layout == rhs.layout &&
         lhs.isSelected == rhs.isSelected &&
+        lhs.isMultiSelected == rhs.isMultiSelected &&
         lhs.isCollapsed == rhs.isCollapsed &&
         resourceOptionsEquivalent &&
         lhs.nameValue == rhs.nameValue &&
@@ -4890,8 +4900,21 @@ private struct PlannerGridRowView: View, Equatable {
             }
         }
         .frame(height: 32)
-        .background(isSelected ? Color.accentColor.opacity(0.12) : Color.clear)
+        .background(
+            isSelected
+                ? Color.accentColor.opacity(0.12)
+                : (isMultiSelected ? Color.accentColor.opacity(0.22) : Color.clear)
+        )
         .contentShape(Rectangle())
+        // Modifier-aware taps are recognized by SwiftUI itself (reliable at
+        // any click speed), with high priority so they win over cell editors
+        // and the plain tap.
+        .highPriorityGesture(
+            TapGesture().modifiers(.command).onEnded { onModifiedTap?(true, false) }
+        )
+        .highPriorityGesture(
+            TapGesture().modifiers(.shift).onEnded { onModifiedTap?(false, true) }
+        )
         .onTapGesture(perform: onTap)
     }
 
