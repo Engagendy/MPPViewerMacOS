@@ -3207,6 +3207,7 @@ struct ContentView: View {
         case .validation:
             ProjectValidationView(
                 project: project,
+                resourceLeaves: portfolioPlan?.nativeResourceLeavesForUI ?? [],
                 navigateToTaskID: $navigateToTaskID,
                 selectedNav: $selectedNav
             )

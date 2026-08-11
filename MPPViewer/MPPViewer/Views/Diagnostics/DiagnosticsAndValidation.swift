@@ -247,6 +247,9 @@ struct ProjectDiagnosticsView: View {
 
 struct ProjectValidationView: View {
     let project: ProjectModel
+    /// Visual-only leave windows from the native plan, used by the
+    /// assignee-on-leave rule; imported projects pass none.
+    var resourceLeaves: [PlanResourceLeave] = []
     @Binding var navigateToTaskID: Int?
     @Binding var selectedNav: NavigationItem?
 
@@ -270,8 +273,14 @@ struct ProjectValidationView: View {
         return filtered.sorted(using: sortOrder)
     }
 
-    init(project: ProjectModel, navigateToTaskID: Binding<Int?>, selectedNav: Binding<NavigationItem?>) {
+    init(
+        project: ProjectModel,
+        resourceLeaves: [PlanResourceLeave] = [],
+        navigateToTaskID: Binding<Int?>,
+        selectedNav: Binding<NavigationItem?>
+    ) {
         self.project = project
+        self.resourceLeaves = resourceLeaves
         self._navigateToTaskID = navigateToTaskID
         self._selectedNav = selectedNav
     }
@@ -390,8 +399,9 @@ struct ProjectValidationView: View {
             // ProjectValidator.validate can be heavy on large plans; run it off
             // the main thread so opening this tab doesn't hang the UI.
             let project = self.project
+            let resourceLeaves = self.resourceLeaves
             let result = await Task.detached(priority: .userInitiated) {
-                ProjectValidator.validate(project: project)
+                ProjectValidator.validate(project: project, resourceLeaves: resourceLeaves)
             }.value
             cachedAllIssues = result
             isValidating = false
@@ -527,10 +537,16 @@ enum ProjectValidator {
                   task.summary != true,
                   let taskStart = task.startDate,
                   let taskFinish = task.finishDate else { return }
+            // Task dates carry working-hours times (e.g. 08:00) while leave
+            // dates are start-of-day; compare whole days so same-day overlaps
+            // register.
+            let dayCalendar = Calendar.current
+            let taskStartDay = dayCalendar.startOfDay(for: taskStart)
+            let taskFinishDay = dayCalendar.startOfDay(for: taskFinish)
             for assignment in taskAssignments[task.uniqueID] ?? [] {
                 guard let resourceID = assignment.resourceUniqueID else { continue }
                 for leave in leavesByResourceID[resourceID] ?? []
-                where leave.startDate <= taskFinish && leave.endDate >= taskStart {
+                where leave.startDate <= taskFinishDay && leave.endDate >= taskStartDay {
                     let resourceName = resourceNamesByID[resourceID] ?? "Resource"
                     let range = "\(leaveDayFormatter.string(from: leave.startDate)) – \(leaveDayFormatter.string(from: leave.endDate))"
                     issues.append(issue(

@@ -447,3 +447,48 @@ final class IncrementalSchedulerTests: XCTestCase {
         XCTAssertEqual(full.map(\.startDate), incremental.map(\.startDate))
     }
 }
+
+// MARK: - Leave-conflict validation
+
+final class LeaveValidationTests: XCTestCase {
+
+    func testAssigneeOnLeaveWarning() {
+        var plan = NativeProjectPlan.empty()
+        var resource = plan.makeResource(name: "Maya")
+        resource.id = 1
+        plan.resources = [resource]
+
+        var task = plan.makeTask(name: "Build", anchoredTo: Date())
+        task.id = 10
+        task.durationDays = 10
+        plan.tasks = [task]
+        plan.assignments = [plan.makeAssignment(taskID: 10, resourceID: 1)]
+        plan.reschedule()
+
+        let scheduled = plan.tasks[0]
+        let leave = PlanResourceLeave(
+            resourceID: 1,
+            name: "Annual leave",
+            startDate: scheduled.startDate,
+            endDate: scheduled.startDate
+        )
+        plan.resourceLeaves = [leave]
+
+        let project = plan.asProjectModel()
+        let issues = ProjectValidator.validate(project: project, resourceLeaves: plan.resourceLeaves)
+        XCTAssertTrue(
+            issues.contains { $0.rule == "Assignee On Leave" && $0.message.contains("Maya") },
+            "expected an Assignee On Leave warning, got: \(issues.map(\.rule))"
+        )
+
+        // No leaves → no warning.
+        let clean = ProjectValidator.validate(project: project, resourceLeaves: [])
+        XCTAssertFalse(clean.contains { $0.rule == "Assignee On Leave" })
+
+        // Leave outside the task window → no warning.
+        let far = Calendar.current.date(byAdding: .day, value: 60, to: scheduled.finishDate)!
+        let offWindow = [PlanResourceLeave(resourceID: 1, startDate: far, endDate: far)]
+        let outside = ProjectValidator.validate(project: project, resourceLeaves: offWindow)
+        XCTAssertFalse(outside.contains { $0.rule == "Assignee On Leave" })
+    }
+}
