@@ -568,6 +568,8 @@ struct PlanEditorView: View {
             onCopyRows: copySelectedRows,
             onPasteRows: pasteRows,
             onCreateSamplePlan: createSamplePlan,
+            onSelectAllRows: selectAllGridRows,
+            onDeselectAllRows: deselectAllGridRows,
             makeHeader: taskGridHeader(layout:),
             makeRow: taskGridRow(row:layout:)
         )
@@ -817,6 +819,17 @@ struct PlanEditorView: View {
 
         multiSelectedGridTaskIDs = []
         selectedTaskID = taskID
+    }
+
+    private func selectAllGridRows() {
+        let visibleIDs = visibleGridRowModels.map(\.id)
+        guard !visibleIDs.isEmpty else { return }
+        multiSelectedGridTaskIDs = Set(visibleIDs)
+        if selectedTaskID == nil { selectedTaskID = visibleIDs.first }
+    }
+
+    private func deselectAllGridRows() {
+        multiSelectedGridTaskIDs = []
     }
 
     /// Selected task IDs whose subtree is not already contained in another
@@ -4315,6 +4328,8 @@ private struct PlannerTaskListPane<RowContent: View, HeaderContent: View>: View 
     let onCopyRows: () -> Void
     let onPasteRows: () -> Void
     let onCreateSamplePlan: () -> Void
+    let onSelectAllRows: () -> Void
+    let onDeselectAllRows: () -> Void
     let makeHeader: (PlannerGridLayout) -> HeaderContent
     let makeRow: (PlannerGridRowModel, PlannerGridLayout) -> RowContent
 
@@ -4520,6 +4535,14 @@ private struct PlannerTaskListPane<RowContent: View, HeaderContent: View>: View 
                             Label("Paste Row(s)", systemImage: "doc.on.clipboard")
                         }
                         .keyboardShortcut("v", modifiers: [.command, .shift])
+                        Divider()
+                        Button(action: onSelectAllRows) {
+                            Label("Select All Rows", systemImage: "checklist.checked")
+                        }
+                        .keyboardShortcut("a", modifiers: [.command, .shift])
+                        Button(action: onDeselectAllRows) {
+                            Label("Deselect All", systemImage: "checklist.unchecked")
+                        }
                     } label: {
                         Image(systemName: "rectangle.stack.badge.plus")
                     }
