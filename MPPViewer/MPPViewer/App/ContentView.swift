@@ -62,7 +62,7 @@ struct NativePlanAnalysis {
                 spi: evm.spi,
                 eac: evm.eac
             ),
-            validationIssues: ProjectValidator.validate(project: project),
+            validationIssues: ProjectValidator.validate(project: project, resourceLeaves: plan.resourceLeaves),
             diagnosticItems: ProjectDiagnostics.analyze(project: project),
             summaryParentTaskIDs: plan.summaryParentTaskIDs()
         )
@@ -159,7 +159,7 @@ struct NativePlanAnalysis {
                     spi: evm.spi,
                     eac: evm.eac
                 ),
-                validationIssues: ProjectValidator.validate(project: project),
+                validationIssues: ProjectValidator.validate(project: project, resourceLeaves: plan.resourceLeaves),
                 diagnosticItems: ProjectDiagnostics.analyze(project: project),
                 summaryParentTaskIDs: plan.summaryParentTaskIDs()
             )

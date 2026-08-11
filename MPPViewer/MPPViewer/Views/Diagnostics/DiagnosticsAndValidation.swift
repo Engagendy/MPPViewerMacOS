@@ -503,11 +503,49 @@ struct ProjectValidationIssue: Identifiable {
 }
 
 enum ProjectValidator {
-    static func validate(project: ProjectModel) -> [ProjectValidationIssue] {
+    static func validate(
+        project: ProjectModel,
+        resourceLeaves: [PlanResourceLeave] = []
+    ) -> [ProjectValidationIssue] {
         var issues: [ProjectValidationIssue] = []
         let taskAssignments = Dictionary(grouping: project.assignments, by: { $0.taskUniqueID ?? -1 })
+        let leavesByResourceID = Dictionary(grouping: resourceLeaves, by: \.resourceID)
+        let resourceNamesByID: [Int: String] = Dictionary(
+            project.resources.compactMap { resource in
+                resource.uniqueID.map { ($0, resource.name ?? "Resource") }
+            },
+            uniquingKeysWith: { first, _ in first }
+        )
+        let leaveDayFormatter = DateFormatter()
+        leaveDayFormatter.dateStyle = .medium
+
+        // A task whose assigned resource is on leave during the task window is
+        // a delivery risk the schedule itself doesn't show (leave is
+        // visual-only), so surface it here.
+        func appendLeaveConflicts(for task: ProjectTask) {
+            guard !resourceLeaves.isEmpty,
+                  task.summary != true,
+                  let taskStart = task.startDate,
+                  let taskFinish = task.finishDate else { return }
+            for assignment in taskAssignments[task.uniqueID] ?? [] {
+                guard let resourceID = assignment.resourceUniqueID else { continue }
+                for leave in leavesByResourceID[resourceID] ?? []
+                where leave.startDate <= taskFinish && leave.endDate >= taskStart {
+                    let resourceName = resourceNamesByID[resourceID] ?? "Resource"
+                    let range = "\(leaveDayFormatter.string(from: leave.startDate)) – \(leaveDayFormatter.string(from: leave.endDate))"
+                    issues.append(issue(
+                        .warning,
+                        rule: "Assignee On Leave",
+                        task: task,
+                        "\(resourceName) is on leave (\(range)) while assigned to this task."
+                    ))
+                }
+            }
+        }
 
         for task in project.tasks {
+            appendLeaveConflicts(for: task)
+
             if task.summary == true && task.milestone == true {
                 issues.append(issue(
                     .warning,
