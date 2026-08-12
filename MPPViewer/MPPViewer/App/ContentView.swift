@@ -2295,6 +2295,7 @@ enum NavigationItem: String, CaseIterable, Identifiable {
 struct ContentView: View {
     @Binding var document: PlanningDocument
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.openSettings) private var openSettings
     @Query(sort: [SortDescriptor(\PortfolioProjectPlan.updatedAt, order: .reverse)])
     private var portfolioPlans: [PortfolioProjectPlan]
     @StateObject private var store = ProjectStore()
@@ -3039,6 +3040,11 @@ struct ContentView: View {
         AnyView(
             editableLifecycleConfiguredView
                 .onReceive(NotificationCenter.default.publisher(for: .navigateToItem), perform: handleNavigationNotification)
+                .onReceive(NotificationCenter.default.publisher(for: .openPlanroomSettings)) { _ in
+                    // Relayed from the menu bar panel: the openSettings action
+                    // only works from inside the SwiftUI scene hierarchy.
+                    openSettings()
+                }
         )
     }
 

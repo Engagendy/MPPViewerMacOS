@@ -4,6 +4,12 @@ import AppKit
 import UserNotifications
 import ServiceManagement
 
+extension Notification.Name {
+    /// Posted by the menu bar panel; handled inside the SwiftUI scene, where
+    /// the openSettings environment action actually works.
+    static let openPlanroomSettings = Notification.Name("openPlanroomSettings")
+}
+
 /// AppStorage keys for the menu bar + reminder features.
 enum ReminderSettings {
     static let menuBarEnabled = "reminders.menuBarEnabled"
@@ -267,25 +273,22 @@ struct MenuBarContentView: View {
                 Label("Open Planroom", systemImage: "arrow.up.forward.app")
                     .font(.callout)
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(PanelHoverButtonStyle())
 
             Spacer()
 
             Button {
                 onAction?()
-                NSApp.activate(ignoringOtherApps: true)
-                // The Settings scene selector must run after the transient
-                // popover has closed and the app is active, and its name
-                // differs across macOS releases.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                    if !NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil) {
-                        _ = NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
-                    }
+                // Ensure a scene window exists, then let ContentView invoke the
+                // openSettings environment action — the only reliable route.
+                openApp(navigate: false)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    NotificationCenter.default.post(name: .openPlanroomSettings, object: nil)
                 }
             } label: {
                 Image(systemName: "gearshape")
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(PanelHoverButtonStyle())
             .help("Planroom Settings")
 
             Button {
@@ -293,7 +296,7 @@ struct MenuBarContentView: View {
             } label: {
                 Image(systemName: "power")
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(PanelHoverButtonStyle())
             .help("Quit Planroom")
         }
         .controlSize(.small)
@@ -336,7 +339,7 @@ struct MenuBarContentView: View {
                             .padding(.vertical, 5)
                             .contentShape(Rectangle())
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(PanelHoverButtonStyle(padded: false))
 
                         if index < min(rows.count, 5) - 1 {
                             Divider().padding(.leading, 8)
@@ -360,13 +363,44 @@ struct MenuBarContentView: View {
         ReminderScheduler.reschedule()
     }
 
-    private func openApp() {
+    private func openApp(navigate: Bool = true) {
         NSApp.activate(ignoringOtherApps: true)
         let hasDocumentWindow = NSApp.windows.contains { $0.isVisible && $0.canBecomeKey }
         if !hasDocumentWindow {
             NSDocumentController.shared.newDocument(nil)
         }
-        NotificationCenter.default.post(name: .navigateToItem, object: NavigationItem.tasks)
+        if navigate {
+            NotificationCenter.default.post(name: .navigateToItem, object: NavigationItem.tasks)
+        }
+    }
+}
+
+/// Hover-highlighted borderless button used throughout the menu bar panel.
+struct PanelHoverButtonStyle: ButtonStyle {
+    var padded: Bool = true
+
+    func makeBody(configuration: Configuration) -> some View {
+        HoverBody(configuration: configuration, padded: padded)
+    }
+
+    private struct HoverBody: View {
+        let configuration: Configuration
+        let padded: Bool
+        @State private var isHovering = false
+
+        var body: some View {
+            configuration.label
+                .padding(.horizontal, padded ? 7 : 0)
+                .padding(.vertical, padded ? 4 : 0)
+                .background(
+                    isHovering ? Color.primary.opacity(0.08) : Color.clear,
+                    in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                )
+                .opacity(configuration.isPressed ? 0.55 : 1)
+                .onHover { hovering in
+                    isHovering = hovering
+                }
+        }
     }
 }
 

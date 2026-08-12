@@ -40,10 +40,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let enabled = UserDefaults.standard.object(forKey: ReminderSettings.menuBarEnabled) as? Bool ?? true
         if enabled, statusItem == nil {
             let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-            item.button?.image = NSImage(
+            // Template + explicit point size renders the symbol on the menu
+            // bar's own grid — crisp in light/dark, no rasterized scaling.
+            let symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 16, weight: .medium)
+            let icon = NSImage(
                 systemSymbolName: "calendar.badge.clock",
                 accessibilityDescription: "Planroom reminders"
-            )
+            )?.withSymbolConfiguration(symbolConfiguration)
+            icon?.isTemplate = true
+            item.button?.image = icon
             item.button?.target = self
             item.button?.action = #selector(toggleReminderPopover(_:))
             statusItem = item
