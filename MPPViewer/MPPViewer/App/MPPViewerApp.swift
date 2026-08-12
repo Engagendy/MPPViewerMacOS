@@ -14,11 +14,49 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Debounce stamp so rapid activations don't thrash the notification center.
     private var lastReminderScheduling = Date.distantPast
+    /// Classic status item (SwiftUI's MenuBarExtra scene loops when combined
+    /// with DocumentGroup on current macOS, so the menu bar presence is
+    /// AppKit-managed instead).
+    private var statusItem: NSStatusItem?
+    private var defaultsObserver: NSObjectProtocol?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSWindow.allowsAutomaticWindowTabbing = true
         installMenuActions()
         scheduleRemindersSoon()
+        syncStatusItem()
+        defaultsObserver = NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.syncStatusItem()
+        }
+    }
+
+    /// Creates or removes the menu bar item to match the Settings toggle.
+    private func syncStatusItem() {
+        let enabled = UserDefaults.standard.bool(forKey: ReminderSettings.menuBarEnabled)
+        if enabled, statusItem == nil {
+            let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+            item.button?.image = NSImage(
+                systemSymbolName: "calendar.badge.clock",
+                accessibilityDescription: "Planroom reminders"
+            )
+            let menu = NSMenu()
+            let hostItem = NSMenuItem()
+            if let container = ReminderScheduler.container {
+                let hosting = NSHostingView(rootView: MenuBarContentView().modelContainer(container))
+                hosting.frame.size = hosting.fittingSize
+                hostItem.view = hosting
+            }
+            menu.addItem(hostItem)
+            item.menu = menu
+            statusItem = item
+        } else if !enabled, let item = statusItem {
+            NSStatusBar.system.removeStatusItem(item)
+            statusItem = nil
+        }
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
@@ -67,7 +105,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 @main
 struct MPPViewerApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-    @AppStorage(ReminderSettings.menuBarEnabled) private var menuBarEnabled = false
     private let modelContainer: ModelContainer
 
     init() {
@@ -124,13 +161,5 @@ struct MPPViewerApp: App {
         Settings {
             PlanroomSettingsView()
         }
-
-        MenuBarExtra(isInserted: $menuBarEnabled) {
-            MenuBarContentView()
-                .modelContainer(modelContainer)
-        } label: {
-            Image(systemName: "calendar.badge.clock")
-        }
-        .menuBarExtraStyle(.window)
     }
 }
