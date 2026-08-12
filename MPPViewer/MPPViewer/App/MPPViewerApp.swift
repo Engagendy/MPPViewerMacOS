@@ -42,11 +42,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
             // Template + explicit point size renders the symbol on the menu
             // bar's own grid — crisp in light/dark, no rasterized scaling.
-            // 13pt regular keeps the badged glyph inside the menu bar's
-            // ~22pt band, matching the size of the system status icons.
-            let symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 13, weight: .regular)
+            // A simple bold silhouette reads like the system status icons;
+            // badged glyphs turn to noise at this size.
+            let symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 14, weight: .semibold)
             let icon = NSImage(
-                systemSymbolName: "calendar.badge.clock",
+                systemSymbolName: "calendar",
                 accessibilityDescription: "Planroom reminders"
             )?.withSymbolConfiguration(symbolConfiguration)
             icon?.isTemplate = true
