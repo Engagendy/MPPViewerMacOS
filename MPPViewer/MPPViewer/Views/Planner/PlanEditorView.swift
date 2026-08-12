@@ -58,6 +58,11 @@ struct PlanEditorView: View {
 
     @State private var selectedTaskID: Int?
     @State private var multiSelectedGridTaskIDs: Set<Int> = []
+    /// Live Command-key state from a flagsChanged monitor. While held, rows
+    /// show a transparent click-catcher so selection clicks can never fall
+    /// into the grid's always-editable text fields.
+    @State private var isCommandKeyHeld = false
+    @State private var modifierFlagsMonitor: Any?
     @State private var pendingGridFocusTarget: PlannerGridFocusTarget?
     @State private var inspectorWidth: CGFloat = 320
     @State private var inspectorDragStartWidth: CGFloat?
@@ -782,6 +787,12 @@ struct PlanEditorView: View {
             isMultiSelected: multiSelectedGridTaskIDs.contains(row.id),
             onModifiedTap: { isCommand, isShift in
                 handleGridRowTap(row.id, isCommand: isCommand, isShift: isShift)
+            },
+            isMultiSelectCaptureActive: isCommandKeyHeld,
+            onCaptureTap: {
+                // Shift+Cmd extends the range; plain Cmd toggles membership.
+                let shiftToo = NSEvent.modifierFlags.contains(.shift)
+                handleGridRowTap(row.id, isCommand: !shiftToo, isShift: shiftToo)
             }
         )
         .equatable()
@@ -4730,6 +4741,10 @@ private struct PlannerGridRowView: View, Equatable {
     var isMultiSelected: Bool = false
     /// Called instead of onTap when Command or Shift is held.
     var onModifiedTap: ((_ isCommand: Bool, _ isShift: Bool) -> Void)? = nil
+    /// While the Command key is held, a transparent overlay captures the whole
+    /// row's clicks so they can't land in the always-editable text fields.
+    var isMultiSelectCaptureActive: Bool = false
+    var onCaptureTap: (() -> Void)? = nil
 
     static func == (lhs: PlannerGridRowView, rhs: PlannerGridRowView) -> Bool {
         let resourceOptionsEquivalent = (!lhs.isSelected && !rhs.isSelected) || lhs.resourceOptions == rhs.resourceOptions
@@ -4738,6 +4753,7 @@ private struct PlannerGridRowView: View, Equatable {
         lhs.layout == rhs.layout &&
         lhs.isSelected == rhs.isSelected &&
         lhs.isMultiSelected == rhs.isMultiSelected &&
+        lhs.isMultiSelectCaptureActive == rhs.isMultiSelectCaptureActive &&
         lhs.isCollapsed == rhs.isCollapsed &&
         resourceOptionsEquivalent &&
         lhs.nameValue == rhs.nameValue &&
@@ -4939,6 +4955,13 @@ private struct PlannerGridRowView: View, Equatable {
             TapGesture().modifiers(.shift).onEnded { onModifiedTap?(false, true) }
         )
         .onTapGesture(perform: onTap)
+        .overlay {
+            if isMultiSelectCaptureActive {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture { onCaptureTap?() }
+            }
+        }
     }
 
     private func dateText(_ date: Date) -> some View {
