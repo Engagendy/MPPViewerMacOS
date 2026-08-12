@@ -184,73 +184,164 @@ private extension String {
 
 // MARK: - Menu bar dropdown
 
+/// Content of the status-item popover: a compact, native-feeling panel with
+/// the most recently updated plan's attention items.
 struct MenuBarContentView: View {
     @Environment(\.modelContext) private var modelContext
+    var onAction: (() -> Void)? = nil
     @State private var digest: ReminderDigest?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            if let digest {
-                Text(digest.planTitle)
-                    .font(.headline)
-
-                if digest.isEmpty {
-                    Label("All clear — nothing overdue or due soon.", systemImage: "checkmark.circle")
-                        .foregroundStyle(.secondary)
-                        .font(.callout)
-                } else {
-                    reminderSection("Overdue", rows: digest.overdue, color: .red, icon: "exclamationmark.circle.fill")
-                    reminderSection("Due in 7 days", rows: digest.dueSoon, color: .orange, icon: "clock.fill")
-                    reminderSection("Milestones", rows: digest.milestones, color: .purple, icon: "diamond.fill")
-                }
-            } else {
-                Label("No active plan yet.", systemImage: "calendar")
-                    .foregroundStyle(.secondary)
-                    .font(.callout)
-            }
+        VStack(alignment: .leading, spacing: 0) {
+            header
+                .padding(.horizontal, 14)
+                .padding(.top, 12)
+                .padding(.bottom, 10)
 
             Divider()
 
-            HStack {
-                Button("Open Planroom") { openApp() }
-                Spacer()
-                SettingsLink { Text("Settings…") }
-                Button("Quit") { NSApp.terminate(nil) }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    if let digest, !digest.isEmpty {
+                        reminderSection("Overdue", rows: digest.overdue, tint: .red, icon: "exclamationmark.circle.fill")
+                        reminderSection("Due this week", rows: digest.dueSoon, tint: .orange, icon: "clock.fill")
+                        reminderSection("Milestones", rows: digest.milestones, tint: .purple, icon: "diamond.fill")
+                    } else {
+                        HStack(spacing: 8) {
+                            Image(systemName: "checkmark.seal.fill")
+                                .foregroundStyle(.green)
+                            Text(digest == nil ? "No active plan yet." : "All clear — nothing needs attention.")
+                                .foregroundStyle(.secondary)
+                        }
+                        .font(.callout)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 8)
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
             }
-            .controlSize(.small)
+            .frame(maxHeight: 320)
+
+            Divider()
+
+            footer
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
         }
-        .padding(12)
-        .frame(width: 340)
+        .frame(width: 320)
         .onAppear(perform: refresh)
     }
 
-    @ViewBuilder
-    private func reminderSection(_ title: String, rows: [ReminderTaskRow], color: Color, icon: String) -> some View {
-        if !rows.isEmpty {
-            VStack(alignment: .leading, spacing: 4) {
-                Label("\(title) (\(rows.count))", systemImage: icon)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(color)
-                ForEach(rows.prefix(5)) { row in
-                    Button {
-                        openApp()
-                    } label: {
-                        HStack {
-                            Text(row.name).lineLimit(1)
-                            Spacer()
-                            Text(DateFormatting.shortDate(row.finishDate))
-                                .foregroundStyle(.secondary)
-                                .monospacedDigit()
-                        }
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
+    private var header: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "calendar.badge.clock")
+                .font(.title3)
+                .foregroundStyle(Color.accentColor)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(digest?.planTitle ?? "Planroom")
+                    .font(.headline)
+                    .lineLimit(1)
+                Text(headerSubtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    private var headerSubtitle: String {
+        guard let digest else { return "Open a plan to see reminders" }
+        let count = digest.overdue.count + digest.dueSoon.count + digest.milestones.count
+        if count == 0 { return "Everything is on track" }
+        return "\(count) item\(count == 1 ? "" : "s") need\(count == 1 ? "s" : "") attention"
+    }
+
+    private var footer: some View {
+        HStack(spacing: 4) {
+            Button {
+                onAction?()
+                openApp()
+            } label: {
+                Label("Open Planroom", systemImage: "arrow.up.forward.app")
                     .font(.callout)
-                }
-                if rows.count > 5 {
-                    Text("+ \(rows.count - 5) more")
-                        .font(.caption2)
+            }
+            .buttonStyle(.borderless)
+
+            Spacer()
+
+            Button {
+                onAction?()
+                NSApp.activate(ignoringOtherApps: true)
+                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+            } label: {
+                Image(systemName: "gearshape")
+            }
+            .buttonStyle(.borderless)
+            .help("Planroom Settings")
+
+            Button {
+                NSApp.terminate(nil)
+            } label: {
+                Image(systemName: "power")
+            }
+            .buttonStyle(.borderless)
+            .help("Quit Planroom")
+        }
+        .controlSize(.small)
+    }
+
+    @ViewBuilder
+    private func reminderSection(_ title: String, rows: [ReminderTaskRow], tint: Color, icon: String) -> some View {
+        if !rows.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    Image(systemName: icon)
+                        .font(.caption)
+                        .foregroundStyle(tint)
+                    Text(title.uppercased())
+                        .font(.caption2.weight(.semibold))
                         .foregroundStyle(.secondary)
+                        .kerning(0.4)
+                    Spacer()
+                    Text("\(rows.count)")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+
+                VStack(spacing: 0) {
+                    ForEach(Array(rows.prefix(5).enumerated()), id: \.element.id) { index, row in
+                        Button {
+                            onAction?()
+                            openApp()
+                        } label: {
+                            HStack(spacing: 8) {
+                                Text(row.name)
+                                    .lineLimit(1)
+                                Spacer(minLength: 12)
+                                Text(DateFormatting.shortDate(row.finishDate))
+                                    .foregroundStyle(.secondary)
+                                    .monospacedDigit()
+                            }
+                            .font(.callout)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+
+                        if index < min(rows.count, 5) - 1 {
+                            Divider().padding(.leading, 8)
+                        }
+                    }
+                }
+                .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+
+                if rows.count > 5 {
+                    Text("and \(rows.count - 5) more…")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .padding(.leading, 8)
                 }
             }
         }
@@ -274,7 +365,7 @@ struct MenuBarContentView: View {
 // MARK: - Settings
 
 struct PlanroomSettingsView: View {
-    @AppStorage(ReminderSettings.menuBarEnabled) private var menuBarEnabled = false
+    @AppStorage(ReminderSettings.menuBarEnabled) private var menuBarEnabled = true
     @AppStorage(ReminderSettings.digestEnabled) private var digestEnabled = true
     @AppStorage(ReminderSettings.digestHour) private var digestHour = 9
     @AppStorage(ReminderSettings.milestoneAlertsEnabled) private var milestoneAlertsEnabled = true

@@ -18,6 +18,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// with DocumentGroup on current macOS, so the menu bar presence is
     /// AppKit-managed instead).
     private var statusItem: NSStatusItem?
+    private var reminderPopover: NSPopover?
     private var defaultsObserver: NSObjectProtocol?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -36,27 +37,40 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Creates or removes the menu bar item to match the Settings toggle.
     private func syncStatusItem() {
-        let enabled = UserDefaults.standard.bool(forKey: ReminderSettings.menuBarEnabled)
+        let enabled = UserDefaults.standard.object(forKey: ReminderSettings.menuBarEnabled) as? Bool ?? true
         if enabled, statusItem == nil {
             let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
             item.button?.image = NSImage(
                 systemSymbolName: "calendar.badge.clock",
                 accessibilityDescription: "Planroom reminders"
             )
-            let menu = NSMenu()
-            let hostItem = NSMenuItem()
-            if let container = ReminderScheduler.container {
-                let hosting = NSHostingView(rootView: MenuBarContentView().modelContainer(container))
-                hosting.frame.size = hosting.fittingSize
-                hostItem.view = hosting
-            }
-            menu.addItem(hostItem)
-            item.menu = menu
+            item.button?.target = self
+            item.button?.action = #selector(toggleReminderPopover(_:))
             statusItem = item
         } else if !enabled, let item = statusItem {
             NSStatusBar.system.removeStatusItem(item)
             statusItem = nil
+            reminderPopover?.close()
+            reminderPopover = nil
         }
+    }
+
+    /// Control-Center-style panel anchored to the status item — native popover
+    /// chrome instead of a menu with an embedded view.
+    @objc private func toggleReminderPopover(_ sender: Any?) {
+        if let popover = reminderPopover, popover.isShown {
+            popover.close()
+            return
+        }
+        guard let button = statusItem?.button, let container = ReminderScheduler.container else { return }
+        let popover = NSPopover()
+        popover.behavior = .transient
+        popover.contentViewController = NSHostingController(
+            rootView: MenuBarContentView(onAction: { [weak popover] in popover?.close() })
+                .modelContainer(container)
+        )
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        reminderPopover = popover
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
