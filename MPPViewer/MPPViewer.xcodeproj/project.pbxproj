@@ -13,6 +13,7 @@
 		A10000010000000000000001 /* MPPViewerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000001 /* MPPViewerApp.swift */; };
 		A10000010000000000000002 /* MPPDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000002 /* MPPDocument.swift */; };
 		A10000010000000000000003 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000003 /* ContentView.swift */; };
+		A100000100000000000000EF /* MenuBarCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000100000000000000EF /* MenuBarCenter.swift */; };
 		A10000010000000000000004 /* ProjectModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000004 /* ProjectModel.swift */; };
 		A10000010000000000000005 /* ProjectStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000005 /* ProjectStore.swift */; };
 		A10000010000000000000006 /* MPPConverterService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000006 /* MPPConverterService.swift */; };
@@ -138,6 +139,7 @@
 		A20000010000000000000001 /* MPPViewerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MPPViewerApp.swift; sourceTree = "<group>"; };
 		A20000010000000000000002 /* MPPDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MPPDocument.swift; sourceTree = "<group>"; };
 		A20000010000000000000003 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		A200000100000000000000EF /* MenuBarCenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarCenter.swift; sourceTree = "<group>"; };
 		A300000F00000000000000E3 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		A20000010000000000000004 /* ProjectModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectModel.swift; sourceTree = "<group>"; };
 		A20000010000000000000005 /* ProjectStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectStore.swift; sourceTree = "<group>"; };
@@ -311,6 +313,7 @@
 				A20000010000000000000001 /* MPPViewerApp.swift */,
 				A20000010000000000000002 /* MPPDocument.swift */,
 				A20000010000000000000003 /* ContentView.swift */,
+				A200000100000000000000EF /* MenuBarCenter.swift */,
 				A200000E00000000000000D1 /* PortfolioDashboardView.swift */,
 				A200000E00000000000000D2 /* AgileBoardView.swift */,
 				A200000E00000000000000D3 /* StatusCenterView.swift */,
@@ -768,6 +771,7 @@
 				A10000010000000000000001 /* MPPViewerApp.swift in Sources */,
 				A10000010000000000000002 /* MPPDocument.swift in Sources */,
 				A10000010000000000000003 /* ContentView.swift in Sources */,
+				A100000100000000000000EF /* MenuBarCenter.swift in Sources */,
 				A100000E00000000000000D1 /* PortfolioDashboardView.swift in Sources */,
 				A100000E00000000000000D2 /* AgileBoardView.swift in Sources */,
 				A100000E00000000000000D3 /* StatusCenterView.swift in Sources */,

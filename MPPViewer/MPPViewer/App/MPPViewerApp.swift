@@ -12,13 +12,28 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         Self.shared = self
     }
 
+    /// Debounce stamp so rapid activations don't thrash the notification center.
+    private var lastReminderScheduling = Date.distantPast
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSWindow.allowsAutomaticWindowTabbing = true
         installMenuActions()
+        scheduleRemindersSoon()
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
         installMenuActions()
+        scheduleRemindersSoon()
+    }
+
+    /// Rebuilds pending reminder notifications from current plan data.
+    private func scheduleRemindersSoon() {
+        guard Date().timeIntervalSince(lastReminderScheduling) > 60 else { return }
+        lastReminderScheduling = Date()
+        Task { @MainActor in
+            ReminderScheduler.requestAuthorizationIfNeeded()
+            ReminderScheduler.reschedule()
+        }
     }
 
     @objc func closeFrontWindow(_ sender: Any?) {
@@ -52,7 +67,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 @main
 struct MPPViewerApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-    private let modelContainer: ModelContainer = PortfolioModelContainer.make()
+    @AppStorage(ReminderSettings.menuBarEnabled) private var menuBarEnabled = false
+    private let modelContainer: ModelContainer
+
+    init() {
+        let container = PortfolioModelContainer.make()
+        modelContainer = container
+        ReminderScheduler.container = container
+    }
 
     var body: some Scene {
         DocumentGroup(newDocument: PlanningDocument()) { file in
@@ -82,6 +104,7 @@ struct MPPViewerApp: App {
                 }
             }
             CommandGroup(after: .help) {
+
                 Button("Open In-App Guide") {
                     NotificationCenter.default.post(
                         name: .navigateToItem,
@@ -97,5 +120,17 @@ struct MPPViewerApp: App {
                 }
             }
         }
+
+        Settings {
+            PlanroomSettingsView()
+        }
+
+        MenuBarExtra(isInserted: $menuBarEnabled) {
+            MenuBarContentView()
+                .modelContainer(modelContainer)
+        } label: {
+            Image(systemName: "calendar.badge.clock")
+        }
+        .menuBarExtraStyle(.window)
     }
 }
