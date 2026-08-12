@@ -793,6 +793,11 @@ struct PlanEditorView: View {
                 // Shift+Cmd extends the range; plain Cmd toggles membership.
                 let shiftToo = NSEvent.modifierFlags.contains(.shift)
                 handleGridRowTap(row.id, isCommand: !shiftToo, isShift: shiftToo)
+            },
+            onRequestEdit: { column in
+                selectedTaskID = row.id
+                multiSelectedGridTaskIDs = []
+                pendingGridFocusTarget = PlannerGridFocusTarget(taskID: row.id, column: column)
             }
         )
         .equatable()
@@ -4745,6 +4750,8 @@ private struct PlannerGridRowView: View, Equatable {
     /// row's clicks so they can't land in the always-editable text fields.
     var isMultiSelectCaptureActive: Bool = false
     var onCaptureTap: (() -> Void)? = nil
+    /// Tap on a passive cell: select this row and focus that column's editor.
+    var onRequestEdit: ((PlannerGridColumn) -> Void)? = nil
 
     static func == (lhs: PlannerGridRowView, rhs: PlannerGridRowView) -> Bool {
         let resourceOptionsEquivalent = (!lhs.isSelected && !rhs.isSelected) || lhs.resourceOptions == rhs.resourceOptions
@@ -4802,15 +4809,20 @@ private struct PlannerGridRowView: View, Equatable {
                             .frame(width: 14, height: 1)
                     }
 
-                    PlannerGridTextField(
-                        text: $nameText,
-                        placeholder: "Task Name",
-                        shouldBecomeFirstResponder: shouldFocusName,
-                        onCommitNow: onCommitName,
-                        onReturn: onReturnFromName,
-                        onFocused: onFocusName,
-                        fontWeight: row.isSummary ? .semibold : .regular
-                    )
+                    if isSelected {
+                        PlannerGridTextField(
+                            text: $nameText,
+                            placeholder: "Task Name",
+                            shouldBecomeFirstResponder: shouldFocusName,
+                            onCommitNow: onCommitName,
+                            onReturn: onReturnFromName,
+                            onFocused: onFocusName,
+                            fontWeight: row.isSummary ? .semibold : .regular
+                        )
+                    } else {
+                        passiveText(nameValue.isEmpty ? "Task Name" : nameValue, weight: row.isSummary ? .semibold : .regular, dimmed: nameValue.isEmpty)
+                            .onTapGesture { onRequestEdit?(.name) }
+                    }
                 }
             }
 
@@ -4836,51 +4848,72 @@ private struct PlannerGridRowView: View, Equatable {
 
             if layout.duration > 0 {
             cell(width: layout.duration, alignment: .center) {
-                PlannerGridTextField(
-                    text: $durationText,
-                    placeholder: "1",
-                    alignment: .center,
-                    shouldBecomeFirstResponder: shouldFocusDuration,
-                    onCommitNow: onCommitDuration,
-                    onReturn: onReturnFromDuration,
-                    onFocused: onFocusDuration
-                )
+                if isSelected {
+                    PlannerGridTextField(
+                        text: $durationText,
+                        placeholder: "1",
+                        alignment: .center,
+                        shouldBecomeFirstResponder: shouldFocusDuration,
+                        onCommitNow: onCommitDuration,
+                        onReturn: onReturnFromDuration,
+                        onFocused: onFocusDuration
+                    )
+                } else {
+                    passiveText(durationValue)
+                        .onTapGesture { onRequestEdit?(.duration) }
+                }
             }
             }
 
             if layout.percent > 0 {
             cell(width: layout.percent, alignment: .center) {
-                PlannerGridTextField(
-                    text: $percentText,
-                    placeholder: "0",
-                    alignment: .center,
-                    shouldBecomeFirstResponder: shouldFocusPercent,
-                    onCommitNow: onCommitPercent,
-                    onReturn: onReturnFromPercent,
-                    onFocused: onFocusPercent
-                )
+                if isSelected {
+                    PlannerGridTextField(
+                        text: $percentText,
+                        placeholder: "0",
+                        alignment: .center,
+                        shouldBecomeFirstResponder: shouldFocusPercent,
+                        onCommitNow: onCommitPercent,
+                        onReturn: onReturnFromPercent,
+                        onFocused: onFocusPercent
+                    )
+                } else {
+                    passiveText(percentValue)
+                        .onTapGesture { onRequestEdit?(.percent) }
+                }
             }
             }
 
             if layout.milestone > 0 {
                 cell(width: layout.milestone, alignment: .center) {
-                    Toggle("", isOn: $milestone)
-                        .labelsHidden()
-                        .toggleStyle(.checkbox)
-                        .controlSize(.small)
+                    if isSelected {
+                        Toggle("", isOn: $milestone)
+                            .labelsHidden()
+                            .toggleStyle(.checkbox)
+                            .controlSize(.small)
+                    } else if milestoneValue {
+                        Image(systemName: "diamond.fill")
+                            .font(.system(size: 8))
+                            .foregroundStyle(.orange)
+                    }
                 }
             }
 
             if layout.predecessors > 0 {
             cell(width: layout.predecessors, alignment: .leading) {
-                PlannerGridTextField(
-                    text: $predecessorsText,
-                    placeholder: "1, 2",
-                    shouldBecomeFirstResponder: shouldFocusPredecessors,
-                    onCommitNow: onCommitPredecessors,
-                    onReturn: onReturnFromPredecessors,
-                    onFocused: onFocusPredecessors
-                )
+                if isSelected {
+                    PlannerGridTextField(
+                        text: $predecessorsText,
+                        placeholder: "1, 2",
+                        shouldBecomeFirstResponder: shouldFocusPredecessors,
+                        onCommitNow: onCommitPredecessors,
+                        onReturn: onReturnFromPredecessors,
+                        onFocused: onFocusPredecessors
+                    )
+                } else {
+                    passiveText(predecessorsValue)
+                        .onTapGesture { onRequestEdit?(.predecessors) }
+                }
             }
             }
 
@@ -4905,35 +4938,48 @@ private struct PlannerGridRowView: View, Equatable {
 
             if layout.assignmentUnits > 0 {
             cell(width: layout.assignmentUnits, alignment: .center) {
-                PlannerGridTextField(
-                    text: $primaryAssignmentUnitsText,
-                    placeholder: "0",
-                    alignment: .center,
-                    shouldBecomeFirstResponder: shouldFocusAssignmentUnits,
-                    onCommitNow: onCommitAssignmentUnits,
-                    onTab: onTabFromAssignmentUnits,
-                    onReturn: onReturnFromAssignmentUnits,
-                    onFocused: onFocusAssignmentUnits
-                )
+                if isSelected {
+                    PlannerGridTextField(
+                        text: $primaryAssignmentUnitsText,
+                        placeholder: "0",
+                        alignment: .center,
+                        shouldBecomeFirstResponder: shouldFocusAssignmentUnits,
+                        onCommitNow: onCommitAssignmentUnits,
+                        onTab: onTabFromAssignmentUnits,
+                        onReturn: onReturnFromAssignmentUnits,
+                        onFocused: onFocusAssignmentUnits
+                    )
+                } else {
+                    passiveText(primaryAssignmentUnitsValue)
+                        .onTapGesture { onRequestEdit?(.assignmentUnits) }
+                }
             }
             }
 
             ForEach(Array(layout.extraColumns.enumerated()), id: \.offset) { index, columnName in
                 cell(width: layout.extraWidths[index], alignment: .leading) {
-                    PlannerGridCustomFieldCell(
-                        value: index < extraValues.count ? extraValues[index] : ""
-                    ) { newValue in
-                        onCommitExtraColumn(columnName, newValue)
+                    if isSelected {
+                        PlannerGridCustomFieldCell(
+                            value: index < extraValues.count ? extraValues[index] : ""
+                        ) { newValue in
+                            onCommitExtraColumn(columnName, newValue)
+                        }
+                    } else {
+                        passiveText(index < extraValues.count ? extraValues[index] : "")
                     }
                 }
             }
 
             ForEach(Array(layout.customColumns.enumerated()), id: \.offset) { index, fieldName in
                 cell(width: layout.custom, alignment: .leading) {
-                    PlannerGridCustomFieldCell(
-                        value: index < customValues.count ? customValues[index] : ""
-                    ) { newValue in
-                        onCommitCustomField(fieldName, newValue)
+                    if isSelected {
+                        PlannerGridCustomFieldCell(
+                            value: index < customValues.count ? customValues[index] : ""
+                        ) { newValue in
+                            onCommitCustomField(fieldName, newValue)
+                        }
+                    } else {
+                        passiveText(index < customValues.count ? customValues[index] : "")
                     }
                 }
             }
@@ -4962,6 +5008,18 @@ private struct PlannerGridRowView: View, Equatable {
                     .onTapGesture { onCaptureTap?() }
             }
         }
+    }
+
+    /// Cheap static representation of a cell for non-selected rows: rows only
+    /// mount live AppKit editors when they're the editing (anchor) row, which
+    /// keeps hundreds of text fields out of the hierarchy while scrolling.
+    private func passiveText(_ value: String, weight: Font.Weight = .regular, dimmed: Bool = false) -> some View {
+        Text(value)
+            .font(.callout.weight(weight))
+            .lineLimit(1)
+            .foregroundStyle(dimmed ? Color.secondary : Color.primary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
     }
 
     private func dateText(_ date: Date) -> some View {
