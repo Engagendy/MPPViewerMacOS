@@ -230,6 +230,7 @@ struct MenuBarContentView: View {
                 .padding(.vertical, 8)
         }
         .frame(width: 320)
+        .focusEffectDisabled()
         .onAppear(perform: refresh)
     }
 
@@ -273,7 +274,14 @@ struct MenuBarContentView: View {
             Button {
                 onAction?()
                 NSApp.activate(ignoringOtherApps: true)
-                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                // The Settings scene selector must run after the transient
+                // popover has closed and the app is active, and its name
+                // differs across macOS releases.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    if !NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil) {
+                        _ = NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
+                    }
+                }
             } label: {
                 Image(systemName: "gearshape")
             }
