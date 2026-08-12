@@ -4601,19 +4601,21 @@ private struct PlannerTaskListPane<RowContent: View, HeaderContent: View>: View 
     }
 
     private var shortcuts: some View {
-        HStack(spacing: 12) {
-            shortcutHint("Tab", description: "Next cell")
-            shortcutHint("Shift+Tab", description: "Previous cell")
-            shortcutHint("Enter", description: "Down same column")
-            shortcutHint("Cmd+Return", description: "New row")
-            shortcutHint("Cmd+[ / ]", description: "Outdent / indent")
-            shortcutHint("⇧Cmd+C / V", description: "Copy / paste rows")
-            shortcutHint("⇧Cmd+Return", description: "Insert above")
-            shortcutHint("Cmd/⇧+Click", description: "Multi-select rows")
-            Spacer(minLength: 0)
+        // One fixed line: chips never wrap internally, and the row scrolls
+        // horizontally instead of breaking onto a second line when narrow.
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 12) {
+                shortcutHint("⇥ / ⇧⇥", description: "Next / previous cell")
+                shortcutHint("↩", description: "Down same column")
+                shortcutHint("⌘↩", description: "New row")
+                shortcutHint("⇧⌘↩", description: "Insert above")
+                shortcutHint("⌘[ / ⌘]", description: "Outdent / indent")
+                shortcutHint("⇧⌘C / ⇧⌘V", description: "Copy / paste rows")
+                shortcutHint("⌘⇧ Click", description: "Multi-select rows")
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
         .background(Color(nsColor: .windowBackgroundColor))
     }
 
@@ -4630,6 +4632,8 @@ private struct PlannerTaskListPane<RowContent: View, HeaderContent: View>: View 
             Text(shortcut)
                 .font(.caption2)
                 .fontWeight(.semibold)
+                .lineLimit(1)
+                .fixedSize()
                 .padding(.horizontal, 6)
                 .padding(.vertical, 3)
                 .background(Color.secondary.opacity(0.12))
@@ -4637,6 +4641,8 @@ private struct PlannerTaskListPane<RowContent: View, HeaderContent: View>: View 
             Text(description)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .fixedSize()
         }
     }
 
@@ -4886,15 +4892,21 @@ private struct PlannerGridRowView: View, Equatable {
 
             if layout.milestone > 0 {
                 cell(width: layout.milestone, alignment: .center) {
-                    if isSelected {
-                        Toggle("", isOn: $milestone)
-                            .labelsHidden()
-                            .toggleStyle(.checkbox)
-                            .controlSize(.small)
-                    } else if milestoneValue {
-                        Image(systemName: "diamond.fill")
-                            .font(.system(size: 8))
-                            .foregroundStyle(.orange)
+                    // ZStack + Color.clear keeps the cell occupying its column
+                    // width even when there is nothing to show — a bare
+                    // EmptyView here collapses the cell and shifts the row.
+                    ZStack {
+                        Color.clear.frame(width: 1, height: 1)
+                        if isSelected {
+                            Toggle("", isOn: $milestone)
+                                .labelsHidden()
+                                .toggleStyle(.checkbox)
+                                .controlSize(.small)
+                        } else if milestoneValue {
+                            Image(systemName: "diamond.fill")
+                                .font(.system(size: 8))
+                                .foregroundStyle(.orange)
+                        }
                     }
                 }
             }
@@ -4985,6 +4997,7 @@ private struct PlannerGridRowView: View, Equatable {
             }
         }
         .frame(height: 32)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             isSelected
                 ? Color.accentColor.opacity(0.12)
