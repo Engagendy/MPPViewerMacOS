@@ -18,8 +18,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # ─── Configuration ──────────────────────────────────────────────────────
-APP_NAME="MPP Viewer"
-APP_BUNDLE="MPPViewer.app"
+APP_NAME="Planroom"
+APP_BUNDLE="Planroom.app"
 SCHEME="MPPViewer"
 XCODEPROJ="$PROJECT_ROOT/MPPViewer/MPPViewer.xcodeproj"
 MAVEN_DIR="$PROJECT_ROOT/MPPConverter"
