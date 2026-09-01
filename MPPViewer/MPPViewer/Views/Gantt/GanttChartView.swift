@@ -72,6 +72,7 @@ private struct GanttTaskPopover: View {
                         .font(.caption)
                 }
                 .buttonStyle(.accessoryBar)
+                .accessibilityLabel("Close")
                 .foregroundStyle(.secondary)
                 .keyboardShortcut(.cancelAction)
                 .help("Close")
@@ -936,6 +937,7 @@ struct GanttChartView: View {
                             .font(.caption)
                     }
                     .menuStyle(.borderlessButton)
+                    .accessibilityLabel("Leave display style")
                     .fixedSize()
                     .help("Choose how leave is drawn: as bars on each resource's rows, or as full-height columns like events.")
                 }
@@ -1560,7 +1562,13 @@ struct GanttChartView: View {
                 isCritical: task.critical == true,
                 percentComplete: task.percentComplete ?? 0,
                 colorHex: task.barColorHex,
-                subtitle: subtitle
+                subtitle: subtitle,
+                uniqueID: task.uniqueID,
+                links: showDependencyLinks
+                    ? (task.predecessors ?? []).map { SVGExporter.GanttLink(predecessorID: $0.targetTaskUniqueID, type: $0.type ?? "FS") }
+                    : [],
+                baselineStart: showBaseline ? task.baselineStartDate : nil,
+                baselineFinish: showBaseline ? task.baselineFinishDate : nil
             )
         }
     }
@@ -3531,6 +3539,7 @@ struct GanttZoomControls: View {
             Button(action: onZoomOut) {
                 Image(systemName: "minus.magnifyingglass")
             }
+            .accessibilityLabel("Zoom out")
             Text("\(Int(pixelsPerDay)) px/day")
                 .monospacedDigit()
                 .font(.caption)
@@ -3539,6 +3548,7 @@ struct GanttZoomControls: View {
             Button(action: onZoomIn) {
                 Image(systemName: "plus.magnifyingglass")
             }
+            .accessibilityLabel("Zoom in")
         }
         .buttonStyle(.accessoryBar)
     }
@@ -3968,12 +3978,19 @@ struct GanttCanvasView: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
+            // The grid, bars, and dependency canvases are pure pixels; VoiceOver
+            // reads the per-row hit-target buttons (taskRowHitOverlay) and the
+            // editable GanttBarViews instead, so hide the canvases outright.
             gridCanvas
                 .drawingGroup()
+                .accessibilityHidden(true)
             overlayBandFills
+                .accessibilityHidden(true)
             taskBarsCanvas
+                .accessibilityHidden(true)
             if showDependencyLinks {
                 dependencyCanvas
+                    .accessibilityHidden(true)
             }
             overlayBandLabels
             tooltipOverlay
@@ -4233,6 +4250,8 @@ struct GanttCanvasView: View {
                     }
                     .buttonStyle(.plain)
                     .position(x: interactiveContentWidth / 2, y: geometry.rowRect.midY)
+                    .accessibilityLabel(rowAccessibilityLabel(for: row.task))
+                    .accessibilityHint("Selects the task and shows its details")
                     .help(tooltipFor(row.task))
                     .contextMenu {
                         if row.task.summary == true, !row.task.children.isEmpty, let onToggleFocus {
@@ -4474,6 +4493,27 @@ struct GanttCanvasView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    /// One VoiceOver sentence per Gantt row: kind, name, dates, % complete,
+    /// and critical-path membership. The row hit-target buttons carry this so
+    /// the Canvas-drawn bars stay rotor-navigable even in read-only mode.
+    private func rowAccessibilityLabel(for task: ProjectTask) -> String {
+        let kind = task.milestone == true ? "Milestone" : (task.summary == true ? "Summary task" : "Task")
+        var parts = ["\(kind): \(task.displayName)"]
+        if let start = task.start {
+            parts.append("starts \(DateFormatting.shortDate(start))")
+        }
+        if let finish = task.finish {
+            parts.append("finishes \(DateFormatting.shortDate(finish))")
+        }
+        if let pct = task.percentComplete {
+            parts.append("\(Int(pct)) percent complete")
+        }
+        if task.critical == true {
+            parts.append("on the critical path")
+        }
+        return parts.joined(separator: ", ")
     }
 
     private func tooltipFor(_ task: ProjectTask) -> String {

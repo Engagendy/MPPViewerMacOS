@@ -707,6 +707,7 @@ struct AgileBoardView: View {
                     }
                     .buttonStyle(.accessoryBar)
                     .disabled(laneIndex == nil || laneIndex == 0)
+                    .accessibilityLabel("Move \(lane) bucket left")
                     .help("Move this bucket left.")
 
                     Button {
@@ -716,6 +717,7 @@ struct AgileBoardView: View {
                     }
                     .buttonStyle(.accessoryBar)
                     .disabled(laneIndex == nil || laneIndex == boardColumns.count - 1)
+                    .accessibilityLabel("Move \(lane) bucket right")
                     .help("Move this bucket right.")
 
                     Button(role: .destructive) {
@@ -725,6 +727,8 @@ struct AgileBoardView: View {
                     }
                     .buttonStyle(.accessoryBar)
                     .disabled(boardColumns.count <= 1)
+                    .accessibilityLabel("Delete \(lane) bucket")
+                    .accessibilityHint("Moves its tasks to a neighboring lane")
                     .help("Delete this bucket and move its tasks to a neighboring lane.")
                 }
                 .labelStyle(.iconOnly)
@@ -966,6 +970,13 @@ struct AgileBoardView: View {
         }
         .shadow(color: Color.black.opacity(selectedTaskID == task.id ? 0.08 : 0.03), radius: selectedTaskID == task.id ? 8 : 3, x: 0, y: 1)
         .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(boardCardAccessibilityLabel(task, isDone: isDone, isOverdue: isOverdue))
+        .accessibilityHint("Selects this card. Use the context menu to move it between buckets or assign a sprint.")
+        .accessibilityAddTraits(selectedTaskID == task.id ? [.isButton, .isSelected] : .isButton)
+        .accessibilityAction {
+            selectBoardTask(task.id)
+        }
         .onTapGesture {
             selectBoardTask(task.id)
         }
@@ -1001,6 +1012,27 @@ struct AgileBoardView: View {
                 }
             }
         }
+    }
+
+    /// Single VoiceOver sentence for a board card: name, type, bucket, sprint,
+    /// points, progress, and overdue/done state.
+    private func boardCardAccessibilityLabel(_ task: NativePlanTask, isDone: Bool, isOverdue: Bool) -> String {
+        var parts = ["\(task.agileType): \(task.name)", "in \(task.boardStatus)"]
+        if let sprintID = task.sprintID, let sprintName = derivedContent.sprintNamesByID[sprintID] {
+            parts.append("sprint \(sprintName)")
+        } else {
+            parts.append("in backlog")
+        }
+        if let points = task.storyPoints {
+            parts.append("\(points) story points")
+        }
+        parts.append("\(Int(task.percentComplete)) percent complete")
+        if isOverdue {
+            parts.append("overdue")
+        } else if isDone {
+            parts.append("done")
+        }
+        return parts.joined(separator: ", ")
     }
 
     private var agileInspector: some View {

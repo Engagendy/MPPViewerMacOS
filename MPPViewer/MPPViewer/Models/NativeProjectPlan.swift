@@ -69,6 +69,10 @@ struct NativeProjectPlan: Codable, Hashable {
     /// Visual-only per-resource leave shown as bands on that resource's rows.
     /// Never consulted by the scheduler.
     var resourceLeaves: [PlanResourceLeave]
+    /// Bounded audit trail appended on each save (see `PlanHistoryBuilder`).
+    /// Additive and optional, so files written before this field — and files
+    /// written without it — still decode as schema v1.
+    var changeHistory: [PlanHistoryEntry]
 
     enum CodingKeys: String, CodingKey {
         case schemaVersion
@@ -102,6 +106,7 @@ struct NativeProjectPlan: Codable, Hashable {
         case statusSnapshots
         case timelineEvents
         case resourceLeaves
+        case changeHistory
     }
 
     static let defaultBoardColumns = ["Backlog", "Ready", "In Progress", "Review", "Done"]
@@ -170,7 +175,8 @@ struct NativeProjectPlan: Codable, Hashable {
         sprints: [NativePlanSprint],
         statusSnapshots: [NativeStatusSnapshot],
         timelineEvents: [PlanTimelineEvent] = [],
-        resourceLeaves: [PlanResourceLeave] = []
+        resourceLeaves: [PlanResourceLeave] = [],
+        changeHistory: [PlanHistoryEntry] = []
     ) {
         self.schemaVersion = Self.currentSchemaVersion
         self.portfolioID = portfolioID
@@ -209,6 +215,7 @@ struct NativeProjectPlan: Codable, Hashable {
         self.statusSnapshots = statusSnapshots
         self.timelineEvents = timelineEvents
         self.resourceLeaves = resourceLeaves
+        self.changeHistory = PlanHistoryBuilder.capped(changeHistory)
     }
 
     init(from decoder: Decoder) throws {
@@ -260,6 +267,9 @@ struct NativeProjectPlan: Codable, Hashable {
         statusSnapshots = try container.decodeIfPresent([NativeStatusSnapshot].self, forKey: .statusSnapshots) ?? []
         timelineEvents = try container.decodeIfPresent([PlanTimelineEvent].self, forKey: .timelineEvents) ?? []
         resourceLeaves = try container.decodeIfPresent([PlanResourceLeave].self, forKey: .resourceLeaves) ?? []
+        // History is best-effort metadata: a malformed history block must never
+        // block opening the plan.
+        changeHistory = PlanHistoryBuilder.capped((try? container.decodeIfPresent([PlanHistoryEntry].self, forKey: .changeHistory)) ?? [])
     }
 
     static func normalizedBoardColumns(_ columns: [String]) -> [String] {

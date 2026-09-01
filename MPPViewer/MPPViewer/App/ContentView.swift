@@ -2258,6 +2258,7 @@ enum NavigationItem: String, CaseIterable, Identifiable {
     case eventsLeave = "Events & Leave"
     case timeline = "Timeline"
     case diff = "Compare"
+    case history = "History"
     case helpCenter = "Guide & Help"
 
     var id: String { rawValue }
@@ -2287,6 +2288,7 @@ enum NavigationItem: String, CaseIterable, Identifiable {
         case .eventsLeave: return "calendar.badge.clock"
         case .timeline: return "rectangle.split.3x1"
         case .diff: return "arrow.triangle.2.circlepath"
+        case .history: return "clock.arrow.circlepath"
         case .helpCenter: return "questionmark.circle"
         }
     }
@@ -3130,7 +3132,7 @@ struct ContentView: View {
         }
         items += [.tasks, .milestones, .gantt, .schedule, .timeline, .resources, .calendar,
                   .validation, .diagnostics, .dependencyExplorer, .resourceRisks, .criticalPath,
-                  .earnedValue, .workload, .diff, .helpCenter]
+                  .earnedValue, .workload, .diff, .history, .helpCenter]
         return items
     }
 
@@ -3287,7 +3289,11 @@ struct ContentView: View {
         case .earnedValue:
             EarnedValueView(project: project)
         case .workload:
-            WorkloadView(project: project, resourceLeaves: portfolioPlan?.nativeResourceLeavesForUI ?? [])
+            WorkloadView(
+                project: project,
+                resourceLeaves: portfolioPlan?.nativeResourceLeavesForUI ?? [],
+                planModel: portfolioPlan
+            )
         case .calendar:
             if let portfolioPlan {
                 NativeCalendarEditorView(planModel: portfolioPlan)
@@ -3317,6 +3323,10 @@ struct ContentView: View {
             TimelineView(project: project)
         case .diff:
             DiffView(project: project)
+        case .history:
+            PlanHistoryView(
+                history: (document.nativePlan ?? portfolioPlan.flatMap { preferredNativePlan(for: $0) })?.changeHistory ?? []
+            )
         case .helpCenter:
             AppGuideView(isEditablePlan: portfolioPlan != nil)
         case .none:

@@ -34,6 +34,7 @@
 		A10000010000000000000020 /* ScheduleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000022 /* ScheduleView.swift */; };
 		A10000010000000000000021 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000023 /* Assets.xcassets */; };
 		A100000F00000000000000E1 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = A200000F00000000000000E2 /* InfoPlist.strings */; };
+		A100000F00000000000000E4 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = A200000F00000000000000E5 /* Localizable.xcstrings */; };
 		A10000010000000000000030 /* MilestonesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000032 /* MilestonesView.swift */; };
 		A10000010000000000000040 /* MPPConverterProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000040 /* MPPConverterProtocol.swift */; };
 		A10000010000000000000050 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000052 /* DashboardView.swift */; };
@@ -42,6 +43,9 @@
 		A10000010000000000000080 /* TaskFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000080 /* TaskFilter.swift */; };
 		A10000010000000000000081 /* EVMCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000081 /* EVMCalculator.swift */; };
 		A10000010000000000000082 /* WorkloadCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000082 /* WorkloadCalculator.swift */; };
+		A100000100000000000000FE /* ResourceLevelingEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000100000000000000FE /* ResourceLevelingEngine.swift */; };
+		A100000100000000000000FD /* WhatIfCascadeEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000100000000000000FD /* WhatIfCascadeEngine.swift */; };
+		A10000010000000000000210 /* CloudDocuments.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000210 /* CloudDocuments.swift */; };
 		A10000010000000000000083 /* FilterBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000083 /* FilterBarView.swift */; };
 		A10000010000000000000084 /* EarnedValueView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000084 /* EarnedValueView.swift */; };
 		A10000010000000000000085 /* WorkloadView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000085 /* WorkloadView.swift */; };
@@ -49,6 +53,8 @@
 		A10000010000000000000091 /* AnyCodable.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000091 /* AnyCodable.swift */; };
 		A10000010000000000000092 /* PrintManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000092 /* PrintManager.swift */; };
 		A10000010000000000000093 /* ProjectDiff.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000093 /* ProjectDiff.swift */; };
+		A10000010000000000000201 /* PlanHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000201 /* PlanHistory.swift */; };
+		A10000010000000000000202 /* PlanHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000202 /* PlanHistoryView.swift */; };
 		A10000010000000000000094 /* TimelineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000094 /* TimelineView.swift */; };
 		A10000010000000000000095 /* DiffView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000095 /* DiffView.swift */; };
 		A10000010000000000000100 /* DependencyGraphExplorerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000100 /* DependencyGraphExplorerView.swift */; };
@@ -57,6 +63,7 @@
 		A10000010000000000000121 /* ScenarioAnalysis.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000121 /* ScenarioAnalysis.swift */; };
 		A10000010000000000000122 /* ResourceCapacityScenario.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000122 /* ResourceCapacityScenario.swift */; };
 		A10000010000000000000130 /* NativeProjectPlan.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000130 /* NativeProjectPlan.swift */; };
+		A100000100000000000000E5 /* PlanTemplates.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000100000000000000E5 /* PlanTemplates.swift */; };
 		A10000010000000000000131 /* PlanEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000131 /* PlanEditorView.swift */; };
 		A10000010000000000000132 /* NativeResourcesEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000132 /* NativeResourcesEditorView.swift */; };
 		A10000010000000000000133 /* NativeCalendarEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000133 /* NativeCalendarEditorView.swift */; };
@@ -67,11 +74,13 @@
 		A10000010000000000138 /* MSPDIExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000138 /* MSPDIExporter.swift */; };
 		A10000010000000000139 /* HoverHighlight.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000139 /* HoverHighlight.swift */; };
 		A10000010000000000140 /* FlowLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000140 /* FlowLayout.swift */; };
+		A10000010000000000141 /* TimePhasedExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000141 /* TimePhasedExporter.swift */; };
 		A100000A00000000000000C1 /* ColorHex.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000A00000000000000C1 /* ColorHex.swift */; };
 		A100000B00000000000000C2 /* XLSX.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000B00000000000000C2 /* XLSX.swift */; };
 		A100000C00000000000000C3 /* CommandPaletteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000C00000000000000C3 /* CommandPaletteView.swift */; };
 		A100000D00000000000000C4 /* SVGExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000D00000000000000C4 /* SVGExporter.swift */; };
 		A100000E00000000000000D1 /* PortfolioDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000E00000000000000D1 /* PortfolioDashboardView.swift */; };
+		A1000000000000000000F1E1 /* PortfolioTimelineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000F1E1 /* PortfolioTimelineView.swift */; };
 		A100000E00000000000000D2 /* AgileBoardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000E00000000000000D2 /* AgileBoardView.swift */; };
 		A100000E00000000000000D3 /* StatusCenterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000E00000000000000D3 /* StatusCenterView.swift */; };
 		A100000E00000000000000D4 /* DiagnosticsAndValidation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000E00000000000000D4 /* DiagnosticsAndValidation.swift */; };
@@ -141,6 +150,7 @@
 		A20000010000000000000003 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		A200000100000000000000EF /* MenuBarCenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarCenter.swift; sourceTree = "<group>"; };
 		A300000F00000000000000E3 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		A200000F00000000000000E5 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		A20000010000000000000004 /* ProjectModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectModel.swift; sourceTree = "<group>"; };
 		A20000010000000000000005 /* ProjectStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectStore.swift; sourceTree = "<group>"; };
 		A20000010000000000000006 /* MPPConverterService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MPPConverterService.swift; sourceTree = "<group>"; };
@@ -170,6 +180,9 @@
 		A20000010000000000000080 /* TaskFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskFilter.swift; sourceTree = "<group>"; };
 		A20000010000000000000081 /* EVMCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EVMCalculator.swift; sourceTree = "<group>"; };
 		A20000010000000000000082 /* WorkloadCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkloadCalculator.swift; sourceTree = "<group>"; };
+		A200000100000000000000FE /* ResourceLevelingEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResourceLevelingEngine.swift; sourceTree = "<group>"; };
+		A200000100000000000000FD /* WhatIfCascadeEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhatIfCascadeEngine.swift; sourceTree = "<group>"; };
+		A20000010000000000000210 /* CloudDocuments.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudDocuments.swift; sourceTree = "<group>"; };
 		A20000010000000000000083 /* FilterBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilterBarView.swift; sourceTree = "<group>"; };
 		A20000010000000000000084 /* EarnedValueView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EarnedValueView.swift; sourceTree = "<group>"; };
 		A20000010000000000000085 /* WorkloadView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkloadView.swift; sourceTree = "<group>"; };
@@ -177,6 +190,8 @@
 		A20000010000000000000091 /* AnyCodable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnyCodable.swift; sourceTree = "<group>"; };
 		A20000010000000000000092 /* PrintManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrintManager.swift; sourceTree = "<group>"; };
 		A20000010000000000000093 /* ProjectDiff.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectDiff.swift; sourceTree = "<group>"; };
+		A20000010000000000000201 /* PlanHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanHistory.swift; sourceTree = "<group>"; };
+		A20000010000000000000202 /* PlanHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanHistoryView.swift; sourceTree = "<group>"; };
 		A20000010000000000000094 /* TimelineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineView.swift; sourceTree = "<group>"; };
 		A20000010000000000000095 /* DiffView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiffView.swift; sourceTree = "<group>"; };
 		A20000010000000000000100 /* DependencyGraphExplorerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DependencyGraphExplorerView.swift; sourceTree = "<group>"; };
@@ -185,6 +200,7 @@
 		A20000010000000000000121 /* ScenarioAnalysis.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScenarioAnalysis.swift; sourceTree = "<group>"; };
 		A20000010000000000000122 /* ResourceCapacityScenario.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResourceCapacityScenario.swift; sourceTree = "<group>"; };
 		A20000010000000000000130 /* NativeProjectPlan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeProjectPlan.swift; sourceTree = "<group>"; };
+		A200000100000000000000E5 /* PlanTemplates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanTemplates.swift; sourceTree = "<group>"; };
 		A20000010000000000000131 /* PlanEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanEditorView.swift; sourceTree = "<group>"; };
 		A20000010000000000000132 /* NativeResourcesEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeResourcesEditorView.swift; sourceTree = "<group>"; };
 		A20000010000000000000133 /* NativeCalendarEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeCalendarEditorView.swift; sourceTree = "<group>"; };
@@ -195,11 +211,13 @@
 		A20000010000000000138 /* MSPDIExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MSPDIExporter.swift; sourceTree = "<group>"; };
 		A20000010000000000139 /* HoverHighlight.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HoverHighlight.swift; sourceTree = "<group>"; };
 		A20000010000000000140 /* FlowLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowLayout.swift; sourceTree = "<group>"; };
+		A20000010000000000141 /* TimePhasedExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimePhasedExporter.swift; sourceTree = "<group>"; };
 		A200000A00000000000000C1 /* ColorHex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColorHex.swift; sourceTree = "<group>"; };
 		A200000B00000000000000C2 /* XLSX.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XLSX.swift; sourceTree = "<group>"; };
 		A200000C00000000000000C3 /* CommandPaletteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandPaletteView.swift; sourceTree = "<group>"; };
 		A200000D00000000000000C4 /* SVGExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SVGExporter.swift; sourceTree = "<group>"; };
 		A200000E00000000000000D1 /* PortfolioDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PortfolioDashboardView.swift; path = ../Views/Portfolio/PortfolioDashboardView.swift; sourceTree = "<group>"; };
+		A2000000000000000000F1E1 /* PortfolioTimelineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PortfolioTimelineView.swift; path = ../Views/Portfolio/PortfolioTimelineView.swift; sourceTree = "<group>"; };
 		A200000E00000000000000D2 /* AgileBoardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AgileBoardView.swift; path = ../Views/Agile/AgileBoardView.swift; sourceTree = "<group>"; };
 		A200000E00000000000000D3 /* StatusCenterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StatusCenterView.swift; path = ../Views/Status/StatusCenterView.swift; sourceTree = "<group>"; };
 		A200000E00000000000000D4 /* DiagnosticsAndValidation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DiagnosticsAndValidation.swift; path = ../Views/Diagnostics/DiagnosticsAndValidation.swift; sourceTree = "<group>"; };
@@ -298,6 +316,7 @@
 				A20000010000000000000021 /* MPPViewer.entitlements */,
 				A20000010000000000000023 /* Assets.xcassets */,
 				A200000F00000000000000E2 /* InfoPlist.strings */,
+				A200000F00000000000000E5 /* Localizable.xcstrings */,
 				A50000010000000000000003 /* App */,
 				A50000010000000000000004 /* Models */,
 				A50000010000000000000005 /* Services */,
@@ -315,6 +334,7 @@
 				A20000010000000000000003 /* ContentView.swift */,
 				A200000100000000000000EF /* MenuBarCenter.swift */,
 				A200000E00000000000000D1 /* PortfolioDashboardView.swift */,
+				A2000000000000000000F1E1 /* PortfolioTimelineView.swift */,
 				A200000E00000000000000D2 /* AgileBoardView.swift */,
 				A200000E00000000000000D3 /* StatusCenterView.swift */,
 				A200000E00000000000000D4 /* DiagnosticsAndValidation.swift */,
@@ -329,10 +349,12 @@
 			children = (
 				A20000010000000000000004 /* ProjectModel.swift */,
 				A20000010000000000000130 /* NativeProjectPlan.swift */,
+				A200000100000000000000E5 /* PlanTemplates.swift */,
 				A20000010000000000000005 /* ProjectStore.swift */,
 				A20000010000000000000080 /* TaskFilter.swift */,
 				A20000010000000000000091 /* AnyCodable.swift */,
 				A20000010000000000000093 /* ProjectDiff.swift */,
+				A20000010000000000000201 /* PlanHistory.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -345,8 +367,11 @@
 				A20000010000000000000040 /* MPPConverterProtocol.swift */,
 				A20000010000000000000081 /* EVMCalculator.swift */,
 				A20000010000000000000082 /* WorkloadCalculator.swift */,
+				A200000100000000000000FE /* ResourceLevelingEngine.swift */,
+				A200000100000000000000FD /* WhatIfCascadeEngine.swift */,
 				A20000010000000000000121 /* ScenarioAnalysis.swift */,
 				A20000010000000000000122 /* ResourceCapacityScenario.swift */,
+				A20000010000000000000210 /* CloudDocuments.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -413,6 +438,7 @@
 				A20000010000000000138 /* MSPDIExporter.swift */,
 				A20000010000000000139 /* HoverHighlight.swift */,
 				A20000010000000000140 /* FlowLayout.swift */,
+				A20000010000000000141 /* TimePhasedExporter.swift */,
 				A20000010000000000000070 /* PDFExporter.swift */,
 				A20000010000000000000090 /* CSVExporter.swift */,
 				A20000010000000000000092 /* PrintManager.swift */,
@@ -515,6 +541,7 @@
 			isa = PBXGroup;
 			children = (
 				A20000010000000000000095 /* DiffView.swift */,
+				A20000010000000000000202 /* PlanHistoryView.swift */,
 			);
 			path = Diff;
 			sourceTree = "<group>";
@@ -714,6 +741,7 @@
 			files = (
 				A10000010000000000000021 /* Assets.xcassets in Resources */,
 				A100000F00000000000000E1 /* InfoPlist.strings in Resources */,
+				A100000F00000000000000E4 /* Localizable.xcstrings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -773,6 +801,7 @@
 				A10000010000000000000003 /* ContentView.swift in Sources */,
 				A100000100000000000000EF /* MenuBarCenter.swift in Sources */,
 				A100000E00000000000000D1 /* PortfolioDashboardView.swift in Sources */,
+				A1000000000000000000F1E1 /* PortfolioTimelineView.swift in Sources */,
 				A100000E00000000000000D2 /* AgileBoardView.swift in Sources */,
 				A100000E00000000000000D3 /* StatusCenterView.swift in Sources */,
 				A100000E00000000000000D4 /* DiagnosticsAndValidation.swift in Sources */,
@@ -807,6 +836,9 @@
 				A10000010000000000000080 /* TaskFilter.swift in Sources */,
 				A10000010000000000000081 /* EVMCalculator.swift in Sources */,
 				A10000010000000000000082 /* WorkloadCalculator.swift in Sources */,
+				A100000100000000000000FE /* ResourceLevelingEngine.swift in Sources */,
+				A100000100000000000000FD /* WhatIfCascadeEngine.swift in Sources */,
+				A10000010000000000000210 /* CloudDocuments.swift in Sources */,
 				A10000010000000000000083 /* FilterBarView.swift in Sources */,
 				A100000C00000000000000C3 /* CommandPaletteView.swift in Sources */,
 				A100000F00000000000000CD /* CalendarDatePicker.swift in Sources */,
@@ -821,6 +853,7 @@
 				A10000010000000000138 /* MSPDIExporter.swift in Sources */,
 				A10000010000000000139 /* HoverHighlight.swift in Sources */,
 				A10000010000000000140 /* FlowLayout.swift in Sources */,
+				A10000010000000000141 /* TimePhasedExporter.swift in Sources */,
 				A10000010000000000000110 /* BaselineVariance.swift in Sources */,
 				A10000010000000000000120 /* ReviewNotesStore.swift in Sources */,
 				A10000010000000000000121 /* ScenarioAnalysis.swift in Sources */,
@@ -828,7 +861,10 @@
 				A10000010000000000000093 /* ProjectDiff.swift in Sources */,
 				A10000010000000000000094 /* TimelineView.swift in Sources */,
 				A10000010000000000000095 /* DiffView.swift in Sources */,
+				A10000010000000000000201 /* PlanHistory.swift in Sources */,
+				A10000010000000000000202 /* PlanHistoryView.swift in Sources */,
 				A10000010000000000000130 /* NativeProjectPlan.swift in Sources */,
+				A100000100000000000000E5 /* PlanTemplates.swift in Sources */,
 				A10000010000000000000131 /* PlanEditorView.swift in Sources */,
 				A10000010000000000000132 /* NativeResourcesEditorView.swift in Sources */,
 				A10000010000000000000133 /* NativeCalendarEditorView.swift in Sources */,
@@ -888,7 +924,7 @@
 				);
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.4;
-				MARKETING_VERSION = 2.7.0;
+				MARKETING_VERSION = 2.8.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mppviewer.MPPViewer.QuickLookExtension;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -921,7 +957,7 @@
 				);
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.4;
-				MARKETING_VERSION = 2.7.0;
+				MARKETING_VERSION = 2.8.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mppviewer.MPPViewer.QuickLookExtension;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -948,7 +984,7 @@
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.4;
-				MARKETING_VERSION = 2.7.0;
+				MARKETING_VERSION = 2.8.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mppviewer.MPPConverterXPC;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -976,7 +1012,7 @@
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.4;
-				MARKETING_VERSION = 2.7.0;
+				MARKETING_VERSION = 2.8.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mppviewer.MPPConverterXPC;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -1133,7 +1169,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2.7.0;
+				MARKETING_VERSION = 2.8.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mppviewer.MPPViewer;
 				PRODUCT_MODULE_NAME = MPPViewer;
 				PRODUCT_NAME = Planroom;
@@ -1164,7 +1200,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2.7.0;
+				MARKETING_VERSION = 2.8.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mppviewer.MPPViewer;
 				PRODUCT_MODULE_NAME = MPPViewer;
 				PRODUCT_NAME = Planroom;

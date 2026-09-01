@@ -5,6 +5,12 @@ import UniformTypeIdentifiers
 /// for executive decks and design tools, with an executive header/footer.
 enum SVGExporter {
 
+    /// A dependency link into a row from a predecessor row (`FS`, `SS`, `FF`, `SF`).
+    struct GanttLink {
+        let predecessorID: Int
+        let type: String
+    }
+
     struct GanttRow {
         let name: String
         let outlineLevel: Int
@@ -17,6 +23,13 @@ enum SVGExporter {
         let colorHex: String?
         /// Optional smaller second line under the name (e.g. type + dates).
         var subtitle: String? = nil
+        /// Stable task id used to resolve dependency links between rows.
+        var uniqueID: Int? = nil
+        /// Predecessor links terminating at this row (vector PDF export).
+        var links: [GanttLink] = []
+        /// Saved baseline schedule, drawn as a gray bar under the current bar.
+        var baselineStart: Date? = nil
+        var baselineFinish: Date? = nil
     }
 
     /// A full-height overlay band (holiday/event/leave) drawn behind the bars.

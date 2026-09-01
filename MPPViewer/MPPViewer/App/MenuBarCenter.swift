@@ -17,6 +17,7 @@ enum ReminderSettings {
     static let digestHour = "reminders.digestHour"
     static let milestoneAlertsEnabled = "reminders.milestoneAlertsEnabled"
     static let milestoneLeadDays = "reminders.milestoneLeadDays"
+    static let digestIncludeCostHighlights = "reminders.digestIncludeCostHighlights"
 }
 
 // MARK: - Reminder model rows
@@ -37,15 +38,21 @@ struct ReminderDigest {
 
     var isEmpty: Bool { overdue.isEmpty && dueSoon.isEmpty && milestones.isEmpty }
 
-    /// Builds the digest from the most recently updated active plan.
+    /// The most recently updated, non-archived plan (the digest source).
     @MainActor
-    static func fromMostRecentPlan(in context: ModelContext) -> ReminderDigest? {
+    static func mostRecentActivePlan(in context: ModelContext) -> PortfolioProjectPlan? {
         var descriptor = FetchDescriptor<PortfolioProjectPlan>(
             sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
         )
         descriptor.fetchLimit = 8
-        guard let plans = try? context.fetch(descriptor),
-              let plan = plans.first(where: { !$0.isArchivedValue }) else { return nil }
+        guard let plans = try? context.fetch(descriptor) else { return nil }
+        return plans.first(where: { !$0.isArchivedValue })
+    }
+
+    /// Builds the digest from the most recently updated active plan.
+    @MainActor
+    static func fromMostRecentPlan(in context: ModelContext) -> ReminderDigest? {
+        guard let plan = mostRecentActivePlan(in: context) else { return nil }
 
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
@@ -76,6 +83,89 @@ struct ReminderDigest {
         digest.dueSoon.sort { $0.finishDate < $1.finishDate }
         digest.milestones.sort { $0.finishDate < $1.finishDate }
         return digest
+    }
+}
+
+// MARK: - Digest sharing
+
+extension ReminderDigest {
+    /// Cost/EVM highlights for the digest body, computed on demand from the
+    /// digest's source plan (scheduling runs synchronously, so only call this
+    /// from an explicit user action such as Share/Copy).
+    @MainActor
+    static func costHighlights(in context: ModelContext) -> EVMMetrics? {
+        guard let plan = mostRecentActivePlan(in: context) else { return nil }
+        let project = plan.asNativePlan().asProjectModel()
+        let workTasks = project.tasks.filter { $0.summary != true }
+        let metrics = EVMCalculator.projectMetrics(tasks: workTasks, statusDate: plan.statusDate)
+        guard metrics.bac > 0 || metrics.ac > 0 else { return nil }
+        return metrics
+    }
+
+    /// Plain-text rendering of the digest, suitable for Messages/Mail bodies
+    /// and the pasteboard.
+    func sharePlainText(costHighlights: EVMMetrics? = nil) -> String {
+        var lines: [String] = []
+        lines.append("\(planTitle) — Digest for \(DateFormatting.shortDate(Date()))")
+        if isEmpty {
+            lines.append("")
+            lines.append("All clear — nothing needs attention.")
+        }
+        for (title, rows) in [("Overdue", overdue), ("Due this week", dueSoon), ("Upcoming milestones", milestones)] where !rows.isEmpty {
+            lines.append("")
+            lines.append("\(title) (\(rows.count)):")
+            for row in rows {
+                lines.append("  • \(row.name) — \(DateFormatting.shortDate(row.finishDate))")
+            }
+        }
+        if let evm = costHighlights {
+            lines.append("")
+            lines.append("Cost highlights:")
+            lines.append("  Budget (BAC): \(CurrencyFormatting.string(from: evm.bac))")
+            lines.append("  Earned value: \(CurrencyFormatting.string(from: evm.ev))")
+            lines.append("  Actual cost: \(CurrencyFormatting.string(from: evm.ac))")
+            lines.append("  CPI \(String(format: "%.2f", evm.cpi)) · SPI \(String(format: "%.2f", evm.spi)) · EAC \(CurrencyFormatting.string(from: evm.eac))")
+        }
+        lines.append("")
+        lines.append("Sent from Planroom")
+        return lines.joined(separator: "\n")
+    }
+
+    /// HTML rendering of the digest, used for the pasteboard's rich flavor.
+    func shareHTML(costHighlights: EVMMetrics? = nil) -> String {
+        func escape(_ string: String) -> String {
+            string
+                .replacingOccurrences(of: "&", with: "&amp;")
+                .replacingOccurrences(of: "<", with: "&lt;")
+                .replacingOccurrences(of: ">", with: "&gt;")
+        }
+
+        var html = "<html><body style=\"font-family: -apple-system, Helvetica, sans-serif;\">"
+        html += "<h2>\(escape(planTitle)) — Digest for \(escape(DateFormatting.shortDate(Date())))</h2>"
+        if isEmpty {
+            html += "<p>All clear — nothing needs attention.</p>"
+        }
+        for (title, rows, color) in [
+            ("Overdue", overdue, "#c0392b"),
+            ("Due this week", dueSoon, "#d35400"),
+            ("Upcoming milestones", milestones, "#8e44ad")
+        ] where !rows.isEmpty {
+            html += "<h3 style=\"color: \(color);\">\(title) (\(rows.count))</h3><ul>"
+            for row in rows {
+                html += "<li>\(escape(row.name)) — <b>\(escape(DateFormatting.shortDate(row.finishDate)))</b></li>"
+            }
+            html += "</ul>"
+        }
+        if let evm = costHighlights {
+            html += "<h3>Cost highlights</h3><ul>"
+            html += "<li>Budget (BAC): \(escape(CurrencyFormatting.string(from: evm.bac)))</li>"
+            html += "<li>Earned value: \(escape(CurrencyFormatting.string(from: evm.ev)))</li>"
+            html += "<li>Actual cost: \(escape(CurrencyFormatting.string(from: evm.ac)))</li>"
+            html += "<li>CPI \(String(format: "%.2f", evm.cpi)) · SPI \(String(format: "%.2f", evm.spi)) · EAC \(escape(CurrencyFormatting.string(from: evm.eac)))</li>"
+            html += "</ul>"
+        }
+        html += "<p style=\"color: #888;\">Sent from Planroom</p></body></html>"
+        return html
     }
 }
 
@@ -196,6 +286,9 @@ struct MenuBarContentView: View {
     @Environment(\.modelContext) private var modelContext
     var onAction: (() -> Void)? = nil
     @State private var digest: ReminderDigest?
+    @State private var shareAnchorView: NSView?
+    @State private var justCopied = false
+    @AppStorage(ReminderSettings.digestIncludeCostHighlights) private var includeCostHighlights = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -276,6 +369,25 @@ struct MenuBarContentView: View {
             .buttonStyle(PanelHoverButtonStyle())
 
             Spacer()
+
+            Button {
+                presentSharePicker()
+            } label: {
+                Image(systemName: "square.and.arrow.up")
+            }
+            .buttonStyle(PanelHoverButtonStyle())
+            .background(ShareAnchorView(anchor: $shareAnchorView))
+            .disabled(digest == nil)
+            .help("Share Digest…")
+
+            Button {
+                copyDigest()
+            } label: {
+                Image(systemName: justCopied ? "checkmark" : "doc.on.doc")
+            }
+            .buttonStyle(PanelHoverButtonStyle())
+            .disabled(digest == nil)
+            .help("Copy Digest")
 
             Button {
                 onAction?()
@@ -363,6 +475,30 @@ struct MenuBarContentView: View {
         ReminderScheduler.reschedule()
     }
 
+    private func digestCostHighlights() -> EVMMetrics? {
+        guard includeCostHighlights else { return nil }
+        return ReminderDigest.costHighlights(in: modelContext)
+    }
+
+    private func presentSharePicker() {
+        guard let digest, let anchor = shareAnchorView else { return }
+        let picker = NSSharingServicePicker(items: [digest.sharePlainText(costHighlights: digestCostHighlights())])
+        picker.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .minY)
+    }
+
+    private func copyDigest() {
+        guard let digest else { return }
+        let highlights = digestCostHighlights()
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(digest.sharePlainText(costHighlights: highlights), forType: .string)
+        pasteboard.setString(digest.shareHTML(costHighlights: highlights), forType: .html)
+        justCopied = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            justCopied = false
+        }
+    }
+
     private func openApp(navigate: Bool = true) {
         NSApp.activate(ignoringOtherApps: true)
         let hasDocumentWindow = NSApp.windows.contains { $0.isVisible && $0.canBecomeKey }
@@ -373,6 +509,20 @@ struct MenuBarContentView: View {
             NotificationCenter.default.post(name: .navigateToItem, object: NavigationItem.tasks)
         }
     }
+}
+
+/// Invisible AppKit view that captures itself so NSSharingServicePicker has a
+/// concrete anchor inside the SwiftUI popover.
+private struct ShareAnchorView: NSViewRepresentable {
+    @Binding var anchor: NSView?
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async { anchor = view }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
 }
 
 /// Hover-highlighted borderless button used throughout the menu bar panel.
@@ -412,6 +562,7 @@ struct PlanroomSettingsView: View {
     @AppStorage(ReminderSettings.digestHour) private var digestHour = 9
     @AppStorage(ReminderSettings.milestoneAlertsEnabled) private var milestoneAlertsEnabled = true
     @AppStorage(ReminderSettings.milestoneLeadDays) private var milestoneLeadDays = 3
+    @AppStorage(ReminderSettings.digestIncludeCostHighlights) private var includeCostHighlights = false
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
 
     var body: some View {
@@ -444,6 +595,8 @@ struct PlanroomSettingsView: View {
                 Toggle("Milestone alerts", isOn: $milestoneAlertsEnabled)
                 Stepper("Alert \(milestoneLeadDays) day(s) before a milestone", value: $milestoneLeadDays, in: 0...14)
                     .disabled(!milestoneAlertsEnabled)
+
+                Toggle("Include cost highlights in shared digests", isOn: $includeCostHighlights)
 
                 Text("Reminders come from your most recently updated plan and update whenever Planroom runs.")
                     .font(.caption)

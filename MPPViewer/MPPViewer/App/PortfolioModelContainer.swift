@@ -47,7 +47,7 @@ enum PortfolioModelContainer {
 
         logger.info("Falling back to in-memory container.")
         do {
-            return try ModelContainer(for: schema, configurations: [ModelConfiguration(isStoredInMemoryOnly: true)])
+            return try ModelContainer(for: schema, configurations: [ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)])
         } catch {
             logger.critical("In-memory container initialization failed: \(error.localizedDescription)")
             // Last-resort fail-fast to preserve existing behavior.
@@ -71,7 +71,10 @@ enum PortfolioModelContainer {
             throw CocoaError(.fileWriteUnknown)
         }
         repairPersistedStoreIfNeeded(at: storeURL)
-        return ModelConfiguration(url: storeURL)
+        // The iCloud Documents entitlement makes SwiftData default to CloudKit
+        // integration (.automatic), which the portfolio schema does not satisfy —
+        // the registry store must stay local-only.
+        return ModelConfiguration(schema: schema, url: storeURL, cloudKitDatabase: .none)
     }
 
     private static func defaultStoreURL(baseDirectory: URL? = nil) -> URL? {

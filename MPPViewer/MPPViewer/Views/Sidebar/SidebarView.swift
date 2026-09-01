@@ -40,6 +40,7 @@ struct SidebarView: View {
                 sidebarRow(.earnedValue)
                 sidebarRow(.workload)
                 sidebarRow(.diff)
+                sidebarRow(.history)
             }
 
             Section("Help") {

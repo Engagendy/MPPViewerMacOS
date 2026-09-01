@@ -1340,10 +1340,17 @@ enum CSVExporter {
             events.append(PlanTimelineEvent(name: name, startDate: start, endDate: end, kind: kind, colorHex: templateCell(row, colorI)))
         }
 
-        showImportAlert(
-            title: events.isEmpty ? "Nothing Imported" : "Events Imported",
-            message: "Imported \(events.count) event(s)." + (skipped > 0 ? " Skipped \(skipped) row(s) with a missing name or start date." : "")
-        )
+        if skipped > 0 {
+            showImportAlert(
+                title: events.isEmpty ? "Nothing Imported" : "Events Imported",
+                message: "Imported \(events.count) event(s). Skipped \(skipped) row(s) with a missing name or start date."
+            )
+        } else {
+            showImportAlert(
+                title: events.isEmpty ? "Nothing Imported" : "Events Imported",
+                message: "Imported \(events.count) event(s)."
+            )
+        }
         return events.isEmpty ? nil : events
     }
 
@@ -1375,12 +1382,19 @@ enum CSVExporter {
         }
 
         var notes: [String] = []
-        if skipped > 0 { notes.append("\(skipped) row(s) had no valid start date") }
-        if unmatched > 0 { notes.append("\(unmatched) row(s) referenced an unknown resource") }
-        showImportAlert(
-            title: leaves.isEmpty ? "Nothing Imported" : "Leave Imported",
-            message: "Imported \(leaves.count) leave record(s)." + (notes.isEmpty ? "" : " Skipped: " + notes.joined(separator: ", ") + ".")
-        )
+        if skipped > 0 { notes.append(String(localized: "\(skipped) row(s) had no valid start date")) }
+        if unmatched > 0 { notes.append(String(localized: "\(unmatched) row(s) referenced an unknown resource")) }
+        if notes.isEmpty {
+            showImportAlert(
+                title: leaves.isEmpty ? "Nothing Imported" : "Leave Imported",
+                message: "Imported \(leaves.count) leave record(s)."
+            )
+        } else {
+            showImportAlert(
+                title: leaves.isEmpty ? "Nothing Imported" : "Leave Imported",
+                message: "Imported \(leaves.count) leave record(s). Skipped: \(notes.joined(separator: ", "))."
+            )
+        }
         return leaves.isEmpty ? nil : leaves
     }
 
@@ -2327,12 +2341,14 @@ enum CSVExporter {
         }
     }
 
+    /// Literal call-site strings are `String.LocalizationValue`, so they are
+    /// extracted into the String Catalog and resolved against the user locale.
     @MainActor
-    private static func showImportAlert(title: String, message: String) {
+    private static func showImportAlert(title: String.LocalizationValue, message: String.LocalizationValue) {
         let alert = NSAlert()
-        alert.messageText = title
-        alert.informativeText = message
-        alert.addButton(withTitle: "OK")
+        alert.messageText = String(localized: title)
+        alert.informativeText = String(localized: message)
+        alert.addButton(withTitle: String(localized: "OK"))
         alert.runModal()
     }
 }

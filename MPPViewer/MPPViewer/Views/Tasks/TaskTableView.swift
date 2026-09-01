@@ -367,6 +367,7 @@ struct TaskTableView: View {
                                 Image(systemName: "sidebar.trailing")
                             }
                             .buttonStyle(.accessoryBar)
+                            .accessibilityLabel("Hide inspector")
                             .help("Hide inspector")
                         }
                     }
@@ -398,6 +399,7 @@ struct TaskTableView: View {
                                     .foregroundStyle(flaggedTaskIDs.contains(task.uniqueID) ? .orange : .secondary.opacity(0.4))
                             }
                             .buttonStyle(.accessoryBar)
+                            .accessibilityLabel(flaggedTaskIDs.contains(task.uniqueID) ? "Unflag task" : "Flag task")
                         }
                         .width(24)
 

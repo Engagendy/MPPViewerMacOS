@@ -576,7 +576,7 @@ struct ScheduleView: View {
                 .monospacedDigit()
                 .frame(width: 50, alignment: .trailing)
         }
-        .font(.system(size: 11))
+        .font(.subheadline)
         .padding(.horizontal, 8)
         .frame(height: rowHeight)
         .background(

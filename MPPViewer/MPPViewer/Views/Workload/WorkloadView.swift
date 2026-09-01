@@ -1,9 +1,16 @@
 import SwiftUI
+import SwiftData
 
 struct WorkloadView: View {
     let project: ProjectModel
     /// Visual-only leave windows, drawn as amber bands on each resource's row.
     var resourceLeaves: [PlanResourceLeave] = []
+    /// Editable plan backing this workload, when the document is a native
+    /// .mppplan. Enables the Level Resources action.
+    var planModel: PortfolioProjectPlan? = nil
+
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.undoManager) private var undoManager
 
     @State private var workloads: [ResourceWorkload] = []
     @State private var pixelsPerDay: CGFloat = 8
@@ -16,6 +23,11 @@ struct WorkloadView: View {
     @State private var cachedTotalDays: Int = 0
     @State private var mondayOffsets: [Int] = []
     @State private var isLoadingWorkloads = false
+
+    @State private var isLeveling = false
+    @State private var levelingResult: ResourceLevelingResult?
+    @State private var showLevelingInfo = false
+    @State private var levelingInfoMessage = ""
 
     private var dateRange: (start: Date, end: Date) {
         cachedDateRange ?? (start: Date(), end: Date())
@@ -73,6 +85,29 @@ struct WorkloadView: View {
                 .font(.caption2)
 
                 Divider().frame(height: 16)
+
+                if planModel != nil {
+                    Button {
+                        runLeveling()
+                    } label: {
+                        if isLeveling {
+                            HStack(spacing: 4) {
+                                ProgressView()
+                                    .controlSize(.small)
+                                Text("Leveling…")
+                            }
+                            .font(.caption)
+                        } else {
+                            Label("Level Resources", systemImage: "wand.and.stars")
+                                .font(.caption)
+                        }
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(isLeveling || workloads.isEmpty)
+                    .help("Automatically delay non-critical tasks within their slack to smooth resource over-allocations. Shows a preview before applying.")
+
+                    Divider().frame(height: 16)
+                }
 
                 Menu {
                     Button {
@@ -189,6 +224,9 @@ struct WorkloadView: View {
                                         width: timelineScrollableWidth,
                                         height: CGFloat(workloads.count) * rowHeight
                                     )
+                                    .accessibilityChildren {
+                                        workloadAccessibilityCells
+                                    }
                             }
                         }
                         .frame(minHeight: geometry.size.height, alignment: .topLeading)
@@ -219,6 +257,18 @@ struct WorkloadView: View {
         }
         .task(id: workloadRefreshKey) {
             await refreshWorkloads()
+        }
+        .sheet(item: $levelingResult) { result in
+            ResourceLevelingPreviewSheet(
+                result: result,
+                onApply: { applyLeveling(result) },
+                onCancel: { levelingResult = nil }
+            )
+        }
+        .alert("Level Resources", isPresented: $showLevelingInfo) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(levelingInfoMessage)
         }
         .transaction { transaction in
             transaction.animation = nil
@@ -410,6 +460,39 @@ struct WorkloadView: View {
         }
     }
 
+    // MARK: - Accessibility
+
+    /// Invisible per-cell elements projected onto the heatmap canvas so
+    /// VoiceOver can walk each resource/week bar and read its allocation.
+    /// Positions mirror the canvas drawing math exactly.
+    private var workloadAccessibilityCells: some View {
+        ZStack(alignment: .topLeading) {
+            ForEach(Array(workloads.enumerated()), id: \.element.id) { rowIndex, workload in
+                let resourceName = workload.resource.name ?? "Unknown"
+                ForEach(workload.weeklyLoads.filter { $0.totalHours > 0 }, id: \.dayOffset) { load in
+                    Color.clear
+                        .frame(width: max(2, 7 * pixelsPerDay - 2), height: rowHeight)
+                        .offset(
+                            x: CGFloat(load.dayOffset) * pixelsPerDay,
+                            y: CGFloat(rowIndex) * rowHeight
+                        )
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("\(resourceName), week of \(DateFormatting.shortDate(load.weekStart))")
+                        .accessibilityValue(workloadCellAccessibilityValue(load))
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func workloadCellAccessibilityValue(_ load: ResourceWeeklyLoad) -> String {
+        var value = "\(Int(load.allocationPercent)) percent allocated, \(Int(load.totalHours.rounded())) hours"
+        if load.isOverAllocated {
+            value += ", over-allocated"
+        }
+        return value
+    }
+
     // MARK: - Export
 
     private var exportContentSize: CGSize {
@@ -501,5 +584,192 @@ struct WorkloadView: View {
                 .frame(width: 12, height: 8)
             Text(label)
         }
+    }
+
+    // MARK: - Resource Leveling
+
+    @MainActor
+    private func runLeveling() {
+        guard let planModel, !isLeveling else { return }
+        isLeveling = true
+        let snapshot = planModel.asNativePlan()
+        Task {
+            let result = await Task.detached(priority: .userInitiated) {
+                ResourceLevelingEngine.level(plan: snapshot)
+            }.value
+            await MainActor.run {
+                isLeveling = false
+                if result.initialOverAllocations.isEmpty {
+                    levelingInfoMessage = "No over-allocated weeks were found. The plan is already level."
+                    showLevelingInfo = true
+                } else if result.moves.isEmpty {
+                    levelingInfoMessage = "Over-allocations exist, but no non-critical task with available slack could be delayed without extending the project finish."
+                    showLevelingInfo = true
+                } else {
+                    levelingResult = result
+                }
+            }
+        }
+    }
+
+    @MainActor
+    private func applyLeveling(_ result: ResourceLevelingResult) {
+        guard let planModel else { return }
+        let snapshot = planModel.asNativePlan()
+        undoManager?.registerUndo(withTarget: planModel) { _ in
+            restoreLevelingSnapshot(snapshot)
+        }
+        undoManager?.setActionName("Level Resources")
+
+        planModel.update(from: result.leveledPlan)
+        planModel.updatedAt = Date()
+        planModel.refreshPortfolioMetrics(from: result.leveledPlan)
+        modelContext.saveReportingFailures()
+        levelingResult = nil
+    }
+
+    @MainActor
+    private func restoreLevelingSnapshot(_ snapshot: NativeProjectPlan) {
+        guard let planModel else { return }
+        let current = planModel.asNativePlan()
+        undoManager?.registerUndo(withTarget: planModel) { _ in
+            restoreLevelingSnapshot(current)
+        }
+        undoManager?.setActionName("Level Resources")
+
+        planModel.update(from: snapshot)
+        planModel.updatedAt = Date()
+        planModel.refreshPortfolioMetrics(from: snapshot)
+        modelContext.saveReportingFailures()
+    }
+}
+
+// MARK: - Leveling Preview Sheet
+
+struct ResourceLevelingPreviewSheet: View {
+    let result: ResourceLevelingResult
+    let onApply: () -> Void
+    let onCancel: () -> Void
+
+    private var directMoves: [ResourceLevelingMove] {
+        result.moves.filter(\.isDirectDelay)
+    }
+
+    private var rippleMoves: [ResourceLevelingMove] {
+        result.moves.filter { !$0.isDirectDelay }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header
+            VStack(alignment: .leading, spacing: 4) {
+                Label("Level Resources", systemImage: "wand.and.stars")
+                    .font(.headline)
+                Text("\(directMoves.count) task\(directMoves.count == 1 ? "" : "s") delayed within slack, resolving \(result.resolvedOverAllocationCount) of \(result.initialOverAllocations.count) over-allocated week\(result.initialOverAllocations.count == 1 ? "" : "s"). The project finish date is unchanged.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding()
+
+            Divider()
+
+            List {
+                if !directMoves.isEmpty {
+                    Section("Tasks to Delay") {
+                        ForEach(directMoves) { move in
+                            moveRow(move)
+                        }
+                    }
+                }
+                if !rippleMoves.isEmpty {
+                    Section("Pushed by Dependencies") {
+                        ForEach(rippleMoves) { move in
+                            moveRow(move)
+                        }
+                    }
+                }
+                if !result.remainingOverAllocations.isEmpty {
+                    Section("Remaining Over-Allocations") {
+                        ForEach(result.remainingOverAllocations) { overAllocation in
+                            HStack {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundStyle(.red)
+                                    .font(.caption)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(overAllocation.resourceName)
+                                        .font(.caption)
+                                        .fontWeight(.medium)
+                                    Text("Week of \(overAllocation.weekStart.formatted(date: .abbreviated, time: .omitted))")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Text("\(Int(overAllocation.totalHours))h of \(Int(overAllocation.capacity))h capacity")
+                                    .font(.caption2)
+                                    .foregroundStyle(.red)
+                            }
+                        }
+                    }
+                }
+            }
+            .listStyle(.inset)
+
+            Divider()
+
+            // Footer
+            HStack {
+                if result.remainingOverAllocations.isEmpty {
+                    Label("All over-allocations resolved", systemImage: "checkmark.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.green)
+                } else {
+                    Text("\(result.remainingOverAllocations.count) over-allocated week\(result.remainingOverAllocations.count == 1 ? "" : "s") could not be resolved within slack.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("Cancel", role: .cancel) {
+                    onCancel()
+                }
+                .keyboardShortcut(.cancelAction)
+                Button("Apply Leveling") {
+                    onApply()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(result.moves.isEmpty)
+            }
+            .padding()
+        }
+        .frame(width: 640, height: 460)
+    }
+
+    private func moveRow(_ move: ResourceLevelingMove) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(move.taskName)
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .lineLimit(1)
+                HStack(spacing: 4) {
+                    Text(dateSpanText(start: move.oldStart, finish: move.oldFinish))
+                        .foregroundStyle(.secondary)
+                    Image(systemName: "arrow.right")
+                        .foregroundStyle(.secondary)
+                    Text(dateSpanText(start: move.newStart, finish: move.newFinish))
+                }
+                .font(.caption2)
+            }
+            Spacer()
+            Text("+\(move.delayDays)d")
+                .font(.caption)
+                .fontWeight(.semibold)
+                .foregroundStyle(.orange)
+                .help("Start moves \(move.delayDays) day\(move.delayDays == 1 ? "" : "s") later")
+        }
+    }
+
+    private func dateSpanText(start: Date, finish: Date) -> String {
+        "\(start.formatted(date: .abbreviated, time: .omitted)) – \(finish.formatted(date: .abbreviated, time: .omitted))"
     }
 }

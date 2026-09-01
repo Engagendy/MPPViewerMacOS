@@ -174,6 +174,7 @@ struct DependencyGraphExplorerView: View {
                 Image(systemName: "scope")
             }
             .buttonStyle(.accessoryBar)
+            .accessibilityLabel("Center on selected task")
             Divider().frame(height: 24)
             Text("Zoom")
                 .font(.caption)
@@ -190,6 +191,7 @@ struct DependencyGraphExplorerView: View {
                 Image(systemName: "arrow.up.left.and.down.right.magnifyingglass")
             }
             .buttonStyle(.accessoryBar)
+            .accessibilityLabel("Reset zoom and pan")
             Button {
                 highlightMode.toggle()
             } label: {
@@ -197,6 +199,8 @@ struct DependencyGraphExplorerView: View {
             .foregroundStyle(highlightMode ? Color.accentColor : Color.secondary)
             }
             .buttonStyle(.accessoryBar)
+            .accessibilityLabel("Highlight connected path")
+            .accessibilityValue(highlightMode ? "On" : "Off")
         }
         .padding(.horizontal)
         .padding(.vertical, 8)

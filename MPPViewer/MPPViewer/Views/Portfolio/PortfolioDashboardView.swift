@@ -591,6 +591,8 @@ struct PortfolioDashboardView: View {
                         }
                     }
 
+                    portfolioTimelineSection
+
                     reviewPresetSection
 
                     reviewHistorySection
@@ -1442,6 +1444,22 @@ struct PortfolioDashboardView: View {
         }
     }
 
+    private var portfolioTimelineSection: some View {
+        GroupBox("Portfolio Timeline") {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Each project in the current registry scope is drawn as a summary bar colored by governance health, with milestones and cross-project dependency links.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                PortfolioTimelineView(
+                    plans: visiblePlans,
+                    dependencies: crossProjectDependencies,
+                    selectedPlanID: $selectedPlanID
+                )
+            }
+        }
+    }
+
     private func programTimelineSection(summary: PortfolioProgramRoadmapSummary) -> some View {
         GroupBox("Program Review Timeline") {
             VStack(alignment: .leading, spacing: 10) {
@@ -1855,6 +1873,7 @@ struct PortfolioDashboardView: View {
                     Image(systemName: "trash")
                 }
                 .buttonStyle(.accessoryBar)
+                .accessibilityLabel("Delete cross-project dependency")
             }
         }
     }
@@ -1909,6 +1928,7 @@ struct PortfolioDashboardView: View {
                 } label: {
                     Image(systemName: "trash")
                 }
+                .accessibilityLabel("Delete review preset")
                 .buttonStyle(.bordered)
                 .hoverHighlight()
             }
@@ -2285,6 +2305,7 @@ struct PortfolioDashboardView: View {
                         } label: {
                             Image(systemName: "trash")
                         }
+                        .accessibilityLabel("Delete plan")
                         .buttonStyle(.bordered)
                         .hoverHighlight()
                     }

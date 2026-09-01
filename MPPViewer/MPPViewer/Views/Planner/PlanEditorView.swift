@@ -76,6 +76,7 @@ struct PlanEditorView: View {
     @State private var lastConstraintImportSession: CSVConstraintImportSession?
     @State private var baselineImportSession: CSVBaselineImportSession?
     @State private var lastBaselineImportSession: CSVBaselineImportSession?
+    @State private var whatIfContext: WhatIfSheetContext?
     @State private var importReport: CSVImportReport?
     @State private var assignmentImportReport: CSVImportReport?
     @State private var dependencyImportReport: CSVImportReport?
@@ -344,6 +345,16 @@ struct PlanEditorView: View {
             ) {
                     assignmentImportReport = nil
                 }
+        }
+        .sheet(item: $whatIfContext) { context in
+            if let task = context.plan.tasks.first(where: { $0.id == context.taskID }) {
+                WhatIfCascadeSheet(
+                    plan: context.plan,
+                    task: task,
+                    onApply: { result in applyWhatIf(result) },
+                    onDiscard: { whatIfContext = nil }
+                )
+            }
         }
         .task {
             await initializePlanEditorIfNeeded()
@@ -654,6 +665,7 @@ struct PlanEditorView: View {
                 .font(.caption)
         }
         .buttonStyle(.borderless)
+        .accessibilityLabel("Choose grid columns")
         .help("Choose which columns are visible in the grid")
         .popover(isPresented: $showGridColumnPicker) {
             VStack(alignment: .leading, spacing: 4) {
@@ -951,6 +963,16 @@ struct PlanEditorView: View {
                                     .hoverHighlight()
                                     .disabled(!canIndentSelectedTask())
                                 }
+
+                                Button {
+                                    openWhatIfForSelectedTask()
+                                } label: {
+                                    Label("What-If Cascade…", systemImage: "arrow.triangle.branch")
+                                }
+                                .buttonStyle(.bordered)
+                                .hoverHighlight()
+                                .disabled(!canRunWhatIfOnSelectedTask())
+                                .help("Try a change to this task's start, duration, or % complete and preview how it cascades through every dependent task before applying.")
 
                                 HStack(spacing: 12) {
                                     Toggle(
@@ -1710,6 +1732,8 @@ struct PlanEditorView: View {
                                             Image(systemName: "trash")
                                         }
                                         .buttonStyle(.borderless)
+                                        .accessibilityLabel("Remove custom field")
+                                        .accessibilityHint("Removes this field from all tasks")
                                         .help("Remove this field from all tasks")
                                     }
                                 }
@@ -2175,6 +2199,33 @@ struct PlanEditorView: View {
         pendingChangedGridTaskIDs.removeAll()
         pendingAnalysisRefresh = true
         refreshCounter += 1
+    }
+
+    // MARK: What-If Cascade
+
+    private func canRunWhatIfOnSelectedTask() -> Bool {
+        guard let selectedTaskID, taskIndex(for: selectedTaskID) != nil else { return false }
+        // Summary bars roll up from their children, so editing them directly
+        // has no scheduling effect — run what-if on a leaf or milestone.
+        return !plan.summaryParentTaskIDs().contains(selectedTaskID)
+    }
+
+    private func openWhatIfForSelectedTask() {
+        guard let selectedTaskID else { return }
+        commitInspectorEdits()
+        commitGridDrafts()
+        guard taskIndex(for: selectedTaskID) != nil else { return }
+        whatIfContext = WhatIfSheetContext(taskID: selectedTaskID, plan: plan)
+    }
+
+    private func applyWhatIf(_ result: WhatIfCascadeResult) {
+        whatIfContext = nil
+        // Replacing plan.tasks triggers onChange(of: plan), which registers
+        // undo automatically, so the whole cascade reverts as one action.
+        plan.tasks = result.previewPlan.tasks
+        notePlanMutation(needsGrid: true, needsAnalysis: true)
+        syncInspectorTaskDraft(force: true)
+        syncInspectorAssignmentDrafts(force: true)
     }
 
     private func syncPlanFromModelIfNeeded() {
@@ -3907,8 +3958,8 @@ struct PlanEditorView: View {
     }
 
     private func safeRatioText(_ value: Double) -> String {
-        guard value > 0 else { return "N/A" }
-        return String(format: "%.2f", value)
+        guard value > 0 else { return String(localized: "N/A") }
+        return value.formatted(.number.precision(.fractionLength(2)))
     }
 
     private func decimalText(_ value: Double) -> String {
@@ -4564,6 +4615,7 @@ private struct PlannerTaskListPane<RowContent: View, HeaderContent: View>: View 
                     }
                     .menuStyle(.button)
                     .buttonStyle(.accessoryBar)
+                    .accessibilityLabel("Row actions")
                     .fixedSize()
                     .help("Insert, copy, and paste rows. Paste also accepts tab-separated rows from Excel/Sheets. (⇧⌘C copy · ⇧⌘V paste · ⇧⌘↩ insert above)")
 
@@ -5109,13 +5161,13 @@ private struct PlannerFinancialSummary {
     )
 
     var cpiText: String {
-        guard actualCost > 0 else { return "N/A" }
-        return String(format: "%.2f", earnedValue / actualCost)
+        guard actualCost > 0 else { return String(localized: "N/A") }
+        return (earnedValue / actualCost).formatted(.number.precision(.fractionLength(2)))
     }
 
     var spiText: String {
-        guard plannedValue > 0 else { return "N/A" }
-        return String(format: "%.2f", earnedValue / plannedValue)
+        guard plannedValue > 0 else { return String(localized: "N/A") }
+        return (earnedValue / plannedValue).formatted(.number.precision(.fractionLength(2)))
     }
 
     var costVariance: Double { earnedValue - actualCost }
@@ -5130,8 +5182,8 @@ private struct PlannerFinancialSummary {
     var tcpiText: String {
         let remaining = budgetAtCompletion - earnedValue
         let budgetRemaining = budgetAtCompletion - actualCost
-        guard budgetRemaining > 0 else { return "N/A" }
-        return String(format: "%.2f", remaining / budgetRemaining)
+        guard budgetRemaining > 0 else { return String(localized: "N/A") }
+        return (remaining / budgetRemaining).formatted(.number.precision(.fractionLength(2)))
     }
 }
 
@@ -5327,5 +5379,425 @@ private enum PlannerGridColumn: Equatable {
         case .name, .percent, .assignmentUnits:
             return false
         }
+    }
+}
+
+// MARK: - What-If Cascade Sheet
+
+/// Snapshot handed to the what-if sheet at presentation time, so the preview
+/// simulates against exactly the plan the user was looking at.
+struct WhatIfSheetContext: Identifiable {
+    let taskID: Int
+    let plan: NativeProjectPlan
+
+    var id: Int { taskID }
+}
+
+/// Interactive what-if preview: adjust one task's start, duration, or percent
+/// complete and see the full downstream cascade — every successor chain,
+/// constraint, and calendar honored — as an old→new change list with ghost
+/// bars, before committing or discarding the change.
+struct WhatIfCascadeSheet: View {
+    let plan: NativeProjectPlan
+    let task: NativePlanTask
+    let onApply: (WhatIfCascadeResult) -> Void
+    let onDiscard: () -> Void
+
+    @State private var startDate: Date
+    @State private var durationDays: Int
+    @State private var percentComplete: Double
+    @State private var result: WhatIfCascadeResult?
+    @State private var isSimulating = false
+    @State private var simulationGeneration = 0
+
+    init(
+        plan: NativeProjectPlan,
+        task: NativePlanTask,
+        onApply: @escaping (WhatIfCascadeResult) -> Void,
+        onDiscard: @escaping () -> Void
+    ) {
+        self.plan = plan
+        self.task = task
+        self.onApply = onApply
+        self.onDiscard = onDiscard
+        self._startDate = State(initialValue: Calendar.current.startOfDay(for: task.startDate))
+        self._durationDays = State(initialValue: task.isMilestone ? 0 : max(1, task.durationDays))
+        self._percentComplete = State(initialValue: min(100, max(0, task.percentComplete)))
+    }
+
+    private var currentEdit: WhatIfEdit {
+        let calendar = Calendar.current
+        var edit = WhatIfEdit(taskID: task.id)
+        let newStartDay = calendar.startOfDay(for: startDate)
+        if newStartDay != calendar.startOfDay(for: task.startDate) {
+            edit.newStartDate = newStartDay
+        }
+        if !task.isMilestone, durationDays != max(1, task.durationDays) {
+            edit.newDurationDays = max(1, durationDays)
+        }
+        if percentComplete != min(100, max(0, task.percentComplete)) {
+            edit.newPercentComplete = percentComplete
+        }
+        return edit
+    }
+
+    private var editKey: String {
+        let edit = currentEdit
+        return [
+            edit.newStartDate.map { String(Int($0.timeIntervalSince1970)) } ?? "-",
+            edit.newDurationDays.map(String.init) ?? "-",
+            edit.newPercentComplete.map { String(Int($0)) } ?? "-"
+        ].joined(separator: "|")
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            header
+            Divider()
+            controls
+            Divider()
+            preview
+            Divider()
+            footer
+        }
+        .frame(width: 700, height: 560)
+        .task(id: editKey) {
+            await simulate()
+        }
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Label("What-If Cascade", systemImage: "arrow.triangle.branch")
+                .font(.headline)
+            Text("Adjust “\(task.name)” below and preview how the change propagates through every dependent task. Nothing is saved until you apply.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding()
+    }
+
+    private var controls: some View {
+        HStack(spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Start")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                DatePicker("", selection: $startDate, displayedComponents: .date)
+                    .datePickerStyle(.field)
+                    .labelsHidden()
+                    .frame(width: 130)
+            }
+
+            if !task.isMilestone {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Duration (working days)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    HStack(spacing: 4) {
+                        TextField("1", value: $durationDays, format: .number)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 52)
+                        Stepper("", value: $durationDays, in: 1 ... 3660)
+                            .labelsHidden()
+                    }
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("% Complete")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                HStack(spacing: 4) {
+                    TextField("0", value: $percentComplete, format: .number.precision(.fractionLength(0)))
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 52)
+                    Stepper("", value: $percentComplete, in: 0 ... 100, step: 5)
+                        .labelsHidden()
+                }
+            }
+
+            Spacer()
+
+            Button("Reset") {
+                startDate = Calendar.current.startOfDay(for: task.startDate)
+                durationDays = task.isMilestone ? 0 : max(1, task.durationDays)
+                percentComplete = min(100, max(0, task.percentComplete))
+            }
+            .disabled(currentEdit.isEmpty)
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 10)
+    }
+
+    @ViewBuilder
+    private var preview: some View {
+        if currentEdit.isEmpty {
+            emptyState(
+                icon: "slider.horizontal.3",
+                message: "Change the start date, duration, or % complete to preview the cascade."
+            )
+        } else if let result {
+            VStack(spacing: 0) {
+                impactSummary(result)
+                Divider()
+                shiftList(result)
+            }
+        } else if isSimulating {
+            VStack(spacing: 8) {
+                ProgressView()
+                Text("Simulating cascade…")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            emptyState(icon: "exclamationmark.triangle", message: "Could not simulate this change.")
+        }
+    }
+
+    private func emptyState(icon: String, message: String) -> some View {
+        VStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.title2)
+                .foregroundStyle(.secondary)
+            Text(message)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding()
+    }
+
+    private func impactSummary(_ result: WhatIfCascadeResult) -> some View {
+        HStack(spacing: 14) {
+            impactChip(
+                value: "\(result.downstreamShifts.count)",
+                label: "Tasks Pushed",
+                color: result.downstreamShifts.isEmpty ? .secondary : .orange
+            )
+            impactChip(
+                value: "\(result.impactedMilestoneCount)",
+                label: "Milestones",
+                color: result.impactedMilestoneCount > 0 ? .purple : .secondary
+            )
+            impactChip(
+                value: "\(result.impactedCriticalCount)",
+                label: "Critical",
+                color: result.impactedCriticalCount > 0 ? .red : .secondary
+            )
+            impactChip(
+                value: projectFinishDeltaText(result),
+                label: "Project Finish",
+                color: result.projectFinishDeltaDays > 0 ? .red : (result.projectFinishDeltaDays < 0 ? .green : .secondary)
+            )
+            Spacer()
+            if isSimulating {
+                ProgressView()
+                    .controlSize(.small)
+            }
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+    }
+
+    private func impactChip(value: String, label: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(value)
+                .font(.callout)
+                .fontWeight(.semibold)
+                .foregroundStyle(color)
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func projectFinishDeltaText(_ result: WhatIfCascadeResult) -> String {
+        let delta = result.projectFinishDeltaDays
+        if delta == 0 { return "Unchanged" }
+        return delta > 0 ? "+\(delta)d" : "\(delta)d"
+    }
+
+    private func shiftList(_ result: WhatIfCascadeResult) -> some View {
+        let sourceShifts = result.shifts.filter(\.isSource)
+        let downstream = result.downstreamShifts
+        let summaries = result.summaryShifts
+
+        return List {
+            if !sourceShifts.isEmpty {
+                Section("Edited Task") {
+                    ForEach(sourceShifts) { shift in
+                        shiftRow(shift, envelope: result)
+                    }
+                }
+            }
+            if downstream.isEmpty {
+                Section {
+                    Label("No downstream tasks move — the change is absorbed by slack.", systemImage: "checkmark.circle")
+                        .font(.caption)
+                        .foregroundStyle(.green)
+                }
+            } else {
+                Section("Pushed by Dependencies (\(downstream.count))") {
+                    ForEach(downstream) { shift in
+                        shiftRow(shift, envelope: result)
+                    }
+                }
+            }
+            if !summaries.isEmpty {
+                Section("Summary Roll-Ups") {
+                    ForEach(summaries) { shift in
+                        shiftRow(shift, envelope: result)
+                    }
+                }
+            }
+        }
+        .listStyle(.inset)
+    }
+
+    private func shiftRow(_ shift: WhatIfTaskShift, envelope result: WhatIfCascadeResult) -> some View {
+        HStack(alignment: .center, spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 4) {
+                    if shift.isMilestone {
+                        Image(systemName: "diamond.fill")
+                            .font(.system(size: 8))
+                            .foregroundStyle(.purple)
+                    }
+                    if shift.isCritical {
+                        Image(systemName: "flame.fill")
+                            .font(.system(size: 9))
+                            .foregroundStyle(.red)
+                    }
+                    Text(shift.taskName)
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .lineLimit(1)
+                }
+                HStack(spacing: 4) {
+                    Text(dateSpanText(start: shift.oldStart, finish: shift.oldFinish, milestone: shift.isMilestone))
+                        .foregroundStyle(.secondary)
+                    Image(systemName: "arrow.right")
+                        .foregroundStyle(.secondary)
+                    Text(dateSpanText(start: shift.newStart, finish: shift.newFinish, milestone: shift.isMilestone))
+                }
+                .font(.caption2)
+            }
+            .frame(width: 300, alignment: .leading)
+
+            ghostBars(shift, in: result)
+                .frame(maxWidth: .infinity)
+
+            deltaBadge(shift)
+                .frame(width: 44, alignment: .trailing)
+        }
+    }
+
+    /// Before/after mini bars on a shared timeline: the old schedule as a
+    /// ghost bar, the new schedule as a solid bar.
+    private func ghostBars(_ shift: WhatIfTaskShift, in result: WhatIfCascadeResult) -> some View {
+        let envelopeStart = result.shifts.map { min($0.oldStart, $0.newStart) }.min() ?? shift.oldStart
+        let envelopeEnd = result.shifts.map { max($0.oldFinish, $0.newFinish) }.max() ?? shift.newFinish
+        let totalSeconds = max(86_400, envelopeEnd.timeIntervalSince(envelopeStart) + 86_400)
+
+        func fraction(_ date: Date) -> CGFloat {
+            CGFloat(date.timeIntervalSince(envelopeStart) / totalSeconds)
+        }
+
+        let bar: (Date, Date, CGFloat) -> (offset: CGFloat, width: CGFloat) = { start, finish, width in
+            let leading = fraction(start) * width
+            let trailing = (fraction(finish) + CGFloat(86_400 / totalSeconds)) * width
+            return (leading, max(3, trailing - leading))
+        }
+
+        return GeometryReader { geometry in
+            let oldBar = bar(shift.oldStart, shift.oldFinish, geometry.size.width)
+            let newBar = bar(shift.newStart, shift.newFinish, geometry.size.width)
+
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(Color.secondary.opacity(0.28))
+                    .frame(width: oldBar.width, height: 5)
+                    .offset(x: oldBar.offset, y: 3)
+                Capsule()
+                    .fill(shift.isCritical ? Color.red.opacity(0.85) : Color.accentColor.opacity(0.85))
+                    .frame(width: newBar.width, height: 5)
+                    .offset(x: newBar.offset, y: 12)
+            }
+        }
+        .frame(height: 20)
+        .help("Ghost bar: current schedule · solid bar: what-if schedule")
+    }
+
+    private func deltaBadge(_ shift: WhatIfTaskShift) -> some View {
+        let delta = shift.finishDeltaDays != 0 ? shift.finishDeltaDays : shift.startDeltaDays
+        return Text(delta == 0 ? "±0d" : (delta > 0 ? "+\(delta)d" : "\(delta)d"))
+            .font(.caption)
+            .fontWeight(.semibold)
+            .foregroundStyle(delta > 0 ? .orange : (delta < 0 ? .green : .secondary))
+    }
+
+    private func dateSpanText(start: Date, finish: Date, milestone: Bool) -> String {
+        if milestone {
+            return start.formatted(date: .abbreviated, time: .omitted)
+        }
+        return "\(start.formatted(date: .abbreviated, time: .omitted)) – \(finish.formatted(date: .abbreviated, time: .omitted))"
+    }
+
+    private var footer: some View {
+        HStack {
+            if let result, !currentEdit.isEmpty {
+                Text(footerSummary(result))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button("Discard", role: .cancel) {
+                onDiscard()
+            }
+            .keyboardShortcut(.cancelAction)
+            Button("Apply What-If") {
+                if let result {
+                    onApply(result)
+                }
+            }
+            .keyboardShortcut(.defaultAction)
+            .disabled(result == nil || currentEdit.isEmpty || isSimulating)
+        }
+        .padding()
+    }
+
+    private func footerSummary(_ result: WhatIfCascadeResult) -> String {
+        let moved = result.downstreamShifts.count
+        if moved == 0 {
+            return "Only the edited task changes. Apply commits it with undo support."
+        }
+        return "Applying moves \(moved + 1) task\(moved == 0 ? "" : "s") in one undoable step."
+    }
+
+    @MainActor
+    private func simulate() async {
+        let edit = currentEdit
+        guard !edit.isEmpty else {
+            result = nil
+            isSimulating = false
+            return
+        }
+
+        simulationGeneration += 1
+        let generation = simulationGeneration
+        isSimulating = true
+        let planSnapshot = plan
+
+        let simulated = await Task.detached(priority: .userInitiated) {
+            WhatIfCascadeEngine.simulate(plan: planSnapshot, edit: edit)
+        }.value
+
+        guard generation == simulationGeneration else { return }
+        result = simulated
+        isSimulating = false
     }
 }

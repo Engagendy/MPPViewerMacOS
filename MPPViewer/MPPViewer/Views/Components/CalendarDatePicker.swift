@@ -71,6 +71,7 @@ struct CalendarDatePicker: View {
                         .font(isCompact ? .caption : .body)
                 }
                 .buttonStyle(.borderless)
+                .accessibilityLabel("Show calendar")
                 // Keep the icon out of the tab order so Tab moves from the
                 // text field straight to the next input; the calendar stays
                 // reachable by mouse or Command-Down Arrow from the field.

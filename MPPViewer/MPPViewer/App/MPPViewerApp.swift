@@ -47,7 +47,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 14, weight: .semibold)
             let icon = NSImage(
                 systemSymbolName: "calendar",
-                accessibilityDescription: "Planroom reminders"
+                accessibilityDescription: String(localized: "Planroom reminders")
             )?.withSymbolConfiguration(symbolConfiguration)
             icon?.isTemplate = true
             item.button?.image = icon
@@ -123,6 +123,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
+/// File > New from Template: starter plans (phases, milestones, dependencies)
+/// anchored to today at creation time.
+struct ProjectTemplateCommands: Commands {
+    @Environment(\.newDocument) private var newDocument
+
+    var body: some Commands {
+        CommandGroup(after: .newItem) {
+            Menu("New from Template") {
+                ForEach(PlanTemplate.allCases) { template in
+                    Button {
+                        newDocument(PlanningDocument(template: template))
+                    } label: {
+                        Label(template.displayName, systemImage: template.systemImageName)
+                    }
+                    .help(template.summary)
+                }
+            }
+        }
+    }
+}
+
 @main
 struct MPPViewerApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
@@ -142,6 +163,8 @@ struct MPPViewerApp: App {
         .modelContainer(modelContainer)
         .defaultSize(width: 1280, height: 820)
         .commands {
+            ProjectTemplateCommands()
+            CloudDocumentCommands()
             CommandGroup(replacing: .appTermination) {
                 Button("Quit Planroom") {
                     AppDelegate.shared?.quitApplication(nil)

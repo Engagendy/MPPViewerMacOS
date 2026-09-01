@@ -6,6 +6,7 @@ struct EarnedValueView: View {
 
     @State private var projectMetrics: EVMMetrics?
     @State private var taskMetrics: [(task: ProjectTask, metrics: EVMMetrics)] = []
+    @State private var showingTimePhasedExport = false
 
     private var statusDate: Date {
         if let sd = project.properties.statusDate {
@@ -34,6 +35,9 @@ struct EarnedValueView: View {
         .transaction { transaction in
             transaction.animation = nil
         }
+        .sheet(isPresented: $showingTimePhasedExport) {
+            TimePhasedExportSheet(project: project, isPresented: $showingTimePhasedExport)
+        }
     }
 
     private func content(metrics: EVMMetrics) -> some View {
@@ -48,6 +52,19 @@ struct EarnedValueView: View {
                         message: "Review earned value performance, forecast metrics, planned versus earned progress, and task-level financial control indicators."
                     )
                     Spacer()
+                    Menu {
+                        Button {
+                            showingTimePhasedExport = true
+                        } label: {
+                            Label("Time-Phased Data (CSV)…", systemImage: "tablecells")
+                        }
+                    } label: {
+                        Label("Export", systemImage: "square.and.arrow.up")
+                            .font(.caption)
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                    .help("Export per-week or per-day planned value, earned value, actual cost, and work hours as CSV.")
                     evmTermsButton
                 }
 

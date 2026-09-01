@@ -25,6 +25,17 @@ struct PlanningDocument: FileDocument {
         fileURL = nil
     }
 
+    /// Untitled document pre-populated from a built-in template, with the
+    /// template's relative schedule anchored to today.
+    init(template: PlanTemplate) {
+        let plan = template.makePlan()
+        editablePortfolioID = plan.portfolioID
+        editablePlanData = try? plan.encodedData()
+        editablePlanSeed = plan
+        importedMPPData = nil
+        fileURL = nil
+    }
+
     init(configuration: ReadConfiguration) throws {
         let data = configuration.file.regularFileContents
             ?? configuration.file.serializedRepresentation
@@ -95,6 +106,30 @@ struct PlanningDocument: FileDocument {
         guard let editablePlanData else {
             throw CocoaError(.fileWriteNoPermission)
         }
-        return .init(regularFileWithContents: editablePlanData)
+        guard let plan = nativePlan,
+              let data = try? planWithUpdatedHistory(plan, configuration: configuration).encodedData() else {
+            return .init(regularFileWithContents: editablePlanData)
+        }
+        return .init(regularFileWithContents: data)
+    }
+
+    /// On each save, appends a compact change-log entry versus the previously
+    /// saved file contents (see `PlanHistoryBuilder`). The on-disk file is the
+    /// source of truth for history, so an unchanged save preserves it verbatim.
+    private func planWithUpdatedHistory(
+        _ plan: NativeProjectPlan,
+        configuration: WriteConfiguration
+    ) -> NativeProjectPlan {
+        var planToWrite = plan
+        let previousPlan = configuration.existingFile?.regularFileContents
+            .flatMap { try? PlanningDocument.decodeNativePlanIfPossible(from: $0) }
+
+        var history = previousPlan?.changeHistory ?? plan.changeHistory
+        if let previousPlan,
+           let entry = PlanHistoryBuilder.entry(from: previousPlan, to: plan) {
+            history.append(entry)
+        }
+        planToWrite.changeHistory = PlanHistoryBuilder.capped(history)
+        return planToWrite
     }
 }

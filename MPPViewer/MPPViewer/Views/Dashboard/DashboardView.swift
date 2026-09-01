@@ -739,16 +739,16 @@ struct DashboardView: View {
                         GridItem(.flexible(), spacing: 16),
                     ], spacing: 16) {
                         KPICard(
-                            title: "Cost Performance (CPI)",
-                            value: String(format: "%.2f", stats.evmMetrics.cpi),
-                            subtitle: stats.evmMetrics.cpi >= 1.0 ? "Under budget" : "Over budget",
+                            title: String(localized: "Cost Performance (CPI)"),
+                            value: stats.evmMetrics.cpi.formatted(.number.precision(.fractionLength(2))),
+                            subtitle: stats.evmMetrics.cpi >= 1.0 ? String(localized: "Under budget") : String(localized: "Over budget"),
                             icon: "dollarsign.circle.fill",
                             color: stats.evmMetrics.cpi >= 1.0 ? .green : .red
                         )
                         KPICard(
-                            title: "Schedule Performance (SPI)",
-                            value: String(format: "%.2f", stats.evmMetrics.spi),
-                            subtitle: stats.evmMetrics.spi >= 1.0 ? "Ahead of schedule" : "Behind schedule",
+                            title: String(localized: "Schedule Performance (SPI)"),
+                            value: stats.evmMetrics.spi.formatted(.number.precision(.fractionLength(2))),
+                            subtitle: stats.evmMetrics.spi >= 1.0 ? String(localized: "Ahead of schedule") : String(localized: "Behind schedule"),
                             icon: "clock.fill",
                             color: stats.evmMetrics.spi >= 1.0 ? .green : .red
                         )
@@ -1651,6 +1651,7 @@ struct DashboardView: View {
                 } label: {
                     Image(systemName: "trash")
                 }
+                .accessibilityLabel("Delete review template")
                 .buttonStyle(.bordered)
                 .hoverHighlight()
             }
@@ -3835,7 +3836,7 @@ struct ExecutiveModeView: View {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 10) {
                         Text(project.properties.projectTitle ?? "Project")
-                            .font(.system(size: 34, weight: .bold, design: .rounded))
+                            .font(.system(.largeTitle, design: .rounded).weight(.bold))
                         Text(executiveHeadline(stats))
                             .font(.title3)
                             .foregroundStyle(.secondary)
@@ -3912,7 +3913,9 @@ struct ExecutiveModeView: View {
                     executiveMetricCard(
                         title: "Cost Outlook",
                         value: stats.totalCostFormatted,
-                        detail: stats.evmMetrics.bac > 0 ? "CPI \(String(format: "%.2f", stats.evmMetrics.cpi)) · SPI \(String(format: "%.2f", stats.evmMetrics.spi))" : "EVM not available",
+                        detail: stats.evmMetrics.bac > 0
+                            ? String(localized: "CPI \(stats.evmMetrics.cpi.formatted(.number.precision(.fractionLength(2)))) · SPI \(stats.evmMetrics.spi.formatted(.number.precision(.fractionLength(2))))")
+                            : String(localized: "EVM not available"),
                         color: .blue
                     )
                 }
@@ -4030,7 +4033,7 @@ struct ExecutiveModeView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Text(value)
-                .font(.system(size: 28, weight: .bold, design: .rounded))
+                .font(.system(.title, design: .rounded).weight(.bold))
                 .foregroundStyle(color)
             Text(detail)
                 .font(.caption)

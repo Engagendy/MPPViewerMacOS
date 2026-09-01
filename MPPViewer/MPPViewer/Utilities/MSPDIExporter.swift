@@ -108,7 +108,7 @@ enum MSPDIExporter {
     @MainActor
     static func exportWithSavePanel(plan: NativeProjectPlan) {
         let panel = NSSavePanel()
-        panel.title = "Export MS Project XML"
+        panel.title = String(localized: "Export MS Project XML")
         panel.allowedContentTypes = [.xml]
         panel.nameFieldStringValue = "\(plan.title).xml"
         panel.canCreateDirectories = true
@@ -123,7 +123,7 @@ enum MSPDIExporter {
             } catch {
                 let alert = NSAlert()
                 alert.alertStyle = .warning
-                alert.messageText = "Export Failed"
+                alert.messageText = String(localized: "Export Failed")
                 alert.informativeText = error.localizedDescription
                 alert.runModal()
             }

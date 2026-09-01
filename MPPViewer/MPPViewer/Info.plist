@@ -49,6 +49,18 @@
 	<string>14.4</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright 2025. All rights reserved.</string>
+	<key>NSUbiquitousContainers</key>
+	<dict>
+		<key>iCloud.com.mppviewer.MPPViewer</key>
+		<dict>
+			<key>NSUbiquitousContainerIsDocumentScopePublic</key>
+			<true/>
+			<key>NSUbiquitousContainerName</key>
+			<string>Planroom</string>
+			<key>NSUbiquitousContainerSupportedFolderLevels</key>
+			<string>Any</string>
+		</dict>
+	</dict>
 	<key>UTExportedTypeDeclarations</key>
 	<array>
 		<dict>

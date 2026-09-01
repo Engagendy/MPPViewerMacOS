@@ -262,6 +262,7 @@ struct TimelineEventRow: View {
                     Image(systemName: "repeat")
                 }
                 .menuStyle(.borderlessButton)
+                .accessibilityLabel("Repeat event next year")
                 .fixedSize()
                 .help("Add a copy of this event one year later. Use Hijri for observances like Ramadan and Eid, whose dates follow the Islamic calendar.")
             }
@@ -669,20 +670,8 @@ struct EventsLeaveTimelineView: View {
         CGSize(width: nameColumnWidth + 1 + timelineWidth, height: headerHeight + CGFloat(items.count) * rowHeight)
     }
 
-    @MainActor
-    private func exportPDF() {
-        guard !items.isEmpty else { return }
-        PDFExporter.exportGanttToPDF(
-            view: timelineContent.frame(width: exportContentSize.width, height: exportContentSize.height, alignment: .topLeading),
-            contentSize: exportContentSize,
-            fileName: "\(title) - Events \(PDFExporter.fileNameTimestamp).pdf"
-        )
-    }
-
-    @MainActor
-    private func exportSVG() {
-        guard !items.isEmpty else { return }
-        let rows: [SVGExporter.GanttRow] = items.map { item in
+    private var vectorExportRows: [SVGExporter.GanttRow] {
+        items.map { item in
             let dates = "\(DateFormatting.shortDate(item.start)) – \(DateFormatting.shortDate(item.end))"
             let subtitle = item.subtitle.isEmpty ? dates : "\(item.subtitle) · \(dates)"
             return SVGExporter.GanttRow(
@@ -698,8 +687,28 @@ struct EventsLeaveTimelineView: View {
                 subtitle: subtitle
             )
         }
+    }
+
+    @MainActor
+    private func exportPDF() {
+        guard !items.isEmpty else { return }
+        PDFExporter.exportGanttVectorPDF(
+            rows: vectorExportRows,
+            bands: [],
+            rangeStart: dateRange.start,
+            rangeEnd: dateRange.end,
+            pixelsPerDay: max(2, pixelsPerDay),
+            rowHeight: rowHeight,
+            title: "\(title) — Events & Leave",
+            fileName: "\(title) - Events \(PDFExporter.fileNameTimestamp).pdf"
+        )
+    }
+
+    @MainActor
+    private func exportSVG() {
+        guard !items.isEmpty else { return }
         SVGExporter.exportGantt(
-            rows: rows,
+            rows: vectorExportRows,
             rangeStart: dateRange.start,
             rangeEnd: dateRange.end,
             pixelsPerDay: max(2, pixelsPerDay),
