@@ -180,7 +180,7 @@ Right-click (or Control-click) the app → **Open** → click **Open** in the di
 
 **Option B — Remove quarantine attribute:**
 ```bash
-xattr -cr /Applications/MPPViewer.app
+xattr -cr /Applications/Planroom.app
 ```
 
 **Option C — System Settings:**
