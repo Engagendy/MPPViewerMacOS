@@ -25,6 +25,27 @@ final class PerformanceHelpersTests: XCTestCase {
     }
 
     @MainActor
+    func testReidentifiedPlanCopyDoesNotShareStoredRecordsWithOriginal() throws {
+        let original = try loadSampleNativePlan()
+        var copy = original.withFreshStorageIdentity()
+        let container = try makeInMemoryPortfolioContainer()
+        let context = ModelContext(container)
+
+        XCTAssertNotEqual(copy.portfolioID, original.portfolioID)
+        XCTAssertTrue(Set(copy.tasks.map(\.uniqueID)).isDisjoint(with: original.tasks.map(\.uniqueID)))
+        XCTAssertEqual(copy.tasks.map(\.id), original.tasks.map(\.id))
+
+        let storedOriginal = try PortfolioProjectSynchronizer.upsert(nativePlan: original, in: context)
+        copy.tasks[0].name = "Edited only in the copy"
+        let storedCopy = try PortfolioProjectSynchronizer.upsert(nativePlan: copy, in: context)
+
+        XCTAssertEqual(try context.fetch(FetchDescriptor<PortfolioProjectPlan>()).count, 2)
+        XCTAssertEqual(storedOriginal.tasks.count, original.tasks.count)
+        XCTAssertEqual(storedCopy.tasks.count, copy.tasks.count)
+        XCTAssertFalse(storedOriginal.asNativePlan().tasks.contains { $0.name == "Edited only in the copy" })
+    }
+
+    @MainActor
     func testPortfolioProjectSynchronizerDeletesRemovedChildren() throws {
         var nativePlan = NativeProjectPlan.empty()
         var resource = nativePlan.makeResource(name: "Temporary Resource")

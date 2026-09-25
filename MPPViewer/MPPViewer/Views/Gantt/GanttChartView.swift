@@ -3564,6 +3564,69 @@ private struct GanttDependencySegment: Identifiable, Hashable {
     let midX: CGFloat
 
     var id: String { "\(predecessorID)->\(successorID)" }
+
+    var path: Path {
+        var path = Path()
+        path.move(to: start)
+        path.addLine(to: CGPoint(x: midX, y: start.y))
+        path.addLine(to: CGPoint(x: midX, y: end.y))
+        path.addLine(to: end)
+        return path
+    }
+
+    var arrowHeadPath: Path {
+        let size: CGFloat = 4
+        var head = Path()
+        head.move(to: end)
+        head.addLine(to: CGPoint(x: end.x - size, y: end.y - size))
+        head.addLine(to: CGPoint(x: end.x - size, y: end.y + size))
+        head.closeSubpath()
+        return head
+    }
+
+    func touches(_ taskID: Int) -> Bool {
+        predecessorID == taskID || successorID == taskID
+    }
+
+    /// The segment redrawn with `taskID`'s bar displaced by an in-flight drag.
+    func following(_ taskID: Int, preview: GanttDragPreview) -> GanttDependencySegment {
+        var start = start
+        var end = end
+        var midX = midX
+        if predecessorID == taskID {
+            let dx = preview.offset.width + preview.trailingDelta
+            start.x += dx
+            start.y += preview.offset.height
+            midX += dx
+        }
+        if successorID == taskID {
+            end.x += preview.offset.width + preview.leadingDelta
+            end.y += preview.offset.height
+        }
+        return GanttDependencySegment(predecessorID: predecessorID, successorID: successorID, start: start, end: end, midX: midX)
+    }
+}
+
+/// Redraws only the links attached to the bar being dragged, at its live
+/// position. Kept as its own view so per-tick drag updates re-render this
+/// thin layer, not the whole canvas.
+private struct GanttLiveDependencyLayer: View {
+    let preview: GanttDragPreview
+    let segments: [GanttDependencySegment]
+
+    var body: some View {
+        // Read the observed values here in body so Observation tracks them.
+        let shifted: [GanttDependencySegment] = preview.taskID.map { taskID in
+            segments.map { $0.following(taskID, preview: preview) }
+        } ?? []
+        Canvas { context, _ in
+            for segment in shifted {
+                context.stroke(segment.path, with: .color(.accentColor.opacity(0.85)), style: StrokeStyle(lineWidth: 1.5))
+                context.fill(segment.arrowHeadPath, with: .color(.accentColor.opacity(0.85)))
+            }
+        }
+        .allowsHitTesting(false)
+    }
 }
 
 private struct GanttTaskGeometry {
@@ -3791,6 +3854,7 @@ struct GanttCanvasView: View {
         var state: GanttCanvasLayoutState?
     }
     @State private var layoutMemo = LayoutMemo()
+    @State private var dragPreview = GanttDragPreview()
 
     private let trailingLabelHitWidth: CGFloat = 420
 
@@ -3955,7 +4019,25 @@ struct GanttCanvasView: View {
     }
 
     private var editableTaskRows: [(index: Int, task: ProjectTask)] {
-        visibleTaskRows.filter { editableTaskIDs.contains($0.task.uniqueID) }
+        rowsKeepingDraggedTask(visibleTaskRows.filter { editableTaskIDs.contains($0.task.uniqueID) }) {
+            editableTaskIDs.contains($0)
+        }
+    }
+
+    /// Keeps the bar being dragged mounted even after auto-scroll carries its
+    /// row out of the virtualized visible range; removing it would cancel the
+    /// gesture mid-drag.
+    private func rowsKeepingDraggedTask(
+        _ rows: [(index: Int, task: ProjectTask)],
+        eligible: (Int) -> Bool
+    ) -> [(index: Int, task: ProjectTask)] {
+        guard let draggedID = dragPreview.taskID,
+              eligible(draggedID),
+              !rows.contains(where: { $0.task.uniqueID == draggedID }),
+              let index = tasks.firstIndex(where: { $0.uniqueID == draggedID }) else {
+            return rows
+        }
+        return rows + [(index, tasks[index])]
     }
 
     private var visibleDependencySegments: [GanttDependencySegment] {
@@ -3990,6 +4072,8 @@ struct GanttCanvasView: View {
                 .accessibilityHidden(true)
             if showDependencyLinks {
                 dependencyCanvas
+                    .accessibilityHidden(true)
+                liveDependencyLayer
                     .accessibilityHidden(true)
             }
             overlayBandLabels
@@ -4117,7 +4201,9 @@ struct GanttCanvasView: View {
     }
 
     private var summaryReorderRows: [(index: Int, task: ProjectTask)] {
-        visibleTaskRows.filter { reorderableSummaryIDs.contains($0.task.uniqueID) }
+        rowsKeepingDraggedTask(visibleTaskRows.filter { reorderableSummaryIDs.contains($0.task.uniqueID) }) {
+            reorderableSummaryIDs.contains($0)
+        }
     }
 
     private var summaryReorderOverlay: some View {
@@ -4144,7 +4230,8 @@ struct GanttCanvasView: View {
                     },
                     onStartLinkingFromTask: {
                         onStartLinkingFromTask?(row.task.uniqueID)
-                    }
+                    },
+                    dragPreview: dragPreview
                 )
                 .contextMenu {
                     if let onToggleFocus {
@@ -4196,7 +4283,8 @@ struct GanttCanvasView: View {
                     },
                     onStartLinkingFromTask: {
                         onStartLinkingFromTask?(row.task.uniqueID)
-                    }
+                    },
+                    dragPreview: dragPreview
                 )
                 .contextMenu {
                     barColorMenu(for: row.task)
@@ -4546,22 +4634,11 @@ struct GanttCanvasView: View {
     }
 
     private func segmentPath(_ segment: GanttDependencySegment) -> Path {
-        var path = Path()
-        path.move(to: segment.start)
-        path.addLine(to: CGPoint(x: segment.midX, y: segment.start.y))
-        path.addLine(to: CGPoint(x: segment.midX, y: segment.end.y))
-        path.addLine(to: segment.end)
-        return path
+        segment.path
     }
 
     private func arrowHeadPath(_ segment: GanttDependencySegment) -> Path {
-        let size: CGFloat = 4
-        var head = Path()
-        head.move(to: segment.end)
-        head.addLine(to: CGPoint(x: segment.end.x - size, y: segment.end.y - size))
-        head.addLine(to: CGPoint(x: segment.end.x - size, y: segment.end.y + size))
-        head.closeSubpath()
-        return head
+        segment.arrowHeadPath
     }
 
     private func taskBarRect(for task: ProjectTask, rowIndex: Int) -> CGRect? {
@@ -4831,8 +4908,12 @@ struct GanttCanvasView: View {
     }
 
     private var dependencyCanvas: some View {
-        Canvas { context, _ in
-            for segment in visibleDependencySegments {
+        // Links on a bar mid-drag are drawn by `liveDependencyLayer` instead.
+        let draggedID = dragPreview.taskID
+        let segments = draggedID.map { id in visibleDependencySegments.filter { !$0.touches(id) } }
+            ?? visibleDependencySegments
+        return Canvas { context, _ in
+            for segment in segments {
                 context.stroke(
                     segmentPath(segment),
                     with: .color(.secondary.opacity(0.72)),
@@ -4842,6 +4923,13 @@ struct GanttCanvasView: View {
             }
         }
         .allowsHitTesting(false)
+    }
+
+    private var liveDependencyLayer: some View {
+        let segments = dragPreview.taskID.map { id in
+            activeLayoutState.dependencySegments.filter { $0.touches(id) }
+        } ?? []
+        return GanttLiveDependencyLayer(preview: dragPreview, segments: segments)
     }
 
     private func drawBaselineBadge(

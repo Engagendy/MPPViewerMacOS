@@ -15,6 +15,160 @@ enum GanttHaptics {
     }
 }
 
+/// Live position of the bar being dragged, so dependency lines can follow it
+/// before the drop commits. Only the small live-link layer observes the
+/// per-tick offsets; the canvas itself reacts just to `taskID` changing at
+/// drag start and end.
+@Observable
+final class GanttDragPreview {
+    var taskID: Int?
+    var offset: CGSize = .zero
+    var leadingDelta: CGFloat = 0
+    var trailingDelta: CGFloat = 0
+
+    func update(taskID: Int, offset: CGSize, leadingDelta: CGFloat, trailingDelta: CGFloat) {
+        if self.taskID != taskID { self.taskID = taskID }
+        if self.offset != offset { self.offset = offset }
+        if self.leadingDelta != leadingDelta { self.leadingDelta = leadingDelta }
+        if self.trailingDelta != trailingDelta { self.trailingDelta = trailingDelta }
+    }
+
+    func clear() {
+        guard taskID != nil else { return }
+        taskID = nil
+        offset = .zero
+        leadingDelta = 0
+        trailingDelta = 0
+    }
+}
+
+/// Scrolls the Gantt's enclosing scroll views while a bar drag holds the
+/// pointer near their edge. SwiftUI's ScrollView is backed by NSScrollView on
+/// macOS, so the views under the pointer are found through AppKit and nudged
+/// on a display-rate timer; each applied scroll is reported back so the drag
+/// can add it to its translation and the bar stays under the pointer.
+@MainActor
+final class GanttAutoScroller {
+    static let shared = GanttAutoScroller()
+
+    /// Axes the current drag may scroll along (moving in time → horizontal,
+    /// reordering → vertical).
+    var axes: Axis.Set = []
+
+    private weak var horizontalScrollView: NSScrollView?
+    private weak var verticalScrollView: NSScrollView?
+    private var timer: Timer?
+    private var onScroll: ((CGSize) -> Void)?
+
+    private let edgeBand: CGFloat = 40
+    private let maxStep: CGFloat = 16
+
+    var isActive: Bool { timer != nil }
+
+    func begin(onScroll: @escaping (CGSize) -> Void) {
+        end()
+        guard let window = NSApp.keyWindow ?? NSApp.mainWindow else { return }
+        let pointInWindow = window.convertPoint(fromScreen: NSEvent.mouseLocation)
+        guard let hitView = window.contentView?.superview?.hitTest(pointInWindow) else { return }
+
+        var ancestor: NSView? = hitView
+        while let view = ancestor {
+            if let scrollView = view as? NSScrollView, let document = scrollView.documentView {
+                let visible = scrollView.contentView.bounds.size
+                if horizontalScrollView == nil, document.frame.width > visible.width + 1 {
+                    horizontalScrollView = scrollView
+                }
+                if verticalScrollView == nil, document.frame.height > visible.height + 1 {
+                    verticalScrollView = scrollView
+                }
+            }
+            ancestor = view.superview
+        }
+        guard horizontalScrollView != nil || verticalScrollView != nil else { return }
+
+        self.onScroll = onScroll
+        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.tick() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        self.timer = timer
+    }
+
+    func end() {
+        timer?.invalidate()
+        timer = nil
+        onScroll = nil
+        axes = []
+        horizontalScrollView = nil
+        verticalScrollView = nil
+    }
+
+    private func tick() {
+        // The button went up without the gesture ending (e.g. cancelled):
+        // stop scrolling rather than run on forever.
+        guard NSEvent.pressedMouseButtons & 1 != 0 else {
+            end()
+            return
+        }
+        var applied = CGSize.zero
+        if axes.contains(.horizontal), let scrollView = horizontalScrollView {
+            applied.width = scroll(scrollView, horizontally: true)
+        }
+        if axes.contains(.vertical), let scrollView = verticalScrollView {
+            applied.height = scroll(scrollView, horizontally: false)
+        }
+        if applied != .zero {
+            onScroll?(applied)
+        }
+    }
+
+    /// Scrolls one axis toward the edge the pointer is near and returns the
+    /// distance actually scrolled, in document (canvas) points.
+    private func scroll(_ scrollView: NSScrollView, horizontally: Bool) -> CGFloat {
+        guard let window = scrollView.window, let document = scrollView.documentView else { return 0 }
+        let clip = scrollView.contentView
+        let pointer = clip.convert(window.convertPoint(fromScreen: NSEvent.mouseLocation), from: nil)
+        let bounds = clip.bounds
+
+        // Distance past each edge band, as a signed step toward that edge.
+        func step(distanceToLow: CGFloat, distanceToHigh: CGFloat) -> CGFloat {
+            if distanceToLow < edgeBand {
+                return -maxStep * min(1, (edgeBand - distanceToLow) / edgeBand)
+            }
+            if distanceToHigh < edgeBand {
+                return maxStep * min(1, (edgeBand - distanceToHigh) / edgeBand)
+            }
+            return 0
+        }
+
+        var origin = bounds.origin
+        let delta: CGFloat
+        if horizontally {
+            let proposed = step(distanceToLow: pointer.x - bounds.minX, distanceToHigh: bounds.maxX - pointer.x)
+            guard proposed != 0 else { return 0 }
+            let maxX = max(0, document.frame.width - bounds.width)
+            origin.x = min(max(0, bounds.origin.x + proposed), maxX)
+            delta = origin.x - bounds.origin.x
+        } else {
+            // In a flipped document the top edge is minY; otherwise maxY.
+            let flipped = document.isFlipped
+            let towardTop = flipped ? pointer.y - bounds.minY : bounds.maxY - pointer.y
+            let towardBottom = flipped ? bounds.maxY - pointer.y : pointer.y - bounds.minY
+            let downward = step(distanceToLow: towardTop, distanceToHigh: towardBottom)
+            guard downward != 0 else { return 0 }
+            let maxY = max(0, document.frame.height - bounds.height)
+            let proposedY = bounds.origin.y + (flipped ? downward : -downward)
+            origin.y = min(max(0, proposedY), maxY)
+            let scrolled = origin.y - bounds.origin.y
+            delta = flipped ? scrolled : -scrolled
+        }
+        guard delta != 0 else { return 0 }
+        clip.scroll(to: origin)
+        scrollView.reflectScrolledClipView(clip)
+        return delta
+    }
+}
+
 struct GanttBarView: View {
     let task: ProjectTask
     let startDate: Date
@@ -34,6 +188,7 @@ struct GanttBarView: View {
     var onSelectTask: (() -> Void)? = nil
     var onShowTaskDetails: ((CGPoint) -> Void)? = nil
     var onStartLinkingFromTask: (() -> Void)? = nil
+    var dragPreview: GanttDragPreview? = nil
 
     private enum MoveDragAxis {
         case undecided
@@ -47,6 +202,18 @@ struct GanttBarView: View {
     @State private var leadingResizeTranslation: CGFloat = 0
     @State private var trailingResizeTranslation: CGFloat = 0
     @State private var lastHapticStep = 0
+    // Raw pointer translation of the current drag, plus how far auto-scroll
+    // has moved the canvas under the pointer since the drag began.
+    @State private var pointerTranslation: CGSize = .zero
+    @State private var autoScrollOffset: CGSize = .zero
+    @State private var activeResizeEdge: GanttResizeEdge?
+
+    private var effectiveTranslation: CGSize {
+        CGSize(
+            width: pointerTranslation.width + autoScrollOffset.width,
+            height: pointerTranslation.height + autoScrollOffset.height
+        )
+    }
 
     private func hapticIfStepChanged(_ step: Int) {
         guard step != lastHapticStep else { return }
@@ -56,8 +223,21 @@ struct GanttBarView: View {
 
     private let barInset: CGFloat = 4
     private let minBarWidth: CGFloat = 4
-    private let handleWidth: CGFloat = 8
-    private let handleHitWidth: CGFloat = 20
+    private let handleWidth: CGFloat = 5
+    // Resize grips straddle the bar edge and reach only a few points inside
+    // it, so the body of even a short bar stays grabbable for moving.
+    private let handleHitWidth: CGFloat = 12
+    private let maxHandleInset: CGFloat = 4
+    // Movement (in points) before a drag commits to moving in time or
+    // reordering; horizontal wins unless the drag is clearly vertical.
+    private let axisDecisionDistance: CGFloat = 4
+    private let verticalAxisBias: CGFloat = 1.5
+
+    /// Drags are measured in the canvas space so the translation stays
+    /// stable while the bar itself moves under the pointer.
+    private var dragCoordinateSpace: NamedCoordinateSpace {
+        .named(coordinateSpaceName)
+    }
 
     private var taskStartOffset: CGFloat {
         guard let taskStart = task.startDate else { return 0 }
@@ -195,12 +375,15 @@ struct GanttBarView: View {
                 }
             }
             .shadow(color: isLinkSource ? Color.orange.opacity(0.28) : .clear, radius: 6, x: 0, y: 0)
+            // The diamond alone is a small target; grab anywhere in its box
+            // plus a few points of slack.
+            .contentShape(Rectangle().inset(by: -barInset))
             .offset(
                 x: taskStartOffset + moveTranslation - size / 2,
                 y: yPosition + (rowHeight - size) / 2 + rowTranslation
             )
             .gesture(
-                isEditable ? DragGesture()
+                isEditable ? DragGesture(minimumDistance: 2, coordinateSpace: dragCoordinateSpace)
                     .onChanged(handleMoveDragChanged)
                     .onEnded(handleMoveDragEnded) : nil
             )
@@ -277,7 +460,7 @@ struct GanttBarView: View {
                 y: yPosition + rowTranslation
             )
             .gesture(
-                (isEditable && reorderOnly) ? DragGesture(minimumDistance: 3)
+                (isEditable && reorderOnly) ? DragGesture(minimumDistance: 2, coordinateSpace: dragCoordinateSpace)
                     .onChanged(handleMoveDragChanged)
                     .onEnded(handleMoveDragEnded) : nil
             )
@@ -368,13 +551,16 @@ struct GanttBarView: View {
                     .stroke(Color.accentColor, lineWidth: 2)
             }
         }
+        // Grab the full row height (and a little either side) so short,
+        // thin bars are easy to pick up.
+        .contentShape(Rectangle().inset(by: -barInset))
         .overlay(alignment: .leading) {
-            if isEditable {
+            if isEditable, activeResizeEdge.map({ $0 == .leading }) ?? !isDragging {
                 resizeHandleZone(for: .leading)
             }
         }
         .overlay(alignment: .trailing) {
-            if isEditable {
+            if isEditable, activeResizeEdge.map({ $0 == .trailing }) ?? !isDragging {
                 resizeHandleZone(for: .trailing)
             }
         }
@@ -383,7 +569,7 @@ struct GanttBarView: View {
             y: yPosition + barInset + rowTranslation
         )
         .gesture(
-            isEditable ? DragGesture(minimumDistance: 2)
+            isEditable ? DragGesture(minimumDistance: 2, coordinateSpace: dragCoordinateSpace)
                 .onChanged(handleMoveDragChanged)
                 .onEnded(handleMoveDragEnded) : nil
         )
@@ -467,78 +653,164 @@ struct GanttBarView: View {
 
     @ViewBuilder
     private func resizeHandleZone(for edge: GanttResizeEdge) -> some View {
-        let alignment: Alignment = edge == .leading ? .leading : .trailing
+        // Only a sliver of the grip overlaps the bar (at most a fifth of a
+        // short bar); the rest sits just outside the edge.
+        let inside = min(maxHandleInset, previewWidth * 0.2)
+        let outside = handleHitWidth - inside
+        let edgeOffsetInZone = (edge == .leading ? outside : inside) - handleHitWidth / 2
 
         Color.clear
             .frame(width: handleHitWidth, height: rowHeight)
-            .overlay(alignment: alignment) {
-                resizeHandle
-                    .shadow(color: Color.black.opacity(0.08), radius: 1, x: 0, y: 0)
+            .overlay {
+                if previewWidth >= 16 || isSelected {
+                    resizeHandle
+                        .shadow(color: Color.black.opacity(0.08), radius: 1, x: 0, y: 0)
+                        .offset(x: edgeOffsetInZone)
+                }
             }
             .contentShape(Rectangle())
+            .offset(x: edge == .leading ? -outside : outside)
             .gesture(resizeGesture(for: edge))
+            .cursor(.resizeLeftRight)
     }
 
     private func resizeGesture(for edge: GanttResizeEdge) -> some Gesture {
-        DragGesture(minimumDistance: 0)
+        DragGesture(minimumDistance: 1, coordinateSpace: dragCoordinateSpace)
             .onChanged { value in
-                switch edge {
-                case .leading:
-                    leadingResizeTranslation = value.translation.width
-                    hapticIfStepChanged(leadingPreviewDays)
-                case .trailing:
-                    trailingResizeTranslation = value.translation.width
-                    hapticIfStepChanged(trailingPreviewDays)
+                pointerTranslation = value.translation
+                if activeResizeEdge == nil {
+                    activeResizeEdge = edge
+                    beginAutoScroll(axes: .horizontal)
                 }
+                applyResizeTranslation()
             }
             .onEnded { value in
-                let delta = roundedDayDelta(for: value.translation.width)
-                leadingResizeTranslation = 0
-                trailingResizeTranslation = 0
-                lastHapticStep = 0
+                pointerTranslation = value.translation
+                let delta = roundedDayDelta(for: effectiveTranslation.width)
+                finishDrag()
                 guard delta != 0 else { return }
                 onResizeTask?(edge, delta)
             }
     }
 
+    private func applyResizeTranslation() {
+        switch activeResizeEdge {
+        case .leading:
+            leadingResizeTranslation = effectiveTranslation.width
+            hapticIfStepChanged(leadingPreviewDays)
+        case .trailing:
+            trailingResizeTranslation = effectiveTranslation.width
+            hapticIfStepChanged(trailingPreviewDays)
+        case nil:
+            return
+        }
+        publishDragPreview()
+    }
+
+    private func beginAutoScroll(axes: Axis.Set) {
+        autoScrollOffset = .zero
+        GanttAutoScroller.shared.begin { delta in
+            autoScrollOffset.width += delta.width
+            autoScrollOffset.height += delta.height
+            if activeResizeEdge != nil {
+                applyResizeTranslation()
+            } else {
+                applyMoveTranslation()
+            }
+        }
+        GanttAutoScroller.shared.axes = axes
+    }
+
+    private func publishDragPreview() {
+        dragPreview?.update(
+            taskID: task.uniqueID,
+            offset: CGSize(width: moveTranslation, height: rowTranslation),
+            leadingDelta: leadingResizeTranslation,
+            trailingDelta: trailingResizeTranslation
+        )
+    }
+
+    /// Resets all in-flight drag state once a move, reorder or resize ends.
+    private func finishDrag() {
+        GanttAutoScroller.shared.end()
+        dragPreview?.clear()
+        moveDragAxis = .undecided
+        activeResizeEdge = nil
+        moveTranslation = 0
+        rowTranslation = 0
+        leadingResizeTranslation = 0
+        trailingResizeTranslation = 0
+        pointerTranslation = .zero
+        autoScrollOffset = .zero
+        lastHapticStep = 0
+    }
+
     private func handleMoveDragChanged(_ value: DragGesture.Value) {
+        pointerTranslation = value.translation
+        if !GanttAutoScroller.shared.isActive, moveDragAxis == .undecided {
+            beginAutoScroll(axes: [])
+        }
+        applyMoveTranslation()
+    }
+
+    private func applyMoveTranslation() {
+        let translation = effectiveTranslation
+        let dx = abs(translation.width)
+        let dy = abs(translation.height)
+        let canReorder = onReorderTask != nil
+        let canMove = onMoveTask != nil
         if moveDragAxis == .undecided {
-            let dx = abs(value.translation.width)
-            let dy = abs(value.translation.height)
-            guard dx > 3 || dy > 3 else { return }
-            // Summaries only reorder; regular bars pick the dominant axis.
-            moveDragAxis = reorderOnly ? .vertical : ((dy > dx && onReorderTask != nil) ? .vertical : .horizontal)
+            guard dx > axisDecisionDistance || dy > axisDecisionDistance else { return }
+            // Summaries only reorder; other bars move in time unless the drag
+            // is clearly vertical, so a slightly wobbly sideways drag never
+            // turns into a reorder.
+            if reorderOnly || !canMove {
+                moveDragAxis = .vertical
+            } else {
+                moveDragAxis = (canReorder && dy > dx * verticalAxisBias) ? .vertical : .horizontal
+            }
+        } else if !reorderOnly, canMove, canReorder {
+            // Let the drag change its mind when the pointer clearly heads the
+            // other way, instead of forcing a release and re-grab.
+            if moveDragAxis == .horizontal, dy > rowHeight, dy > dx * 2 {
+                moveDragAxis = .vertical
+                moveTranslation = 0
+            } else if moveDragAxis == .vertical, dx > pixelsPerDay * 2, dx > max(rowHeight, dy * 2) {
+                moveDragAxis = .horizontal
+                rowTranslation = 0
+            }
         }
         switch moveDragAxis {
         case .horizontal:
-            moveTranslation = value.translation.width
+            GanttAutoScroller.shared.axes = .horizontal
+            moveTranslation = translation.width
             hapticIfStepChanged(movePreviewDays)
         case .vertical:
-            rowTranslation = value.translation.height
+            GanttAutoScroller.shared.axes = .vertical
+            rowTranslation = translation.height
             hapticIfStepChanged(rowPreviewDelta)
         case .undecided:
-            break
+            return
         }
+        publishDragPreview()
     }
 
     private func handleMoveDragEnded(_ value: DragGesture.Value) {
+        pointerTranslation = value.translation
+        let translation = effectiveTranslation
         let axis = moveDragAxis
-        moveDragAxis = .undecided
-        lastHapticStep = 0
+        finishDrag()
         switch axis {
         case .horizontal:
-            let delta = roundedDayDelta(for: value.translation.width)
-            moveTranslation = 0
+            let delta = roundedDayDelta(for: translation.width)
             guard delta != 0 else { return }
             onMoveTask?(delta)
         case .vertical:
-            let rows = Int((value.translation.height / max(1, rowHeight)).rounded())
-            rowTranslation = 0
+            let rows = Int((translation.height / max(1, rowHeight)).rounded())
             guard rows != 0 else { return }
             onReorderTask?(rows)
         case .undecided:
-            moveTranslation = 0
-            rowTranslation = 0
+            break
         }
     }
 
@@ -549,7 +821,7 @@ struct GanttBarView: View {
 
     private var editTooltipText: String {
         guard isEditable else { return tooltipText }
-        return tooltipText + "\n\nDrag the bar sideways to move it in time, or up and down to reorder it in the task list. Grab the larger edge handles to change start or finish. Double-click for task details. Command-click to select several bars, then move them together with the arrow keys (Shift for a week) or by dragging any selected bar. Control-click a task bar to start dependency linking instantly."
+        return tooltipText + "\n\nDrag the bar sideways to move it in time, or up and down to reorder it in the task list. Grab just past either end of the bar to change start or finish. Drag toward the chart's edge to scroll. Double-click for task details. Command-click to select several bars, then move them together with the arrow keys (Shift for a week) or by dragging any selected bar. Control-click a task bar to start dependency linking instantly."
     }
 
     private var tooltipText: String {

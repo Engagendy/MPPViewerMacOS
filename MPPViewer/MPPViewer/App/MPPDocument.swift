@@ -15,6 +15,9 @@ struct PlanningDocument: FileDocument {
     var editablePlanSeed: NativeProjectPlan?
     let importedMPPData: Data?
     let fileURL: URL?
+    /// True for untitled documents created in this session (not read from
+    /// disk). Their emptiness is intentional, so they never adopt a stored plan.
+    var isNewDocument = false
 
     init() {
         let emptyPlan = NativeProjectPlan.empty()
@@ -23,6 +26,7 @@ struct PlanningDocument: FileDocument {
         editablePlanSeed = emptyPlan
         importedMPPData = nil
         fileURL = nil
+        isNewDocument = true
     }
 
     /// Untitled document pre-populated from a built-in template, with the
@@ -34,6 +38,7 @@ struct PlanningDocument: FileDocument {
         editablePlanSeed = plan
         importedMPPData = nil
         fileURL = nil
+        isNewDocument = true
     }
 
     init(configuration: ReadConfiguration) throws {

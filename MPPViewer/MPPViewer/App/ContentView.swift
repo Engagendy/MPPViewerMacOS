@@ -2319,6 +2319,7 @@ struct ContentView: View {
     @State private var isSavingNativePlan = false
     @State private var isMaterializingEditableWorkspace = false
     @State private var transientEditablePortfolioPlan: PortfolioProjectPlan?
+    @State private var planIdentityClaim = OpenPlanIdentityClaim()
     @State private var editableAnalysisGeneration = 0
     @AppStorage("flaggedTaskIDs") private var flaggedTaskIDsData: Data = Data()
 
@@ -2464,20 +2465,35 @@ struct ContentView: View {
         title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 
+    /// Whether another stored plan titled `title` may stand in for this empty
+    /// document. Only files read from disk qualify (a new untitled window is
+    /// legitimately empty), the title must be a real one rather than the
+    /// shared "Untitled Plan" default, and the stored plan must not already
+    /// be open in another window.
+    private func canRecoverStoredPlan(titled title: String, portfolioID: UUID) -> Bool {
+        guard !document.isNewDocument else { return false }
+        let normalizedTitle = normalizedPlanTitle(title)
+        guard !normalizedTitle.isEmpty,
+              normalizedTitle != normalizedPlanTitle(NativeProjectPlan.empty().title) else {
+            return false
+        }
+        return !OpenPlanIdentityRegistry.isClaimed(portfolioID, excluding: planIdentityClaim)
+    }
+
     private func recoverableStoredPlan(for documentPlan: NativeProjectPlan?) -> PortfolioProjectPlan? {
         guard document.isEditablePlan,
+              let documentPlan,
               isEmptyNativePlan(documentPlan) else {
             return nil
         }
 
-        let populatedPlans = portfolioPlans.filter { !$0.isArchivedValue && $0.taskCount > 0 }
-        let documentTitle = normalizedPlanTitle(documentPlan?.title ?? "")
-        if !documentTitle.isEmpty,
-           let titleMatch = populatedPlans.first(where: { normalizedPlanTitle($0.title) == documentTitle }) {
-            return titleMatch
+        let documentTitle = normalizedPlanTitle(documentPlan.title)
+        return portfolioPlans.first { plan in
+            !plan.isArchivedValue
+                && plan.taskCount > 0
+                && normalizedPlanTitle(plan.title) == documentTitle
+                && canRecoverStoredPlan(titled: documentPlan.title, portfolioID: plan.portfolioID)
         }
-
-        return populatedPlans.count == 1 ? populatedPlans.first : nil
     }
 
     private func shouldPreferStoredEditablePlan(_ storedPlan: NativeProjectPlan, over documentPlan: NativeProjectPlan?) -> Bool {
@@ -2489,8 +2505,8 @@ struct ContentView: View {
         if documentPlan.portfolioID == storedPlan.portfolioID {
             return true
         }
-        let documentTitle = normalizedPlanTitle(documentPlan.title)
-        return !documentTitle.isEmpty && documentTitle == normalizedPlanTitle(storedPlan.title)
+        return normalizedPlanTitle(documentPlan.title) == normalizedPlanTitle(storedPlan.title)
+            && canRecoverStoredPlan(titled: documentPlan.title, portfolioID: storedPlan.portfolioID)
     }
 
     private func storedNativePlan(for portfolioPlan: PortfolioProjectPlan?) -> NativeProjectPlan? {
@@ -2673,6 +2689,7 @@ struct ContentView: View {
                     plan.taskCount > 0
                         && normalizedPlanTitle(plan.title) == documentTitle
                         && plan.portfolioID != documentPlan.portfolioID
+                        && canRecoverStoredPlan(titled: documentPlan.title, portfolioID: plan.portfolioID)
                 }
 
                 if let populatedReplacement {
@@ -2786,6 +2803,7 @@ struct ContentView: View {
     }
 
     private func handleViewAppear() {
+        claimEditablePlanIdentity()
         refreshCachedFlaggedTaskIDs()
         scheduleSearchSuggestionsRefresh()
         if selectedWorkspacePortfolioID == nil {
@@ -2801,6 +2819,26 @@ struct ContentView: View {
 
     private var editableWorkspaceAlertText: Text {
         Text(editableWorkspaceError ?? "The editable workspace could not be prepared. Open in read-only mode or re-import the file.")
+    }
+
+    /// A copied .mppplan carries the same portfolio and record UUIDs as its
+    /// source. If another open window already owns this plan's identity when
+    /// the document first opens, re-identify this document so the two windows
+    /// never share (and cross-write) one stored record.
+    private func claimEditablePlanIdentity() {
+        OpenPlanIdentityRegistry.register(planIdentityClaim)
+        if !planIdentityClaim.hasClaimed,
+           document.isEditablePlan,
+           let portfolioID = document.editablePortfolioID,
+           OpenPlanIdentityRegistry.isClaimed(portfolioID, excluding: planIdentityClaim),
+           let plan = document.nativePlan {
+            let reidentified = plan.withFreshStorageIdentity()
+            transientEditablePortfolioPlan = nil
+            document.nativePlan = reidentified
+            selectedWorkspacePortfolioID = reidentified.portfolioID
+        }
+        planIdentityClaim.hasClaimed = true
+        planIdentityClaim.portfolioID = document.isEditablePlan ? document.editablePortfolioID : nil
     }
 
     private func defaultWorkspacePortfolioID() -> UUID? {
@@ -2880,6 +2918,7 @@ struct ContentView: View {
     private var toolbarConfiguredView: some View {
         searchableRootView
         .task(id: document.editablePortfolioID) {
+            claimEditablePlanIdentity()
             await Task.yield()
             refreshEditableWorkspaceState()
         }
@@ -3582,5 +3621,26 @@ private final class WindowCloseConfiguringView: NSView {
         guard let window else { return }
         window.styleMask.insert(.closable)
         window.standardWindowButton(.closeButton)?.isEnabled = true
+    }
+}
+
+/// The editable-plan identity owned by one document window. Held in the
+/// window's view state, so the registry's weak reference lapses when the
+/// window closes.
+final class OpenPlanIdentityClaim {
+    var portfolioID: UUID?
+    var hasClaimed = false
+}
+
+@MainActor
+enum OpenPlanIdentityRegistry {
+    private static let claims = NSHashTable<OpenPlanIdentityClaim>.weakObjects()
+
+    static func register(_ claim: OpenPlanIdentityClaim) {
+        claims.add(claim)
+    }
+
+    static func isClaimed(_ portfolioID: UUID, excluding claim: OpenPlanIdentityClaim) -> Bool {
+        claims.allObjects.contains { $0 !== claim && $0.portfolioID == portfolioID }
     }
 }

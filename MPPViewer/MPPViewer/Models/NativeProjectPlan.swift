@@ -4821,6 +4821,31 @@ private extension NativeProjectPlan {
     }
 }
 
+extension NativeProjectPlan {
+    /// A copy of this plan with new portfolio and storage-record UUIDs. The
+    /// SwiftData store keys plans, tasks, resources, assignments, workflow
+    /// columns and status snapshots by these UUIDs (all `.unique`), so a
+    /// duplicated .mppplan file must be re-identified before it is
+    /// materialized or it would share — and overwrite — the original's
+    /// records. Intra-plan references use legacy Int IDs and are unaffected.
+    func withFreshStorageIdentity() -> NativeProjectPlan {
+        var plan = self
+        plan.portfolioID = UUID()
+        for index in plan.tasks.indices { plan.tasks[index].uniqueID = UUID() }
+        for index in plan.resources.indices { plan.resources[index].uniqueID = UUID() }
+        for index in plan.assignments.indices { plan.assignments[index].uniqueID = UUID() }
+        for index in plan.workflowColumns.indices { plan.workflowColumns[index].id = UUID() }
+        for index in plan.typeWorkflowOverrides.indices {
+            plan.typeWorkflowOverrides[index].id = UUID()
+            for columnIndex in plan.typeWorkflowOverrides[index].columns.indices {
+                plan.typeWorkflowOverrides[index].columns[columnIndex].id = UUID()
+            }
+        }
+        for index in plan.statusSnapshots.indices { plan.statusSnapshots[index].id = UUID() }
+        return plan
+    }
+}
+
 @ModelActor
 actor PlanSchedulerModelActor {
     func reschedule(planID: PersistentIdentifier) async throws {
